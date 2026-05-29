@@ -13,6 +13,8 @@ Use next number:
 ```text
 docs/adr/ADR-0001-short-slug.md
 ```
+Current number to use is in the template in step 3.
+in `# ADR-000X: <Decision title>`
 
 ## 3. Use template
 
@@ -27,3 +29,7 @@ Do not mix unrelated decisions.
 ## 5. Link follow-ups
 
 If the ADR creates implementation work, add next slice to `.agents/memory/project-state.md` or `.agents/memory/open-questions.md`.
+
+## 6. Update number inside the template
+
+Update the number in the template `.agents/templates/adr-template.md` so the next model can continue
