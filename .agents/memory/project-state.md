@@ -1,0 +1,99 @@
+# Project State Memory
+
+Last updated: 2026-05-26
+
+## Product summary
+
+Full-stack AI Search Application for company knowledge and documents.
+
+The system should provide a web UI and backend API for hybrid search over documents, combining vector similarity, full-text search, metadata filters, freshness validation, ACL filtering, and LLM-generated answers with citations.
+
+## Current phase
+
+Phase 2: Productization & Visual Interface.
+
+Primary goal: establish unified RAG retrieval dashboards, audit search actions, and ready the application for secure corporate pilot users.
+
+## Current recommended slice
+
+Build the smallest backend skeleton - [x] Completed.
+Local PostgreSQL / pgvector proof spike - [x] Completed.
+Phase 0 RAG Proof of Concept - [x] Completed.
+Phase 1 Local PDF Ingestion & Chunking pipeline - [x] Completed.
+Visual Progress Reporting & Timeout Safety - [x] Completed.
+Phase 1 Hybrid Retrieval & RRF (PostgreSQL full-text search index, weighted Reciprocal Rank Fusion, latency subquery loops optimization) - [x] Completed.
+Phase 2 Next.js Dashboard Client (conversational chat workspace, inline citations trigger, right-side metadata drawer, live database statistics sidebar, health checks) - [x] Completed.
+
+Next: Phase 2 Productization (integrating user feedback collection, query audit logs, and Entra ID authentication skeleton).
+
+## Target roadmap
+
+1. Phase 0: Technical spike
+   - FastAPI skeleton
+   - PostgreSQL/pgvector proof
+   - one document embedded
+   - vector query
+   - simple model answer
+   - minimal web UI or API-only demo
+
+2. Phase 1: Ingestion and retrieval
+   - Blob Storage integration
+   - document extraction
+   - chunking
+   - embeddings
+   - PostgreSQL full-text search
+   - hybrid ranking
+   - metadata filtering
+   - eval dataset
+
+3. Phase 2: Agent and productization
+   - flash agent
+   - thinking agent
+   - source citations
+   - freshness validation
+   - feedback
+   - audit
+   - frontend
+   - Entra ID auth
+
+4. Phase 3: Enterprise hardening
+   - ACL filtering
+   - production monitoring
+   - rate limiting
+   - cost tracking
+   - ingestion worker scaling
+   - reindexing
+   - admin endpoints
+   - security review
+
+5. Phase 4: Channel expansion
+   - Teams interface
+   - Outlook interface
+   - API for internal systems
+   - optional specialized search backend
+
+## Active architectural constraints
+
+- Azure-first.
+- Microsoft Azure is the only accepted strategic vendor lock-in.
+- Backend primary language: Python 3.11+.
+- Backend framework: FastAPI.
+- MVP data/search layer: Azure Database for PostgreSQL Flexible Server + pgvector + PostgreSQL full-text search.
+- Azure AI Search is not part of MVP.
+- Chroma may be used only for local experiments, not production.
+- LangChain/LangGraph may be used inside orchestration/providers but must not leak through the whole domain model.
+- LLM provider, embedding provider, and search backend must be replaceable through project interfaces.
+- Model deployment names must be configuration, not code.
+
+## Current known blockers
+
+- First document sources are not yet chosen.
+- Expected document/chunk volume is unknown.
+- ACL mapping from source systems is not yet designed.
+- Exact Azure model deployments are not known.
+- Pilot environment is not chosen.
+
+## Next slice recommendation
+
+Implement Phase 1 Hybrid Retrieval (integrating PostgreSQL Full-Text Search FTS with pgvector vector search using a rank fusion algorithm such as RRF or Reciprocal Rank Fusion).
+

@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: ai-search-app
+Version: 0.1.0
+Summary: Full-stack AI Search Application Backend
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.100.0
+Requires-Dist: uvicorn[standard]>=0.22.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: pydantic-settings>=2.0
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: pgvector>=0.2.0
+Requires-Dist: psycopg[binary]>=3.1.0
+Requires-Dist: openai>=1.0.0
+Requires-Dist: pypdf>=4.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: httpx>=0.24.0; extra == "dev"

@@ -1,0 +1,84 @@
+import datetime
+import uuid
+from typing import List, Optional
+from sqlalchemy import ForeignKey, String, DateTime, Integer, Date
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class DBDocument(Base):
+    __tablename__ = "documents"
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_type: Mapped[str] = mapped_column(String, nullable=False)
+    source_uri: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    document_type: Mapped[str] = mapped_column(String, nullable=False)
+    language: Mapped[str] = mapped_column(String, default="en")
+    owner: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
+    valid_from: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    checksum: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    freshness_status: Mapped[str] = mapped_column(String, default="current")
+    security_acl: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    ingested_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+    metadata_json: Mapped[Optional[dict]] = mapped_column(
+        JSONB, nullable=True, name="metadata"
+    )
+
+    chunks: Mapped[List["DBChunk"]] = relationship(
+        "DBChunk", back_populates="document", cascade="all, delete-orphan"
+    )
+
+
+class DBChunk(Base):
+    __tablename__ = "chunks"
+
+    chunk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.document_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    content_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    embedding: Mapped[Optional[List[float]]] = mapped_column(
+        Vector(1536), nullable=True
+    )
+    language: Mapped[str] = mapped_column(String, default="en")
+    section_title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
+    valid_from: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    freshness_status: Mapped[str] = mapped_column(String, default="current")
+    security_acl: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(
+        JSONB, nullable=True, name="metadata"
+    )
+
+    document: Mapped["DBDocument"] = relationship("DBDocument", back_populates="chunks")
