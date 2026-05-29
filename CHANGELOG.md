@@ -6,6 +6,23 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-29
+
+### Added
+- **Dynamic Security ACL Filtering**: Implemented a comprehensive four-level group authorization model (`Management` full bypass, `HR`, `Finance`, `User`) inside the `VectorRetriever` pipeline.
+- **Dynamic Freshness Validation**: Added support for picking and applying freshness constraints (`Všechny` all documents, `Jen 2026` this year's files, `Jen platné` active current versions) dynamically.
+- **Azure Blob Storage Client**: Implemented `BlobStorageProvider` utilizing the `azure-storage-blob` library to store and retrieve files from Azure cloud container storage, featuring a seamless local disk storage fallback.
+- **Streamed PDF Viewer API Endpoint**: Added a new route `GET /api/documents/view/{document_id}` that dynamically streams PDFs inline from either Azure Blob or local folder locations.
+- **Interactive Visual Testing Controls**: Added dynamic select dropdown role picker in Next.js client header and segment toggle button bar in query pane.
+- **Direct PDF Hyperlinks & Dynamic Page Scrolling**: Replaced static file previews in the left sidebar directory and right citations panel with direct high-contrast hyperlinked anchors (`target="_blank"`) pointing straight to the FastAPI inline PDF streaming route, and appended native PDF scroll hash anchors (`#page=N`) to instantly open documents at the exact cited page.
+
+### Changed
+- **Metadata-Aware Ingestion Pipeline**: Upgraded both `ingest.py` and `full_refresh_ingest.py` to seed files with realistic creation datetimes, freshness states, and security allowed groups based on filenames.
+
+### Fixed
+- **NameError in Documents Route**: Fixed a FastAPI router startup compilation crash in `app/api/routes/documents.py` caused by a missing import of `Request`.
+- **RAG Pipeline Test Assertions**: Updated the end-to-end integration test suite in `tests/test_rag_pipeline.py` to support custom dynamic security groups and pass security filters.
+
 ## [0.2.0] - 2026-05-29
 
 ### Added

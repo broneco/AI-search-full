@@ -32,6 +32,9 @@ class ChatRequest(BaseModel):
     search_strategy: str = Field(
         default="hybrid", description="Retrieval search strategy: 'vector', 'keyword', or 'hybrid'."
     )
+    freshness_filter: str = Field(
+        default="all", description="Freshness filter constraint: 'all', 'this_year', or 'latest'."
+    )
 
 
 class ChatResponse(BaseModel):

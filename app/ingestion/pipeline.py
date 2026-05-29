@@ -1,10 +1,13 @@
 import os
 import logging
 import hashlib
+import datetime
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
+from app.providers.blob_storage import BlobStorageProvider
+from app.core.config import settings
 from app.ingestion.extraction import DocumentExtractor
 from app.ingestion.chunking import CharacterTextSplitter
 from app.storage.models import DBDocument, DBChunk
@@ -20,6 +23,7 @@ class IngestionPipeline:
         self.extractor = DocumentExtractor()
         self.splitter = CharacterTextSplitter()
         self.embedding_provider = AzureOpenAIEmbeddingProvider()
+        self.blob_provider = BlobStorageProvider()
 
     async def ingest_file(
         self,
@@ -80,15 +84,47 @@ class IngestionPipeline:
         # 5. Persist document and chunk nodes to database
         logger.info(f"│  ├── [Step 5/5] Persisting document and chunks to Azure PostgreSQL...")
         try:
+            # Parse created_at and clean up metadata_json to prevent database JSON serialization errors
+            metadata = dict(metadata_json or {})
+            created_at_val = metadata.get("created_at", None)
+            
+            created_at_dt = datetime.datetime.utcnow()
+            if created_at_val:
+                if isinstance(created_at_val, str):
+                    try:
+                        created_at_dt = datetime.datetime.fromisoformat(created_at_val)
+                    except Exception:
+                        pass
+                elif isinstance(created_at_val, datetime.datetime):
+                    created_at_dt = created_at_val
+                    # Convert to string in metadata to avoid JSON serialization errors
+                    metadata["created_at"] = created_at_val.isoformat()
+
+            source_type = "local"
+            source_uri = f"file://{file_name}"
+
+            if self.blob_provider.is_configured():
+                container_name = settings.AZURE_BLOB_CONTAINER_ORIGINALS or "originals"
+                logger.info(f"│  ├── [Blob Storage] Uploading {file_name} to Azure container '{container_name}'...")
+                try:
+                    await self.blob_provider.upload_blob(container_name, file_name, file_bytes)
+                    source_type = "azure_blob"
+                    source_uri = f"azure://{container_name}/{file_name}"
+                    logger.info(f"│  │   └── Cloud upload complete. URI: {source_uri}")
+                except Exception as e:
+                    logger.warning(f"│  │   ⚠️ Azure Blob upload failed: {e}. Falling back to local storage path.")
+
             doc = DBDocument(
-                source_type="local",
-                source_uri=f"file://{file_name}",
+                source_type=source_type,
+                source_uri=source_uri,
                 title=os.path.splitext(file_name)[0],
                 document_type=document_type,
                 language="en",
                 checksum=checksum,
                 security_acl=security_acl or {"allowed_groups": ["Public"]},
-                metadata_json=metadata_json or {},
+                metadata_json=metadata,
+                freshness_status=metadata.get("freshness_status", "current"),
+                created_at=created_at_dt,
             )
             self.db.add(doc)
             self.db.commit()
@@ -108,7 +144,9 @@ class IngestionPipeline:
                         "language": "en",
                         "page_number": chunk.page_number,
                         "security_acl": security_acl or {"allowed_groups": ["Public"]},
-                        "metadata_json": metadata_json or {},
+                        "metadata_json": metadata,
+                        "freshness_status": metadata.get("freshness_status", "current"),
+                        "created_at": created_at_dt,
                     }
                 )
 

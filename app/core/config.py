@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # Blob Storage
     AZURE_STORAGE_ACCOUNT: Optional[str] = None
+    AZURE_STORAGE_CONNECTION_STRING: Optional[str] = None
     AZURE_BLOB_CONTAINER_ORIGINALS: Optional[str] = None
     AZURE_BLOB_CONTAINER_ARTIFACTS: Optional[str] = None
 

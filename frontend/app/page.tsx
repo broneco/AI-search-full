@@ -39,10 +39,15 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [searchStrategy, setSearchStrategy] = useState<"hybrid" | "vector" | "keyword">("hybrid");
   const [chatMode, setChatMode] = useState<"flash" | "thinking">("flash");
+  
+  // Interactive testing states for security & freshness
+  const [userRole, setUserRole] = useState<"management" | "hr" | "finance" | "user">("management");
+  const [freshnessFilter, setFreshnessFilter] = useState<"all" | "this_year" | "latest">("all");
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Jihočeské univerzity. Odpověď bude podložená citacemi.",
+      content: "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Jihočeské univerzity. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům.",
     }
   ]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +63,26 @@ export default function Home() {
   // Backend API URL Base
   const BACKEND_URL = "http://localhost:8000";
 
-  // Check backend health status and load document list
+  // Map visual roles to dynamic Entra ID headers
+  const getHeaders = () => {
+    const headers: Record<string, string> = {};
+    if (userRole === "management") {
+      headers["X-User-Id"] = "ondrej.bronec";
+      headers["X-User-Groups"] = "Management";
+    } else if (userRole === "hr") {
+      headers["X-User-Id"] = "eva.hr";
+      headers["X-User-Groups"] = "HR";
+    } else if (userRole === "finance") {
+      headers["X-User-Id"] = "jan.finance";
+      headers["X-User-Groups"] = "Finance";
+    } else {
+      headers["X-User-Id"] = "public.guest";
+      headers["X-User-Groups"] = "User";
+    }
+    return headers;
+  };
+
+  // Check backend health status on mount
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -74,23 +98,29 @@ export default function Home() {
     };
 
     checkHealth();
-    fetchDocuments();
     
     // Periodically check API health
     const interval = setInterval(checkHealth, 15000);
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch documents list whenever userRole changes to demonstrate live dynamic ACL hiding
+  useEffect(() => {
+    fetchDocuments();
+  }, [userRole]);
+
   // Auto-scroll chat window when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Load ingested documents list
+  // Load ingested documents list based on current active user groups
   const fetchDocuments = async () => {
     setLoadingDocs(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/documents/list`);
+      const res = await fetch(`${BACKEND_URL}/api/documents/list`, {
+        headers: getHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setDocuments(data);
@@ -120,11 +150,13 @@ export default function Home() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getHeaders(),
         },
         body: JSON.stringify({
           query: userQuery,
           mode: chatMode,
           search_strategy: searchStrategy,
+          freshness_filter: freshnessFilter,
           include_sources: true,
         }),
       });
@@ -146,7 +178,7 @@ export default function Home() {
 
       setMessages((prev) => [...prev, assistantMsg]);
       
-      // Refresh documents list to reflect any changes
+      // Refresh documents list
       fetchDocuments();
     } catch (err: any) {
       console.error(err);
@@ -223,18 +255,19 @@ export default function Home() {
 
         {/* Real-time system states */}
         <div className="flex items-center gap-6">
-          <div className="hidden items-center gap-4 sm:flex text-xs text-zinc-400">
-            <div className="flex flex-col items-end">
-              <span className="font-semibold text-zinc-300">{documents.length} Dokumentů</span>
-              <span>
-                {documents.reduce((acc, doc) => acc + doc.chunk_count, 0)} indexovaných pasáží
-              </span>
-            </div>
-            <div className="w-px h-6 bg-white/10" />
-            <div className="flex flex-col items-end">
-              <span className="font-semibold text-zinc-300">RRF váhy</span>
-              <span>Vector 0.6 | FTS 0.4</span>
-            </div>
+          {/* Dynamic Active User Role Selection (SSO Handshake Mockup) */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+            <span className="text-xs text-zinc-400 font-medium">Uživatel:</span>
+            <select
+              value={userRole}
+              onChange={(e) => setUserRole(e.target.value as any)}
+              className="bg-black/60 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+            >
+              <option value="management">👑 Rektorát (Management)</option>
+              <option value="hr">💼 Personální (HR Specialist)</option>
+              <option value="finance">📊 Finanční (Finance Auditor)</option>
+              <option value="user">👤 Zaměstnanec (Standard User)</option>
+            </select>
           </div>
 
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.05] text-xs">
@@ -253,7 +286,7 @@ export default function Home() {
         <aside className="hidden lg:flex flex-col w-80 border-r border-white/[0.05] bg-[#070b13]/40 overflow-y-auto p-4 gap-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold tracking-wide text-zinc-400 uppercase">
-              Indexované soubory
+              Přístupné soubory
             </h3>
             <button 
               onClick={fetchDocuments}
@@ -271,26 +304,38 @@ export default function Home() {
           ) : documents.length === 0 ? (
             <div className="flex flex-col gap-2 py-8 text-center text-xs text-zinc-500 border border-dashed border-white/5 rounded-xl">
               Žádné soubory v databázi.
-              <span className="text-[10px] text-zinc-600">Spusťte full_refresh_ingest.py k nahrání PDF.</span>
+              <span className="text-[10px] text-zinc-600">Pro zvolenou roli nejsou dostupné žádné dokumenty.</span>
             </div>
           ) : (
             <div className="flex flex-col gap-2.5">
               {documents.map((doc) => (
                 <div 
                   key={doc.document_id}
-                  className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] transition-all hover:bg-white/[0.04]"
+                  className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] transition-all hover:bg-white/[0.04] flex flex-col gap-1.5"
                 >
-                  <h4 className="text-xs font-semibold text-zinc-300 truncate" title={doc.title}>
-                    📄 {doc.title}
-                  </h4>
-                  <div className="flex items-center justify-between mt-2 text-[10px] text-zinc-500">
+                  <div className="flex items-start gap-1">
+                    <a
+                      href={`${BACKEND_URL}/api/documents/view/${doc.document_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold text-zinc-300 hover:text-indigo-400 hover:underline truncate block flex-1"
+                      title={`Kliknutím otevřete PDF: ${doc.title}`}
+                    >
+                      📄 {doc.title}
+                    </a>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-zinc-500">
                     <span>{doc.chunk_count} pasáží</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase font-medium">
-                      {doc.freshness_status}
+                    <span className={`px-1.5 py-0.5 rounded border uppercase font-semibold text-[8px] ${
+                      doc.freshness_status === "current"
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                    }`}>
+                      {doc.freshness_status === "current" ? "Platný" : "Archiv"}
                     </span>
                   </div>
-                  <div className="text-[9px] text-zinc-600 mt-1 truncate">
-                    Ingestováno: {new Date(doc.ingested_at).toLocaleDateString()}
+                  <div className="text-[9px] text-zinc-600 truncate">
+                    Seřazeno: {new Date(doc.ingested_at).toLocaleDateString()}
                   </div>
                 </div>
               ))}
@@ -304,14 +349,14 @@ export default function Home() {
           {/* Top Search Controls Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 p-4 border-b border-white/[0.04] bg-[#0a0f1b]/50">
             <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-400 font-medium">Strategie vyhledávání:</span>
+              <span className="text-xs text-zinc-400 font-medium">Vyhledávání:</span>
               <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/[0.05]">
                 <button
                   type="button"
                   onClick={() => setSearchStrategy("hybrid")}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                     searchStrategy === "hybrid"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                      ? "bg-indigo-600 text-white shadow-md"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
@@ -322,7 +367,7 @@ export default function Home() {
                   onClick={() => setSearchStrategy("vector")}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                     searchStrategy === "vector"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                      ? "bg-indigo-600 text-white shadow-md"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
@@ -333,7 +378,7 @@ export default function Home() {
                   onClick={() => setSearchStrategy("keyword")}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                     searchStrategy === "keyword"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                      ? "bg-indigo-600 text-white shadow-md"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
@@ -342,30 +387,42 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Freshness Filter Selector */}
             <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-400 font-medium">RAG model:</span>
+              <span className="text-xs text-zinc-400 font-medium">Platnost (Freshness):</span>
               <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/[0.05]">
                 <button
                   type="button"
-                  onClick={() => setChatMode("flash")}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    chatMode === "flash"
-                      ? "bg-cyan-600 text-white shadow-md"
+                  onClick={() => setFreshnessFilter("all")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    freshnessFilter === "all"
+                      ? "bg-emerald-600 text-white shadow-md"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  GPT-Flash
+                  Všechny
                 </button>
                 <button
                   type="button"
-                  onClick={() => setChatMode("thinking")}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    chatMode === "thinking"
-                      ? "bg-cyan-600 text-white shadow-md"
+                  onClick={() => setFreshnessFilter("this_year")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    freshnessFilter === "this_year"
+                      ? "bg-emerald-600 text-white shadow-md"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  GPT-Thinking
+                  Jen 2026
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreshnessFilter("latest")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    freshnessFilter === "latest"
+                      ? "bg-emerald-600 text-white shadow-md"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Jen platné
                 </button>
               </div>
             </div>
@@ -422,7 +479,7 @@ export default function Home() {
                         <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
                         <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
                       </div>
-                      <span className="text-xs text-indigo-400 font-medium">Vyhledávám v Azure PostgreSQL, provádím RRF rank fusion a generuji odpověď...</span>
+                      <span className="text-xs text-indigo-400 font-medium">Vyhledávám v Azure PostgreSQL (filtry: {userRole}, {freshnessFilter}) a generuji odpověď...</span>
                     </div>
                   </div>
                 </div>
@@ -489,10 +546,20 @@ export default function Home() {
                 {/* 1. Header Metadata Section */}
                 <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
                   <span className="text-[9px] font-bold text-indigo-400 tracking-wider uppercase block mb-1">
-                    Zdrojový dokument
+                    Zdrojový dokument (Kliknutím otevřete)
                   </span>
                   <h4 className="text-sm font-bold text-white leading-snug">
-                    {activeSource.title}
+                    <a
+                      href={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}${
+                        activeSource.page_number ? `#page=${activeSource.page_number}` : ""
+                      }`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white hover:text-indigo-400 hover:underline transition-colors block"
+                      title={activeSource.page_number ? `Kliknutím otevřete PDF na straně ${activeSource.page_number}` : "Kliknutím otevřete celý PDF dokument v nové záložce"}
+                    >
+                      📄 {activeSource.title} {activeSource.page_number ? `(strana ${activeSource.page_number})` : ""}
+                    </a>
                   </h4>
                   <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
                     <div>
@@ -529,8 +596,12 @@ export default function Home() {
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-500">Stav čerstvosti (Freshness):</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold uppercase">
-                        {activeSource.freshness_status}
+                      <span className={`px-2 py-0.5 rounded text-[10px] border font-semibold uppercase ${
+                        activeSource.freshness_status === "current"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                      }`}>
+                        {activeSource.freshness_status === "current" ? "Platný (Current)" : "Archivováno"}
                       </span>
                     </div>
 
@@ -544,10 +615,22 @@ export default function Home() {
                     <div>
                       <span className="text-zinc-500 block mb-1">Povolené skupiny (Security ACL):</span>
                       <div className="flex flex-wrap gap-1.5">
-                        <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Public</span>
-                        <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
-                        <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Finance</span>
-                        <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Engineering</span>
+                        <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Management</span>
+                        {activeSource.title.toLowerCase().includes("registr_smluv") && (
+                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
+                        )}
+                        {activeSource.title.toLowerCase().includes("evidence_prac_doby") && (
+                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
+                        )}
+                        {activeSource.title.toLowerCase().includes("pokusna_zvirata") && (
+                          <>
+                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
+                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">User</span>
+                          </>
+                        )}
+                        {activeSource.title.toLowerCase().includes("rozpoctu") && (
+                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Finance</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -560,7 +643,7 @@ export default function Home() {
                 <div>
                   <h4 className="text-xs font-bold text-zinc-500">Prázdný pracovní prostor</h4>
                   <p className="text-[10px] text-zinc-600 mt-1 max-w-[250px] mx-auto">
-                    Klikněte na libovolnou citaci <span className="citation-badge">📄 Zdroj X</span> v odpovědi asistenta pro zobrazení zdrojového odstavce a bezpečnostních politik.
+                    Klikněte na libovolnou citaci <span className="citation-badge">📄 Zdroj X</span> v odpovědi asistenta pro zobrazení podrobných informací a zobrazení celého dokumentu.
                   </p>
                 </div>
               </div>

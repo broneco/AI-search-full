@@ -64,6 +64,7 @@ A task is not done until:
 - any required Azure manual action is captured in `.agents/inbox/`
 - `CHANGELOG.md` is updated when behavior, architecture, dependencies, or agent instructions change
 - an ADR is created or updated when an architectural decision is made or changed
+- if test files are added, removed, or modified, their corresponding markdown explanations in [**`docs/tests_explained/`**](file:///c:/Users/ondrej.bronec/OneDrive - dolphinconsulting.cz/Documents/Projekty/AI Search Full/docs/tests_explained/) are created or updated with clear high/low technical level details
 - `.agents/memory/project-state.md` is updated if phase, current focus, known constraints, or next steps changed
 
 ## Required final response format

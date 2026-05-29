@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
@@ -23,6 +23,7 @@ embedding_provider = AzureOpenAIEmbeddingProvider()
 @router.post("/", response_model=ChatResponse)
 async def chat_interaction(
     request: ChatRequest,
+    http_request: Request,
     db: Session = Depends(get_db_session),
 ) -> ChatResponse:
     """End-to-end grounded RAG chat endpoint.
@@ -45,12 +46,21 @@ async def chat_interaction(
     # 2. Retrieve grounded evidence using VectorRetriever
     try:
         retriever = VectorRetriever(db)
-        # In early Phase 0, we bypass complex Entra ID groups and pass standard local mock groups
+        
+        # Extract security headers dynamically (Entra ID Auth Skeleton)
+        user_id = http_request.headers.get("X-User-Id", "local_user")
+        user_groups_str = http_request.headers.get("X-User-Groups", "User")
+        acl_groups = [g.strip() for g in user_groups_str.split(",") if g.strip()]
+
+        # Propagate freshness filter
+        filters = dict(request.filters or {})
+        filters["freshness_filter"] = request.freshness_filter
+
         context = QueryContext(
             query=request.query,
-            user_id="local_user",
-            filters=request.filters,
-            acl_groups=["HR", "Finance", "Engineering", "Public"],
+            user_id=user_id,
+            filters=filters,
+            acl_groups=acl_groups,
         )
 
         logger.info(f"Executing hybrid retrieval with strategy: {request.search_strategy}")

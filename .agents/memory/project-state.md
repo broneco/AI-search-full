@@ -23,8 +23,9 @@ Phase 1 Local PDF Ingestion & Chunking pipeline - [x] Completed.
 Visual Progress Reporting & Timeout Safety - [x] Completed.
 Phase 1 Hybrid Retrieval & RRF (PostgreSQL full-text search index, weighted Reciprocal Rank Fusion, latency subquery loops optimization) - [x] Completed.
 Phase 2 Next.js Dashboard Client (conversational chat workspace, inline citations trigger, right-side metadata drawer, live database statistics sidebar, health checks) - [x] Completed.
+Phase 2/3 Productization (Granular Security ACLs, Dynamic Freshness Filters, Blob Storage client, inline streamed PDF viewer, target="_blank" direct document links, and dynamic page-scrolling PDF links) - [x] Completed.
 
-Next: Phase 2 Productization (integrating user feedback collection, query audit logs, and Entra ID authentication skeleton).
+Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 
 ## Target roadmap
 
@@ -95,5 +96,5 @@ Next: Phase 2 Productization (integrating user feedback collection, query audit 
 
 ## Next slice recommendation
 
-Implement Phase 1 Hybrid Retrieval (integrating PostgreSQL Full-Text Search FTS with pgvector vector search using a rank fusion algorithm such as RRF or Reciprocal Rank Fusion).
+Implement Phase 2 Productization: User feedback loop collection database schemas/API, SQL query audit logging, and Microsoft Entra ID authentication skeleton.
 

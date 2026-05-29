@@ -83,7 +83,7 @@ def test_pipeline_ingestion(db_setup, tmp_path):
     doc = anyio.run(run_pipeline, backend="asyncio")
     
     assert doc.title == "test_pipeline"
-    assert doc.source_type == "local"
+    assert doc.source_type in ("local", "azure_blob")
 
     # Query DB to assert records are created
     from sqlalchemy import select

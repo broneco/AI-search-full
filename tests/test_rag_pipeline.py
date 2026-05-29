@@ -65,7 +65,11 @@ def test_end_to_end_rag_flow(rag_setup):
         "search_strategy": "vector",
     }
 
-    chat_response = client.post("/api/chat", json=chat_payload)
+    chat_response = client.post(
+        "/api/chat",
+        json=chat_payload,
+        headers={"X-User-Groups": "Engineering"}
+    )
     assert chat_response.status_code == 200
     chat_data = chat_response.json()
 

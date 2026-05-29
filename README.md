@@ -1,16 +1,25 @@
 # AI Search Full-Stack Application
 
-Tato aplikace představuje podnikovou AI vyhledávací platformu (RAG) běžící na **Python / FastAPI**, **Azure Database for PostgreSQL (s pgvector)** a modelech **Azure OpenAI / AI Foundry**. Umožňuje plně zabezpečené, sémantické vyhledávání nad firemními dokumenty (včetně českých diakritických znaků) se zobrazením přesných citací a čísel stránek.
+Tato aplikace představuje podnikovou AI vyhledávací platformu (RAG) běžící na **Python / FastAPI** backendu, **Next.js / React / TypeScript** frontendu, **Azure Database for PostgreSQL (s pgvector)** a modelech **Azure OpenAI / AI Foundry**. Umožňuje plně zabezpečené, sémantické vyhledávání nad firemními dokumenty (včetně českých diakritických znaků) se zobrazením přesných citací a čísel stránek.
 
 ---
 
 ## 🚀 Jak aplikaci spustit a otestovat
 
 ### 1. Příprava prostředí a konfigurace
-Ujistěte se, že máte v kořenovém adresáři vytvořen a správně vyplněn soubor `.env` (můžete se inspirovat v `.env.example`). Virtuální prostředí se nachází ve složce `.venv`.
+Ujistěte se, že máte v kořenovém adresáři vytvořen a správně vyplněn soubor `.env` (můžete se inspirovat v `.env.example`). Virtuální prostředí pro backend se nachází ve složce `.venv`.
+
+Pro aktivaci cloudu (Azure Blob Storage) přidejte do souboru `.env` následující klíče:
+```env
+AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;"
+AZURE_BLOB_CONTAINER_ORIGINALS="originals"
+```
+*(Pokud tyto proměnné chybí, aplikace automaticky přepne do lokálního sandbox režimu a bude číst/ukládat PDF soubory z lokální složky `data/`).*
+
+---
 
 ### 2. Import dokumentů (Ingest)
-Pro nahrání souborů z adresáře `data/` do databáze v Azure máte k dispozici dva skripty:
+Pro nahrání souborů z adresáře `data/` do databáze v Azure a případné nahrání na Azure Blob Storage máte k dispozici dva skripty:
 
 * **Přírůstkový import (Incremental Ingest):** Nahraje pouze nově přidané nebo změněné soubory (kontroluje se SHA-256 checksum).
   ```powershell
@@ -22,49 +31,69 @@ Pro nahrání souborů z adresáře `data/` do databáze v Azure máte k dispozi
   .venv\Scripts\python.exe full_refresh_ingest.py
   ```
 
-*Během importu se v terminálu zobrazují podrobné, přehledné vizuální kroky jednotlivých fází (parsování PDF, dělení na fragmenty, generování embeddingů, zápis do PostgreSQL).*
+*Během importu se v terminálu zobrazují podrobné, přehledné vizuální kroky jednotlivých fází (parsování PDF, dělení na fragmenty, generování embeddingů, nahrávání na Azure Blob Storage, zápis do PostgreSQL).*
 
-### 3. Rychlé testování dotazů v terminálu (`ask.py`)
-Můžete klást sémantické dotazy přímo z příkazové řádky bez nutnosti spouštět webový server nebo otevírat prohlížeč:
+---
 
-* **S parametrem:**
-  ```powershell
-  .venv\Scripts\python.exe ask.py "Jaká jsou pravidla pro registr smluv?"
-  ```
-* **Interaktivně:**
-  ```powershell
-  .venv\Scripts\python.exe ask.py
-  ```
-  *(Program se vás sám zeptá na dotaz, vyhledá relevantní fragmenty v Azure PostgreSQL, odešle kontext do modelu GPT-5.4-mini a vypíše uzemněnou odpověď s přesnými citacemi).*
-
-### 4. Spuštění lokálního webového API serveru
-Pokud chcete spustit backendové API rozhraní:
+### 3. Spuštění lokálního webového API serveru (Backend)
+Pro spuštění backendové API služby:
 ```powershell
-.venv\Scripts\uvicorn app.main:app --reload
+.venv\Scripts\uvicorn app.main:app --port 8000 --reload
 ```
-Po spuštění je k dispozici interaktivní Swagger dokumentace na adrese:
-👉 **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)**
+* **Swagger interaktivní dokumentace:** 👉 **[http://localhost:8000/docs](http://localhost:8000/docs)**
+* **Důležité endpointy:**
+  * `POST /api/chat` — RAG vyhledávací endpoint (sémantické/hybridní)
+  * `GET /api/documents/list` — Výpis přístupných souborů s počtem pasáží
+  * `GET /api/documents/view/{document_id}` — Endpoint pro inline streamování PDF z Azure Blob / lokálního disku
 
-Zde můžete přímo přes webové formuláře testovat endpointy:
-* `POST /api/chat` — Pro pokládání sémantických dotazů (RAG)
-* `POST /api/documents/ingest` — Pro nahrání nového textového fragmentu
+---
 
-### 5. Spuštění automatických testů
-Pro ověření integrity celého systému a spojení s Azure službami můžete spustit unit a integrační testy pomocí `pytest`:
-```powershell
-.venv\Scripts\pytest
-```
+### 4. Spuštění klientského dashboardu (Frontend)
+Klientská Next.js aplikace se nachází ve složce `frontend/`. 
+
+Pro její spuštění v režimu vývoje:
+1. Přejděte do složky:
+   ```powershell
+   cd frontend
+   ```
+2. Nainstalujte balíčky a spusťte server:
+   ```powershell
+   npm install
+   npm run dev
+   ```
+3. Otevřete prohlížeč na adrese:
+   👉 **[http://localhost:3000](http://localhost:3000)**
+
+---
+
+## 🧪 Jak dashboard testovat a ověřovat funkčnost
+
+Po otevření adresy `http://localhost:3000` můžete testovat následující scénáře:
+
+### Scénář A: Testování přístupových práv (Security ACL)
+1. **Změna role:** V záhlaví stránky přepněte dropdown **Uživatel** na **Standard User**. V seznamu souborů na levé straně automaticky zmizí citlivé směrnice o rozpočtu a pracovní době.
+2. **Blokování vyhledávání:** Vyhledejte *"registr smluv"*. Platforma odmítne zobrazit výsledky a vrátí bezpečnostní hlášku: *"I'm sorry, I could not find any relevant information..."*.
+3. **Povýšení práv:** Přepněte dropdown **Uživatel** na **Personální (HR Specialist)** nebo **Finanční (Finance Auditor)**. Vyhledejte *"registr smluv"* znovu. Výsledky se úspěšně vrátí a zobrazí se citované pasáže.
+
+### Scénář B: Testování čerstvosti (Freshness Filter)
+1. V panelu nad chatem přepněte filtr **Platnost (Freshness)** na **Jen 2026** nebo **Jen platné**.
+2. Spusťte vyhledávání. Výsledky se dynamicky přizpůsobí zvolenému filtru (např. odfiltrují se starší archivované verze z roku 2024).
+
+### Scénář C: Přímé odkazy a skroling na konkrétní stranu PDF
+1. Klikněte na libovolnou citaci v pravém Citacím panelu (např. kliknutím na odkaz dokumentu).
+2. Prohlížeč otevře zdrojový PDF soubor v nové záložce (nativně streamovaný z Azure Blob Storage) a **automaticky odskroluje přímo na stranu, ze které citovaná pasáž pochází** (např. `#page=4`).
 
 ---
 
 ## 📁 Architektura projektu
 
-* **`app/`** — Zdrojový kód aplikace
-  * **`api/`** — HTTP endpointy a routy (healthcheck, chat)
+* **`app/`** — Zdrojový kód backendu
+  * **`api/`** — HTTP endpointy a routy (healthcheck, chat, documents)
   * **`core/`** — Konfigurace a nastavení (`config.py` načítající `.env`)
   * **`ingestion/`** — Zpracování dokumentů (parsování PDF, text chunking, orchestrátor)
-  * **`providers/`** — Integrace na Azure OpenAI (LLM, embeddings generátory)
-  * **`retrieval/`** — Sémantické vyhledávání nad pgvector s aplikací filtrů a ACL
+  * **`providers/`** — Integrace na Azure OpenAI (LLM, embeddings) a Azure Blob Storage
+  * **`retrieval/`** — Hybridní vyhledávání (FTS + Vector pgvector) s aplikací ACL a Freshness filtrů
   * **`storage/`** — Databázové modely (SQLAlchemy) a inicializace schématu
-* **`data/`** — Složka s lokálními PDF dokumenty určenými pro vyhledávání
+* **`frontend/`** — Next.js / React / TypeScript single-page dashboard aplikace
+* **`data/`** — Složka s lokálními PDF dokumenty pro lokální sandbox režim
 * **`tests/`** — Automatická testovací sada (pytest)

@@ -110,28 +110,45 @@ class VectorRetriever(BaseRetriever):
         context: QueryContext,
         query_embedding: Optional[List[float]],
     ) -> List[RetrievalResult]:
-        """Apply security ACL checks and metadata filters, returning populated RetrievalResults."""
+        """Apply security ACL checks, freshness constraints, and metadata filters."""
         filtered_results = []
         for chunk, doc in raw_db_results:
-            # Apply document-level ACL filtering
+            # 1. Apply document-level ACL filtering
             if doc.security_acl:
                 allowed_groups = doc.security_acl.get("allowed_groups", [])
-                if allowed_groups and not any(
-                    g in context.acl_groups for g in allowed_groups
-                ):
-                    continue
+                if "Management" not in context.acl_groups:
+                    if "User" not in allowed_groups:
+                        if allowed_groups and not any(
+                            g in context.acl_groups for g in allowed_groups
+                        ):
+                            continue
 
-            # Apply chunk-level ACL filtering
+            # 2. Apply chunk-level ACL filtering
             if chunk.security_acl:
                 chunk_allowed_groups = chunk.security_acl.get("allowed_groups", [])
-                if chunk_allowed_groups and not any(
-                    g in context.acl_groups for g in chunk_allowed_groups
-                ):
+                if "Management" not in context.acl_groups:
+                    if "User" not in chunk_allowed_groups:
+                        if chunk_allowed_groups and not any(
+                            g in context.acl_groups for g in chunk_allowed_groups
+                        ):
+                            continue
+
+            # 3. Apply freshness filtering constraints
+            freshness_filter = context.filters.get("freshness_filter", "all")
+            if freshness_filter == "this_year":
+                # Only documents created in 2026
+                if doc.created_at.year != 2026:
+                    continue
+            elif freshness_filter == "latest":
+                # Only current valid versions
+                if doc.freshness_status != "current":
                     continue
 
-            # Apply metadata filters
+            # 4. Apply standard metadata filters
             is_filtered = False
             for k, v in context.filters.items():
+                if k == "freshness_filter":
+                    continue
                 doc_meta = doc.metadata_json or {}
                 chunk_meta = chunk.metadata_json or {}
                 if doc_meta.get(k) != v and chunk_meta.get(k) != v:
