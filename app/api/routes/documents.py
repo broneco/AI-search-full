@@ -120,9 +120,13 @@ async def list_documents(
 
 
 @router.get("/view/{document_id}")
-async def view_document(document_id: str, db: Session = Depends(get_db_session)):
-    """Fetch the document PDF file from local storage or Azure Blob and serve it directly to the browser."""
-    from fastapi.responses import FileResponse, StreamingResponse
+async def view_document(
+    document_id: str,
+    db: Session = Depends(get_db_session),
+    highlight_chunk_id: Optional[str] = None,
+):
+    """Fetch the document PDF file from local storage or Azure Blob, highlight cited RAG chunk if requested, and serve it."""
+    from fastapi.responses import StreamingResponse
     from app.providers.blob_storage import BlobStorageProvider
     import io
     import os
@@ -134,7 +138,7 @@ async def view_document(document_id: str, db: Session = Depends(get_db_session))
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found.")
 
-        # Check if stored on Azure Blob
+        # 1. Fetch raw PDF file bytes
         if doc.source_type == "azure_blob":
             blob_provider = BlobStorageProvider()
             if not blob_provider.is_configured():
@@ -143,7 +147,6 @@ async def view_document(document_id: str, db: Session = Depends(get_db_session))
                     detail="Azure Blob Storage connection is not configured."
                 )
             
-            # Extract container and blob names from source_uri (e.g. azure://container/blob.pdf)
             uri_parts = doc.source_uri.replace("azure://", "").split("/", 1)
             if len(uri_parts) < 2:
                 container_name = settings.AZURE_BLOB_CONTAINER_ORIGINALS or "originals"
@@ -154,17 +157,10 @@ async def view_document(document_id: str, db: Session = Depends(get_db_session))
                 
             logger.info(f"Downloading blob '{blob_name}' from container '{container_name}'...")
             data = await blob_provider.download_blob(container_name, blob_name)
-            
-            return StreamingResponse(
-                io.BytesIO(data),
-                media_type="application/pdf",
-                headers={"Content-Disposition": f"inline; filename={doc.title}.pdf"}
-            )
         else:
             # Serve from local file
             local_path = doc.source_uri.replace("file://", "")
             if not os.path.exists(local_path):
-                # Fallback to scanning data directory by title
                 data_dir = os.path.abspath("data")
                 filename = os.path.basename(local_path)
                 fallback_path = os.path.join(data_dir, filename)
@@ -173,11 +169,76 @@ async def view_document(document_id: str, db: Session = Depends(get_db_session))
                 else:
                     raise HTTPException(status_code=404, detail=f"Local PDF file not found at path: {local_path}")
             
-            return FileResponse(
-                local_path,
-                media_type="application/pdf",
-                filename=f"{doc.title}.pdf"
-            )
+            with open(local_path, "rb") as f:
+                data = f.read()
+
+        # 2. Apply dynamic PDF text highlighting using PyMuPDF if chunk ID is provided
+        if highlight_chunk_id:
+            try:
+                chunk_uuid = uuid.UUID(highlight_chunk_id)
+                chunk = db.query(DBChunk).filter(DBChunk.chunk_id == chunk_uuid).first()
+                if chunk:
+                    import fitz
+                    import re
+
+                    logger.info(f"Dynamically highlighting cited passage (chunk: {highlight_chunk_id}) on page {chunk.page_number}...")
+                    
+                    pdf_doc = fitz.open(stream=data, filetype="pdf")
+                    page_num = (chunk.page_number or 1) - 1
+                    
+                    if 0 <= page_num < len(pdf_doc):
+                        page = pdf_doc[page_num]
+                        
+                        # Clean and normalize chunk content
+                        search_text = chunk.content.replace("\n", " ").strip()
+                        search_text = re.sub(r"\s+", " ", search_text)
+                        
+                        text_instances = []
+
+                        # Step 2a: Try matching the exact full-text block first
+                        text_instances = page.search_for(search_text)
+
+                        # Step 2b: Fallback to sentence-by-sentence matching (resilient to hyphenation and page borders)
+                        if not text_instances:
+                            sentences = [s.strip() for s in re.split(r"[.!?]", search_text) if len(s.strip()) > 10]
+                            for sentence in sentences:
+                                insts = page.search_for(sentence)
+                                if insts:
+                                    text_instances.extend(insts)
+
+                        # Step 2c: Fallback to first 10 words
+                        if not text_instances:
+                            words = [w for w in search_text.split(" ") if w.strip()]
+                            if len(words) >= 5:
+                                phrase = " ".join(words[:10])
+                                text_instances = page.search_for(phrase)
+
+                        # Step 2d: Fallback to first 5 words
+                        if not text_instances:
+                            words = [w for w in search_text.split(" ") if w.strip()]
+                            if len(words) >= 3:
+                                phrase = " ".join(words[:5])
+                                text_instances = page.search_for(phrase)
+
+                        # Draw transparent yellow highlight annotations
+                        for inst in text_instances:
+                            annot = page.add_highlight_annot(inst)
+                            if annot:
+                                annot.update()
+                                
+                    annotated_data = pdf_doc.write()
+                    pdf_doc.close()
+                    data = annotated_data
+            except Exception as e:
+                logger.error(f"Failed to dynamically highlight PDF chunk {highlight_chunk_id}: {e}")
+
+        # 3. Stream highlighted PDF bytes
+        return StreamingResponse(
+            io.BytesIO(data),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename={doc.title}.pdf"}
+        )
+
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid document UUID format.")
     except Exception as e:

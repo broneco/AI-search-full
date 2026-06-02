@@ -82,34 +82,16 @@ export default function Home() {
     return headers;
   };
 
-  // Helper to generate native PDF search highlights on the cited page
+  // Helper to generate dynamic backend PDF highlighting query + page scroll hash
   const getSearchHash = (source: ChatSource) => {
-    if (!source.page_number) return "";
-    
-    let hash = `#page=${source.page_number}`;
-    
-    if (source.content) {
-      // 1. Clean up newlines and control characters
-      let cleanText = source.content.replace(/[\r\n\t]+/g, " ");
-      
-      // 2. Strip single/double quotes, brackets, and backslashes to avoid syntax issues in the PDF search query
-      cleanText = cleanText.replace(/["'\\()\[\]]/g, "");
-      
-      // 3. Clean up multiple spaces
-      cleanText = cleanText.replace(/\s+/g, " ").trim();
-      
-      // 4. Split into words
-      const words = cleanText.split(" ").filter(w => w.length > 0);
-      
-      // 5. Take a short 5-word unique prefix to ensure high search match reliability in the PDF text layer
-      const phrase = words.slice(0, 5).join(" ");
-      
-      if (phrase) {
-        hash += `&search="${encodeURIComponent(phrase)}"`;
-      }
+    let urlParams = "";
+    if (source.chunk_id) {
+      urlParams += `?highlight_chunk_id=${source.chunk_id}`;
     }
-    
-    return hash;
+    if (source.page_number) {
+      urlParams += `#page=${source.page_number}`;
+    }
+    return urlParams;
   };
 
   // Check backend health status on mount

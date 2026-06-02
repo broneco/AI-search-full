@@ -1,4 +1,4 @@
-# ADR-0008: <Decision title>
+# ADR-0009: <Decision title>
 
 - Status: proposed
 - Date: YYYY-MM-DD
