@@ -1,7 +1,7 @@
 import logging
 import time
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
@@ -20,11 +20,13 @@ embedding_provider = AzureOpenAIEmbeddingProvider()
 
 
 @router.post("", response_model=ChatResponse)
-@router.post("/", response_model=ChatResponse)
+@router.post("/", response_model=ChatResponse, include_in_schema=False)
 async def chat_interaction(
     request: ChatRequest,
     http_request: Request,
     db: Session = Depends(get_db_session),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_user_groups: Optional[str] = Header(None, alias="X-User-Groups"),
 ) -> ChatResponse:
     """End-to-end grounded RAG chat endpoint.
 
@@ -48,12 +50,16 @@ async def chat_interaction(
         retriever = VectorRetriever(db)
         
         # Extract security headers dynamically (Entra ID Auth Skeleton)
-        user_id = http_request.headers.get("X-User-Id", "local_user")
-        user_groups_str = http_request.headers.get("X-User-Groups", "User")
+        user_id = x_user_id or "local_user"
+        user_groups_str = x_user_groups or "User"
         acl_groups = [g.strip() for g in user_groups_str.split(",") if g.strip()]
 
-        # Propagate freshness filter
-        filters = dict(request.filters or {})
+        # Propagate freshness filter (clearing out Swagger UI auto-generated dictionary placeholders)
+        filters = {}
+        if request.filters:
+            for k, v in request.filters.items():
+                if k != "additionalProp1" and v != {} and v is not None:
+                    filters[k] = v
         filters["freshness_filter"] = request.freshness_filter
 
         context = QueryContext(

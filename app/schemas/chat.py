@@ -36,6 +36,19 @@ class ChatRequest(BaseModel):
         default="all", description="Freshness filter constraint: 'all', 'this_year', or 'latest'."
     )
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "query": "Jaká pravidla musím dodržet co se týče péče o má laboratorní zvířata?",
+                "mode": "flash",
+                "filters": {},
+                "include_sources": True,
+                "search_strategy": "hybrid",
+                "freshness_filter": "all"
+            }
+        }
+    }
+
 
 class ChatResponse(BaseModel):
     answer: str = Field(..., description="LLM-generated grounded answer.")

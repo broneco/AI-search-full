@@ -1,5 +1,6 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
@@ -82,11 +83,12 @@ async def ingest_document(
 @router.get("/list")
 async def list_documents(
     http_request: Request,
-    db: Session = Depends(get_db_session)
+    db: Session = Depends(get_db_session),
+    x_user_groups: Optional[str] = Header(None, alias="X-User-Groups"),
 ):
     """List all ingested documents and their chunk counts, respecting security ACL allowed groups."""
     try:
-        user_groups_str = http_request.headers.get("X-User-Groups", "User")
+        user_groups_str = x_user_groups or "User"
         acl_groups = [g.strip() for g in user_groups_str.split(",") if g.strip()]
 
         docs = db.query(DBDocument).order_by(DBDocument.ingested_at.desc()).all()
