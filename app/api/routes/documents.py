@@ -180,6 +180,8 @@ async def view_document(
                 if chunk:
                     import fitz
                     import re
+                    import unicodedata
+                    from collections import defaultdict
 
                     logger.info(f"Dynamically highlighting cited passage (chunk: {highlight_chunk_id}) on page {chunk.page_number}...")
                     
@@ -189,42 +191,98 @@ async def view_document(
                     if 0 <= page_num < len(pdf_doc):
                         page = pdf_doc[page_num]
                         
-                        # Clean and normalize chunk content
-                        search_text = chunk.content.replace("\n", " ").strip()
-                        search_text = re.sub(r"\s+", " ", search_text)
+                        def normalize_text(text: str) -> str:
+                            text = text.lower()
+                            # Decompose accented characters to standard ASCII characters where possible
+                            text = "".join(
+                                c for c in unicodedata.normalize('NFD', text)
+                                if unicodedata.category(c) != 'Mn'
+                            )
+                            # Keep only basic English alphanumeric characters
+                            return "".join(c for c in text if c.isalnum() and ord(c) < 128)
+
+                        # Extract word objects with coordinates from PDF page
+                        words_list = page.get_text("words")
                         
-                        text_instances = []
+                        if words_list:
+                            # Build character-to-word index mapping
+                            normalized_page_chars = []
+                            char_to_word_index = []
+                            
+                            for idx, w in enumerate(words_list):
+                                word_text = w[4]
+                                norm_w = normalize_text(word_text)
+                                for char in norm_w:
+                                    normalized_page_chars.append(char)
+                                    char_to_word_index.append(idx)
+                                    
+                            normalized_page_str = "".join(normalized_page_chars)
+                            
+                            def find_and_group_words(search_str: str) -> list[int]:
+                                norm_search = normalize_text(search_str)
+                                if not norm_search:
+                                    return []
+                                start_pos = normalized_page_str.find(norm_search)
+                                if start_pos == -1:
+                                    return []
+                                start_word_idx = char_to_word_index[start_pos]
+                                end_word_idx = char_to_word_index[start_pos + len(norm_search) - 1]
+                                return list(range(start_word_idx, end_word_idx + 1))
 
-                        # Step 2a: Try matching the exact full-text block first
-                        text_instances = page.search_for(search_text)
+                            # Clean chunk content
+                            search_text = chunk.content.replace("\n", " ").strip()
+                            search_text = re.sub(r"\s+", " ", search_text)
+                            
+                            matched_word_indices = []
 
-                        # Step 2b: Fallback to sentence-by-sentence matching (resilient to hyphenation and page borders)
-                        if not text_instances:
-                            sentences = [s.strip() for s in re.split(r"[.!?]", search_text) if len(s.strip()) > 10]
-                            for sentence in sentences:
-                                insts = page.search_for(sentence)
-                                if insts:
-                                    text_instances.extend(insts)
+                            # Step 2a: Try matching the exact full-text block first
+                            whole_chunk_indices = find_and_group_words(search_text)
+                            if whole_chunk_indices:
+                                matched_word_indices = whole_chunk_indices
+                            else:
+                                # Step 2b: Fallback to sentence-by-sentence matching
+                                sentences = [s.strip() for s in re.split(r"[.!?]", search_text) if len(s.strip()) > 10]
+                                for sentence in sentences:
+                                    sentence_indices = find_and_group_words(sentence)
+                                    if sentence_indices:
+                                        matched_word_indices.extend(sentence_indices)
 
-                        # Step 2c: Fallback to first 10 words
-                        if not text_instances:
-                            words = [w for w in search_text.split(" ") if w.strip()]
-                            if len(words) >= 5:
-                                phrase = " ".join(words[:10])
-                                text_instances = page.search_for(phrase)
+                                # Step 2c: Fallback to first 10 words
+                                if not matched_word_indices:
+                                    words = [w for w in search_text.split(" ") if w.strip()]
+                                    if len(words) >= 5:
+                                        phrase = " ".join(words[:10])
+                                        phrase_indices = find_and_group_words(phrase)
+                                        if phrase_indices:
+                                            matched_word_indices = phrase_indices
 
-                        # Step 2d: Fallback to first 5 words
-                        if not text_instances:
-                            words = [w for w in search_text.split(" ") if w.strip()]
-                            if len(words) >= 3:
-                                phrase = " ".join(words[:5])
-                                text_instances = page.search_for(phrase)
+                                # Step 2d: Fallback to first 5 words
+                                if not matched_word_indices and len(words) >= 3:
+                                    phrase = " ".join(words[:5])
+                                    phrase_indices = find_and_group_words(phrase)
+                                    if phrase_indices:
+                                        matched_word_indices = phrase_indices
 
-                        # Draw transparent yellow highlight annotations
-                        for inst in text_instances:
-                            annot = page.add_highlight_annot(inst)
-                            if annot:
-                                annot.update()
+                            # If matches were found, merge them by block and line coordinates
+                            if matched_word_indices:
+                                matched_word_indices = sorted(list(set(matched_word_indices)))
+                                lines_map = defaultdict(list)
+                                
+                                for idx in matched_word_indices:
+                                    w = words_list[idx]
+                                    # Group by (block_no, line_no)
+                                    lines_map[(w[5], w[6])].append(w)
+                                    
+                                for line_words in lines_map.values():
+                                    x0 = min(w[0] for w in line_words)
+                                    y0 = min(w[1] for w in line_words)
+                                    x1 = max(w[2] for w in line_words)
+                                    y1 = max(w[3] for w in line_words)
+                                    
+                                    rect = fitz.Rect(x0, y0, x1, y1)
+                                    annot = page.add_highlight_annot(rect)
+                                    if annot:
+                                        annot.update()
                                 
                     annotated_data = pdf_doc.write()
                     pdf_doc.close()

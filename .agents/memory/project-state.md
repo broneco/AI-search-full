@@ -24,6 +24,7 @@ Visual Progress Reporting & Timeout Safety - [x] Completed.
 Phase 1 Hybrid Retrieval & RRF (PostgreSQL full-text search index, weighted Reciprocal Rank Fusion, latency subquery loops optimization) - [x] Completed.
 Phase 2 Next.js Dashboard Client (conversational chat workspace, inline citations trigger, right-side metadata drawer, live database statistics sidebar, health checks) - [x] Completed.
 Phase 2/3 Productization (Granular Security ACLs, Dynamic Freshness Filters, Blob Storage client, inline streamed PDF viewer, target="_blank" direct document links, and dynamic page-scrolling PDF links) - [x] Completed.
+Phase 2/3 Productization (resilient dynamic PDF highlight annotations via character-mapping sliding-window matching and line-by-line merging) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 
