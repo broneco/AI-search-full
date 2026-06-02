@@ -9,6 +9,7 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ### Added
 - **Swagger Security Header Testing**: Formally declared `X-User-Id` and `X-User-Groups` headers in FastAPI chat and document endpoints, automatically exposing them in the interactive Swagger UI (`/docs`). This allows developers to directly simulate specific user personas (e.g. `Management`, `HR`, `Finance`, `User`) and test the dynamic ACL-aware RAG pipeline inside Swagger.
 - **Customized Swagger Request Schema Example**: Added Pydantic `json_schema_extra` configuration to `ChatRequest` to customize the default body pre-populated in Swagger. This supplies a realistic query by default and overrides Swagger's auto-generated `"additionalProp1": {}` dictionary placeholder with an empty `"filters": {}` to prevent accidental document filtering.
+- **Isolated Database Testing**: Created `tests/conftest.py` to automatically redirect database connections to a dedicated isolated test database (`ai_search_test`) during test execution. This prevents the `pytest` test suite from dropping or wiping the primary development database (`ai_search`) when teardown fixtures run.
 
 ### Changed
 - **Swagger UI Routing Cleanup**: Configured duplicate routes (`/health` and trailing-slash `/api/chat/`) to use `include_in_schema=False`. This completely resolves endpoint duplicates in Swagger UI while preserving production backwards compatibility and strict trailing-slash routing.
