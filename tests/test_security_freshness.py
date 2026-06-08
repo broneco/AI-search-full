@@ -51,7 +51,7 @@ def test_security_roles_authorizations(db_setup):
     chunk_hr = DBChunk(
         document_id=doc.document_id,
         chunk_index=0,
-        content="Personalni evidence a nastupy zamestnancu na rektoratu.",
+        content="Personalni evidence a nastupy zamestnancu na oddeleni HR.",
         embedding=[0.1] * 1536,
         language="cs",
         security_acl={"allowed_groups": ["Management", "HR"]},

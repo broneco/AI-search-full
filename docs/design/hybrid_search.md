@@ -7,7 +7,7 @@ This guide explains conceptually how the AI Search Application retrieves relevan
 ## 1. What is Hybrid Search?
 
 A search system must handle two fundamentally different types of queries:
-1. **Exact Matches**: Queries searching for specific words, IDs, product codes, or exact terminology (e.g., "iFIS", "GDPR", "Opatření R_399").
+1. **Exact Matches**: Queries searching for specific words, IDs, product codes, or exact terminology (e.g., "ERP", "GDPR", "Směrnice S-10.150").
 2. **Conceptual Questions**: Queries written in natural conversational language that ask about a topic without knowing the exact words used in the documents (e.g., "how do we log working hours" when the document uses "evidence pracovní doby").
 
 To solve this, our system runs two distinct search strategies in parallel and merges their results:
@@ -82,8 +82,8 @@ By adjusting the weights ($0.6$ vs $0.4$), we ensure that the semantic concept i
 To see RRF in action, let us walk through a small example using Czech corporate guidelines.
 
 ### Sample Document Passages
-* **Passage A**: *"Evidence pracovní doby na rektorátu Jihočeské univerzity podléhá kontrole a zapisuje se do interního systému iFIS."*
-* **Passage B**: *"Pravidla pro registr smluv na vysokých školách vyžadují zveřejňování každé písemné objednávky v registru smluv (ZRS)."*
+* **Passage A**: *"Evidence pracovní doby na vedení společnosti Dolphin Consulting podléhá kontrole a zapisuje se do interního ERP systému."*
+* **Passage B**: *"Pravidla pro evidenci smluv v naší společnosti vyžadují zveřejňování každé písemné objednávky v registru smluv."*
 * **Passage C**: *"Zpracování osobních údajů a ochrana soukromí zaměstnanců se řídí směrnicí GDPR."*
 
 ### The User Query
@@ -106,7 +106,7 @@ The system translates the query "Jaká jsou pravidla pro registr smluv?" into it
 
 1. **Passage B** is highly relevant conceptually (explains the rules for contracts registry).
    * **Rank in Semantic Search**: **#1**
-2. **Passage A** is somewhat relevant (discusses university administration rules, recording working hours, and the internal database system iFIS).
+2. **Passage A** is somewhat relevant (discusses company administration rules, recording working hours, and the internal database ERP system).
    * **Rank in Semantic Search**: **#2**
 3. **Passage C** is not relevant (deals with privacy and GDPR, not contracts).
    * **Rank in Semantic Search**: **Unranked**

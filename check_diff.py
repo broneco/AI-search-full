@@ -6,11 +6,11 @@ def normalize_text(text: str) -> str:
     return "".join(c for c in text if c.isalnum() and ord(c) < 128)
 
 def check_diff():
-    pdf_path = os.path.abspath("data/R_399_registr_smluv.pdf")
+    pdf_path = os.path.abspath("data/S-10.160.v100-Podpisový_řád.pdf")
     doc = fitz.open(pdf_path)
-    page = doc[0]
+    page = doc[1]  # Page 2 contains the introductory text block
     
-    snippet = 'ní těchto smluv a o registru smluv (zákon o registru smluv) , ve znění pozdějších předpisů (dále jen „ZRS“), jenž nabyl účinnosti dnem 1. 7. 2016. I. Předmět úpravy 1. Toto opatření stanovuje pravidla pro jednotný způsob uveřejňování smluv, které uzavírá JU na úrovni rektorátu a součástí. 2. Účelem opatření je definovat způsob povinné evidence smluv na JU a zajistit plnění povinností dle ZRS. II. Vymezení pojmů Pro účely tohoto opatření se stanovují definice následujících pojmů: Smlouva: Jakákoli p ísemně uzavřená smlouva bez ohledu na výši h odnoty předmětu plnění a skutečnost, které právo je pro danou smlouvu rozhodné dle mezinárodního práva soukromého. Za smlouvu se považuje rovněž písemná oboustranně odsouhlasená objednávka (ať již vystavená JU či druhou smluvní stranou).'
+    snippet = 'Tato pravidla pro podepisování jsou závazná pro všechny pracovníky a útvary společnosti dolphin consulting a.s. (dále jen společnost). Funkce uvedené v těchto pravidlech pro podepisování se vztahují výhradně na pracovníky společnosti, pokud nebude uvedeno jinak.'
     
     norm_snippet = normalize_text(snippet)
     norm_page = normalize_text(page.get_text())

@@ -53,40 +53,49 @@ async def main():
             logger.info(f"Processing file: {file_path}")
             
             # Formulate realistic corporate security ACLs, freshness statuses and creation dates based on PDF filenames
-            if "registr_smluv" in file_name.lower():
-                # R_399_registr_smluv
+            if "organizacni" in file_name.lower() or "150" in file_name.lower():
+                # S-10.150 Organizační řád (Public)
+                security_acl = {"allowed_groups": ["Management", "HR", "Finance", "User"]}
+                metadata = {
+                    "freshness_status": "archived",
+                    "created_at": datetime.datetime(2026, 1, 10, 9, 0, 0),
+                    "department": "Management",
+                    "year": 2026,
+                }
+            elif "podpisovy" in file_name.lower() or "160" in file_name.lower():
+                # S-10.160 Podpisový řád (Management & HR only)
                 security_acl = {"allowed_groups": ["Management", "HR"]}
                 metadata = {
                     "freshness_status": "current",
-                    "created_at": datetime.datetime(2026, 2, 15, 12, 0, 0),
+                    "created_at": datetime.datetime(2026, 2, 15, 10, 0, 0),
                     "department": "HR",
                     "year": 2026,
                 }
-            elif "pokusna_zvirata" in file_name.lower():
-                # R_402_pokusna_zvirata_ZF
-                security_acl = {"allowed_groups": ["Management", "HR", "User"]} # public
-                metadata = {
-                    "freshness_status": "archived",
-                    "created_at": datetime.datetime(2024, 5, 10, 10, 0, 0),
-                    "department": "User",
-                    "year": 2024,
-                }
-            elif "evidence_prac_doby" in file_name.lower():
-                # R_407_evidence_prac_doby_rektorat
-                security_acl = {"allowed_groups": ["Management", "HR"]}
+            elif "whistleblowing" in file_name.lower() or "170" in file_name.lower():
+                # S-10.170 Whistleblowing (Public)
+                security_acl = {"allowed_groups": ["Management", "HR", "Finance", "User"]}
                 metadata = {
                     "freshness_status": "current",
-                    "created_at": datetime.datetime(2025, 8, 20, 9, 30, 0),
+                    "created_at": datetime.datetime(2026, 3, 1, 11, 0, 0),
                     "department": "HR",
-                    "year": 2025,
+                    "year": 2026,
                 }
-            elif "tvorba_rozpoctu" in file_name.lower():
-                # R_409_tvorba_rozpoctu_JU
+            elif "obchod" in file_name.lower() or "marketing" in file_name.lower() or "300" in file_name.lower():
+                # S-10.300 Obchod a Marketing (Management & Finance only)
                 security_acl = {"allowed_groups": ["Management", "Finance"]}
                 metadata = {
                     "freshness_status": "current",
-                    "created_at": datetime.datetime(2026, 4, 10, 14, 0, 0),
+                    "created_at": datetime.datetime(2026, 4, 20, 13, 0, 0),
                     "department": "Finance",
+                    "year": 2026,
+                }
+            elif "projektovy" in file_name.lower() or "310" in file_name.lower():
+                # S-10.310 Projektový management (Management & User)
+                security_acl = {"allowed_groups": ["Management", "User"]}
+                metadata = {
+                    "freshness_status": "current",
+                    "created_at": datetime.datetime(2026, 5, 12, 14, 0, 0),
+                    "department": "Management",
                     "year": 2026,
                 }
             else:

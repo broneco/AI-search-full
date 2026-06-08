@@ -50,7 +50,7 @@ def test_hybrid_and_lexical_fts_retrieval(db_setup):
     chunk1 = DBChunk(
         document_id=doc.document_id,
         chunk_index=0,
-        content="Evidence pracovní doby na rektorátu Jihočeské univerzity podléhá kontrole.",
+        content="Evidence pracovní doby na vedení společnosti Dolphin Consulting podléhá kontrole.",
         embedding=[0.1] * 1536,  # dummy embedding vector
         language="cs",
         security_acl={"allowed_groups": ["Public"]},
@@ -58,7 +58,7 @@ def test_hybrid_and_lexical_fts_retrieval(db_setup):
     chunk2 = DBChunk(
         document_id=doc.document_id,
         chunk_index=1,
-        content="Péče o pokusná zvířata a provoz akvarijní místnosti na Zemědělské fakultě.",
+        content="Péče o pokusná zvířata a provoz akvarijní místnosti ve výzkumném oddělení.",
         embedding=[0.5] * 1536,  # dummy embedding vector
         language="cs",
         security_acl={"allowed_groups": ["Public"]},
@@ -70,7 +70,7 @@ def test_hybrid_and_lexical_fts_retrieval(db_setup):
 
     # A: Test FTS keyword strategy
     context = QueryContext(
-        query="rektorátu",
+        query="vedení",
         user_id="test_user",
         filters={},
         acl_groups=["Public"],
@@ -81,17 +81,17 @@ def test_hybrid_and_lexical_fts_retrieval(db_setup):
 
     # Query with keyword FTS strategy
     results_keyword = db.execute(
-        text("SELECT chunk_id FROM chunks WHERE to_tsvector('simple', content) @@ websearch_to_tsquery('simple', 'rektorátu')")
+        text("SELECT chunk_id FROM chunks WHERE to_tsvector('simple', content) @@ websearch_to_tsquery('simple', 'vedení')")
     ).all()
     assert len(results_keyword) >= 1
 
     # Call FTS through Retriever
     retrieved_kw = db.execute(
         text("SELECT chunks.chunk_id, chunks.content FROM chunks JOIN documents ON chunks.document_id = documents.document_id WHERE to_tsvector('simple', chunks.content) @@ websearch_to_tsquery('simple', :q)"),
-        {"q": "rektorátu"}
+        {"q": "vedení"}
     ).all()
     assert len(retrieved_kw) >= 1
-    assert "rektorátu" in retrieved_kw[0][1]
+    assert "vedení" in retrieved_kw[0][1]
 
 
 def test_weighted_rrf_scoring():

@@ -23,8 +23,8 @@ This test suite validates our custom **Hybrid Retrieval** search engine. It ensu
 * **High-Level Purpose:**
   We verify that the database GIN text search index retrieves Czech document segments matching exact keyword queries, and that the database correctly parses Czech diacritics using FTS search configurations.
 * **Low-Level Technical Details:**
-  * Seeds a dummy `DBDocument` and two `DBChunk` records containing distinct Czech words (*"Evidence pracovní doby"*, *"Péče o pokusná zvířata"*).
-  * Constructs a `QueryContext` querying for the Czech keyword *"rektorátu"*.
+  * Seed a dummy `DBDocument` and two `DBChunk` records containing distinct Czech words (*"Evidence pracovní doby"*, *"Péče o pokusná zvířata"*).
+  * Constructs a `QueryContext` querying for the Czech keyword *"vedení"*.
   * Executes a raw PostgreSQL SQL query using `db.execute(text(...))` to confirm:
     * The PostgreSQL `to_tsvector` and `websearch_to_tsquery` functions match chunks using the FTS engine.
     * The system falls back cleanly to `'simple'` text configuration if the Czech `'cs'` language configuration is not installed in the host database catalogs, preventing database transaction crashes.

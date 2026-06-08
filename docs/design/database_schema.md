@@ -61,8 +61,8 @@ This table holds document-level metadata, tracking parent file properties, versi
 | :--- | :--- | :--- | :--- | :--- |
 | `document_id` | `UUID` | Primary Key | `uuid_generate_v4()` | Unique identifier for the parent document. |
 | `source_type` | `VARCHAR` | NOT NULL | - | Location source type (e.g., `'local'`, `'azure_blob'`). |
-| `source_uri` | `VARCHAR` | NOT NULL | - | The URI pointing to the file (e.g., `file://data/R_399.pdf`). |
-| `title` | `VARCHAR` | NOT NULL | - | The visual title of the document (e.g., `'Opatření rektora R_399'`). |
+| `source_uri` | `VARCHAR` | NOT NULL | - | The URI pointing to the file (e.g., `file://data/S-10.150.v100-Organizační_řád.pdf`). |
+| `title` | `VARCHAR` | NOT NULL | - | The visual title of the document (e.g., `'S-10.150 Organizační řád'`). |
 | `document_type` | `VARCHAR` | NOT NULL | - | The category of the file (e.g., `'policy'`, `'document'`). |
 | `language` | `VARCHAR` | - | `'en'` | Default language configuration (e.g., `'cs'` for Czech). |
 | `owner` | `VARCHAR` | Nullable | - | Owner or department responsible for the file. |
@@ -144,8 +144,8 @@ The dynamic JSONB columns store variable key-value tags used to refine vector se
 {
   "department": "HR",
   "year": "2026",
-  "author": "Rektorát JU",
-  "original_filename": "R_399_registr_smluv.pdf"
+  "author": "Vedení Dolphin Consulting",
+  "original_filename": "S-10.150.v100-Organizační_řád.pdf"
 }
 ```
 * **Dynamic Query Filters**: If a search request specifies a metadata filter (e.g. `{"department": "HR"}`), SQL statements query the column directly via `metadata ->> 'department' = :val` to prune irrelevant chunks before running semantic comparisons.

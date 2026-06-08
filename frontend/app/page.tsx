@@ -47,7 +47,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Jihočeské univerzity. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům.",
+      content: "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Dolphin Consulting. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům.",
     }
   ]);
   const [loading, setLoading] = useState(false);
@@ -260,7 +260,7 @@ export default function Home() {
               Firemní AI Vyhledávač
             </h1>
             <p className="text-xs text-zinc-500">
-              Inteligentní vyhledávání v dokumentech JU s citacemi
+              Inteligentní vyhledávání v dokumentech Dolphin Consulting s citacemi
             </p>
           </div>
         </div>
@@ -275,7 +275,7 @@ export default function Home() {
               onChange={(e) => setUserRole(e.target.value as any)}
               className="bg-black/60 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
             >
-              <option value="management">👑 Rektorát (Management)</option>
+              <option value="management">👑 Vedení (Management)</option>
               <option value="hr">💼 Personální (HR Specialist)</option>
               <option value="finance">📊 Finanční (Finance Auditor)</option>
               <option value="user">👤 Zaměstnanec (Standard User)</option>
@@ -626,20 +626,21 @@ export default function Home() {
                       <span className="text-zinc-500 block mb-1">Povolené skupiny (Security ACL):</span>
                       <div className="flex flex-wrap gap-1.5">
                         <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Management</span>
-                        {activeSource.title.toLowerCase().includes("registr_smluv") && (
-                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
-                        )}
-                        {activeSource.title.toLowerCase().includes("evidence_prac_doby") && (
-                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
-                        )}
-                        {activeSource.title.toLowerCase().includes("pokusna_zvirata") && (
+                        {(activeSource.title.toLowerCase().includes("organizacni") || activeSource.title.toLowerCase().includes("150") || activeSource.title.toLowerCase().includes("whistleblowing") || activeSource.title.toLowerCase().includes("170")) && (
                           <>
                             <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
+                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Finance</span>
                             <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">User</span>
                           </>
                         )}
-                        {activeSource.title.toLowerCase().includes("rozpoctu") && (
+                        {(activeSource.title.toLowerCase().includes("podpisovy") || activeSource.title.toLowerCase().includes("160")) && (
+                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
+                        )}
+                        {(activeSource.title.toLowerCase().includes("obchod") || activeSource.title.toLowerCase().includes("marketing") || activeSource.title.toLowerCase().includes("300")) && (
                           <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Finance</span>
+                        )}
+                        {(activeSource.title.toLowerCase().includes("projektovy") || activeSource.title.toLowerCase().includes("310")) && (
+                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">User</span>
                         )}
                       </div>
                     </div>

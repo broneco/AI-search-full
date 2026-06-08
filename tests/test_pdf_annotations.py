@@ -29,7 +29,7 @@ def pdf_setup():
     os.makedirs(os.path.dirname(TEST_PDF_PATH), exist_ok=True)
     doc = fitz.open()
     page = doc.new_page()
-    page.insert_text((50, 100), "Dobrý den! Jaká jsou pravidla pro registr smluv na vysoké škole?")
+    page.insert_text((50, 100), "Dobrý den! Jaká jsou pravidla pro registr smluv v naší společnosti?")
     doc.save(TEST_PDF_PATH)
     doc.close()
 
