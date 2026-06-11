@@ -14,6 +14,7 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 - **Automatic Document Archival**: Implemented automated transition of replaced documents (and their associated chunks) to `freshness_status = "archived"` in PostgreSQL when confirming ingestion of a new version.
 - **Cloud Deployment Guide**: Created a comprehensive guide `docs/deployments/cloud_deployment_guide.md` describing standard procedures to publish the application container to Azure Container Apps and configure environment variables.
 - **Category Creation & Deletion UI**: Added a dash-bordered button "➕ Přidat novou kategorii" at the bottom of the categories configuration settings tab, and a "🗑️ Odebrat" button at the top-right of each category card, allowing administrators to dynamically append and delete categories in the configuration state before saving.
+- **Confidential Document Category Migrations**: Implemented a secure database migration mechanism when categories are deleted. The frontend prompts the administrator to select a replacement category to transfer all existing documents. The backend updates document metadata fields and dynamically re-keys all underlying chunk security ACLs to prevent confidential documents from leaking or becoming public. Added integration test coverage verifying the migration logic.
 - **Tagger Test Suite**: Added a test file `tests/test_metadata_tagging.py` to automatically verify date parsing, category classification, and relationship updates.
 
 ### Changed
