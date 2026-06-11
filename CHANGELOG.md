@@ -13,6 +13,7 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 - **Administrative Ingest Dashboard**: Integrated an "Ingest a správa" tab in Next.js `page.tsx` with a categories config editor, a file drag-and-drop zone, an LLM analysis progress loader, and a review form for editing suggested title, date, category, and target replacement documents.
 - **Automatic Document Archival**: Implemented automated transition of replaced documents (and their associated chunks) to `freshness_status = "archived"` in PostgreSQL when confirming ingestion of a new version.
 - **Cloud Deployment Guide**: Created a comprehensive guide `docs/deployments/cloud_deployment_guide.md` describing standard procedures to publish the application container to Azure Container Apps and configure environment variables.
+- **Category Creation & Deletion UI**: Added a dash-bordered button "➕ Přidat novou kategorii" at the bottom of the categories configuration settings tab, and a "🗑️ Odebrat" button at the top-right of each category card, allowing administrators to dynamically append and delete categories in the configuration state before saving.
 - **Tagger Test Suite**: Added a test file `tests/test_metadata_tagging.py` to automatically verify date parsing, category classification, and relationship updates.
 
 ### Changed
