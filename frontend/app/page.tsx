@@ -569,6 +569,41 @@ export default function Home() {
     setEditingConfig({ ...editingConfig, analysis_rules: value });
   };
 
+  const handleAddCategory = () => {
+    if (!editingConfig) return;
+    
+    const newUuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+
+    const newCat: Category = {
+      key: newUuid,
+      label: "Nová kategorie",
+      description: "Popis této kategorie pro LLM klasifikátor.",
+      allowed_groups: ["Management"],
+      role_name: "NewRole"
+    };
+
+    setEditingConfig({
+      ...editingConfig,
+      categories: [...editingConfig.categories, newCat]
+    });
+  };
+
+  const handleDeleteCategory = (index: number) => {
+    if (!editingConfig) return;
+    if (editingConfig.categories.length <= 1) {
+      alert("Musíte ponechat alespoň jednu kategorii.");
+      return;
+    }
+    if (confirm("Opravdu chcete tuto kategorii odebrat? Změna se projeví až po uložení konfigurace.")) {
+      const updated = editingConfig.categories.filter((_, idx) => idx !== index);
+      setEditingConfig({ ...editingConfig, categories: updated });
+    }
+  };
+
   const handleSaveConfig = async () => {
     if (!editingConfig) return;
     setSavingConfig(true);
@@ -1386,8 +1421,16 @@ export default function Home() {
                     {editingConfig.categories.map((cat, idx) => (
                       <div 
                         key={cat.key}
-                        className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.04] space-y-3"
+                        className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.04] space-y-3 relative"
                       >
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategory(idx)}
+                          className="absolute top-3 right-3 text-zinc-500 hover:text-red-400 text-[10px] font-bold transition-all p-1.5 px-2.5 rounded bg-red-500/0 hover:bg-red-500/10 border border-transparent hover:border-red-500/10 cursor-pointer flex items-center gap-1"
+                          title="Odebrat kategorii"
+                        >
+                          🗑️ Odebrat
+                        </button>
                         <div className="grid grid-cols-3 gap-3">
                           <div>
                             <span className="text-[10px] text-zinc-600 block">Klíč (ID)</span>
@@ -1432,6 +1475,17 @@ export default function Home() {
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Add Category Button */}
+                  <div className="flex justify-start">
+                    <button
+                      type="button"
+                      onClick={handleAddCategory}
+                      className="px-4 py-2.5 rounded-xl border border-dashed border-zinc-800 hover:border-indigo-500 text-xs font-bold text-zinc-400 hover:text-indigo-400 bg-white/[0.01] hover:bg-indigo-500/5 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      ➕ Přidat novou kategorii
+                    </button>
                   </div>
 
                   {/* General LLM Analysis Rules */}
