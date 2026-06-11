@@ -1,0 +1,46 @@
+{
+  "categories": [
+    {
+      "key": "Management",
+      "label": "Management",
+      "description": "Dokumenty určené pouze pro vedení společnosti, strategická rozhodnutí, plány, hospodaření a interní dohody vedení.",
+      "allowed_groups": [
+        "Management"
+      ],
+      "role_name": null
+    },
+    {
+      "key": "HR",
+      "label": "Personální (HR)",
+      "description": "Dokumenty týkající se lidských zdrojů, náboru, benefitů, dovolených, platů a vnitřního chodu týmu.",
+      "allowed_groups": [
+        "Management",
+        "HR"
+      ],
+      "role_name": null
+    },
+    {
+      "key": "Finance",
+      "label": "IT",
+      "description": "Dokumenty spojené s nastavením IT infrastruktury a pravidel používání počítačových systémů.",
+      "allowed_groups": [
+        "Management",
+        "IT"
+      ],
+      "role_name": null
+    },
+    {
+      "key": "User",
+      "label": "Zaměstnanecké (User / Public)",
+      "description": "Obecné směrnice, návody, dokumenty a informace přístupné pro všechny řadové zaměstnance společnosti.",
+      "allowed_groups": [
+        "Management",
+        "HR",
+        "IT",
+        "User"
+      ],
+      "role_name": null
+    }
+  ],
+  "analysis_rules": "Zaměř se na vyhledávání oficiálních názvů, čísel směrnic, legislativních odkazů, typických korporátních schvalovacích formulí a dat účinnosti."
+}

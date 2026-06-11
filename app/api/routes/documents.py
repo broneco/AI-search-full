@@ -1,11 +1,11 @@
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
 from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
-from app.schemas.documents import DocumentIngestRequest, DocumentIngestResponse
+from app.schemas.documents import DocumentIngestRequest, DocumentIngestResponse, CategoryConfigRequest, DocumentConfirmedIngestRequest
 from app.storage.models import DBDocument, DBChunk
 
 router = APIRouter()
@@ -111,7 +111,10 @@ async def list_documents(
                 "language": doc.language,
                 "freshness_status": doc.freshness_status,
                 "ingested_at": doc.ingested_at.isoformat(),
-                "chunk_count": chunk_count
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "chunk_count": chunk_count,
+                "security_acl": doc.security_acl,
+                "metadata_json": doc.metadata_json,
             })
         return result
     except Exception as e:
@@ -134,6 +137,10 @@ async def view_document(
 
     try:
         doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document UUID format.")
+
+    try:
         doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found.")
@@ -291,14 +298,378 @@ async def view_document(
                 logger.error(f"Failed to dynamically highlight PDF chunk {highlight_chunk_id}: {e}")
 
         # 3. Stream highlighted PDF bytes
+        from urllib.parse import quote
+        safe_filename = quote(f"{doc.title}.pdf")
         return StreamingResponse(
             io.BytesIO(data),
             media_type="application/pdf",
-            headers={"Content-Disposition": f"inline; filename={doc.title}.pdf"}
+            headers={"Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}"}
         )
 
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid document UUID format.")
     except Exception as e:
         logger.error(f"Failed to retrieve and serve document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/categories")
+async def get_categories(db: Session = Depends(get_db_session)):
+    """Read the dynamic classification configuration from Blob Storage or disk."""
+    from app.ingestion.tagger import MetadataTagger
+    tagger = MetadataTagger(db_session=db)
+    return await tagger.load_config()
+
+
+@router.post("/categories")
+async def update_categories(request: CategoryConfigRequest, db: Session = Depends(get_db_session)):
+    """Save the updated classification configuration to Blob Storage and disk."""
+    from app.ingestion.tagger import MetadataTagger
+    tagger = MetadataTagger(db_session=db)
+    await tagger.save_config(request.model_dump())
+    return {"status": "success", "message": "Kategorie byly úspěšně uloženy."}
+
+
+@router.post("/analyze-draft")
+async def analyze_draft(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session)
+):
+    """Save upload to temp location and run metadata auto-tagger LLM analysis."""
+    import os
+    import shutil
+    import uuid
+    from app.ingestion.tagger import MetadataTagger
+
+    temp_dir = os.path.abspath("data/temp_drafts")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    unique_filename = f"{uuid.uuid4()}_{file.filename}"
+    temp_path = os.path.join(temp_dir, unique_filename)
+
+    try:
+        with open(temp_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        tagger = MetadataTagger(db_session=db)
+        suggestions = await tagger.analyze_file(temp_path)
+        
+        # Restore original filename in the suggested title
+        suggestions["title"] = os.path.splitext(file.filename)[0]
+        
+        # Append the temp file path for the confirmed ingest step
+        suggestions["temp_file_path"] = temp_path
+        
+        return suggestions
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        logger.error(f"Failed to analyze draft: {e}")
+        raise HTTPException(status_code=500, detail=f"Chyba při analýze dokumentu: {str(e)}")
+
+
+@router.post("/ingest-confirmed")
+async def ingest_confirmed(
+    request: DocumentConfirmedIngestRequest,
+    db: Session = Depends(get_db_session)
+):
+    """Ingest the document with confirmed/edited metadata and apply replacement archival rules."""
+    import os
+    import datetime
+    from app.ingestion.pipeline import IngestionPipeline
+    from app.ingestion.tagger import MetadataTagger
+
+    if not os.path.exists(request.temp_file_path):
+        raise HTTPException(status_code=400, detail="Dočasný soubor nebyl nalezen. Nahrajte dokument znovu.")
+
+    try:
+        # 1. Resolve security ACL and metadata from the selected category using config
+        tagger = MetadataTagger(db_session=db)
+        config = await tagger.load_config()
+        
+        # Find selected category configuration details
+        category_item = None
+        for cat in config.get("categories", []):
+            if cat.get("key") == request.category:
+                category_item = cat
+                break
+        
+        if not category_item:
+            allowed_groups = ["Management", "HR", "Finance", "User"]
+        else:
+            allowed_groups = category_item.get("allowed_groups", ["Management", "HR", "Finance", "User"])
+            
+        security_acl = {"allowed_groups": allowed_groups}
+
+        # Format release date
+        try:
+            release_date = datetime.datetime.strptime(request.date, "%Y-%m-%d")
+        except ValueError:
+            release_date = datetime.datetime.utcnow()
+
+        # Build metadata dictionary to be stored in DB
+        metadata = {
+            "department": request.category,
+            "year": release_date.year,
+            "created_at": release_date.isoformat(),
+            "freshness_status": "current",
+            "relationship_type": request.relationship.relationship_type,
+        }
+
+        # Check and apply archival operations if it replaces an existing document
+        target_doc = None
+        if request.relationship.relationship_type == "replaces" and request.relationship.target_document_id:
+            import uuid
+            try:
+                target_uuid = uuid.UUID(request.relationship.target_document_id)
+                target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid).first()
+                if target_doc:
+                    logger.info(f"Archiving replaced document: {target_doc.title} (ID: {target_doc.document_id})")
+                    
+                    # Update target document status to archived
+                    target_doc.freshness_status = "archived"
+                    if not target_doc.metadata_json:
+                        target_doc.metadata_json = {}
+                    target_doc.metadata_json["replaced_by_document_title"] = request.title
+                    
+                    # Update target document's chunks to archived
+                    db.query(DBChunk).filter(DBChunk.document_id == target_uuid).update(
+                        {"freshness_status": "archived"}
+                    )
+                    
+                    # Add replaces references to new document's metadata
+                    metadata["replaces_document_id"] = str(target_uuid)
+                    metadata["replaces_document_title"] = target_doc.title
+                    
+                    # Keep DB changes in active transaction block
+                    db.flush()
+            except Exception as e:
+                logger.error(f"Error executing archival process for replaced document: {e}")
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"Nepodařilo se archivovat původní dokument: {str(e)}")
+
+        elif request.relationship.relationship_type == "modifies" and request.relationship.target_document_id:
+            metadata["modifies_document_id"] = request.relationship.target_document_id
+            metadata["modifies_document_title"] = request.relationship.target_document_title
+
+        # 2. Run standard ingestion pipeline
+        pipeline = IngestionPipeline(db)
+        
+        # We rename the temp file to the confirmed final title during ingestion to clean up filename
+        _, ext = os.path.splitext(request.original_filename)
+        cleaned_filename = f"{request.title}{ext}"
+        
+        # Safe character replacement to prevent file path injection
+        cleaned_filename = "".join([c for c in cleaned_filename if c.isalnum() or c in (".", "_", "-")]).strip()
+        if not cleaned_filename:
+            cleaned_filename = request.original_filename
+            
+        confirmed_file_path = os.path.join(os.path.dirname(request.temp_file_path), cleaned_filename)
+        if os.path.exists(confirmed_file_path):
+            os.remove(confirmed_file_path)
+        os.rename(request.temp_file_path, confirmed_file_path)
+
+        try:
+            doc = await pipeline.ingest_file(
+                file_path=confirmed_file_path,
+                document_type="policy",
+                security_acl=security_acl,
+                metadata_json=metadata,
+            )
+            
+            # Update the title of the document in the DB to match confirmed title exactly
+            doc.title = request.title
+            doc.created_at = release_date
+            
+            # If target doc is replaced, link the new doc ID into its metadata
+            if target_doc:
+                target_doc.metadata_json["replaced_by_document_id"] = str(doc.document_id)
+                db.add(target_doc)
+                
+            db.commit()
+            
+            return {
+                "status": "success",
+                "document_id": str(doc.document_id),
+                "title": doc.title,
+                "message": f"Dokument '{doc.title}' byl úspěšně naimportován."
+            }
+        finally:
+            # Clean up the renamed file in the temp drafts directory
+            if os.path.exists(confirmed_file_path):
+                os.remove(confirmed_file_path)
+
+    except Exception as e:
+        logger.error(f"Error in confirmed ingestion endpoint: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Chyba při dokončení ingestu: {str(e)}")
+    finally:
+        # Clean up original temp upload file if it still exists
+        if os.path.exists(request.temp_file_path):
+            os.remove(request.temp_file_path)
+
+
+async def run_reindex_all_task():
+    logger.info("Starting background re-indexing of all documents...")
+    import os
+    import datetime
+    from app.storage.db import SessionLocal, init_db, clear_db
+    from app.ingestion.loaders.local import list_local_files
+    from app.ingestion.pipeline import IngestionPipeline
+    from app.ingestion.tagger import MetadataTagger
+    from app.storage.models import DBDocument, DBChunk
+    import uuid
+
+    # Use fresh db session context manager
+    db = SessionLocal()
+    try:
+        # 1. Clear database
+        try:
+            clear_db()
+        except Exception as e:
+            logger.warning(f"Drop tables failed during re-indexing: {e}")
+
+        # 2. Re-create tables
+        init_db()
+
+        tagger = MetadataTagger(db_session=db)
+        config = await tagger.load_config()
+
+        # 3. Scan data directory
+        data_dir = os.path.abspath("data")
+        if not os.path.exists(data_dir):
+            logger.info("Data directory not found. Re-indexing completed with 0 files.")
+            return
+
+        files = list_local_files(data_dir, extensions=[".pdf", ".txt"])
+        if not files:
+            logger.info("No documents found in data directory for re-indexing.")
+            return
+
+        # 4. Phase A: Extract metadata for all files to sort them
+        analyzed_docs = []
+        for file_path in files:
+            try:
+                suggestions = await tagger.analyze_file(file_path)
+                analyzed_docs.append({
+                    "file_path": file_path,
+                    "suggestions": suggestions
+                })
+            except Exception as e:
+                logger.error(f"Failed to analyze file {file_path} during reindex phase A: {e}")
+
+        # Helper key function to sort by date
+        def get_sort_date(item):
+            date_str = item["suggestions"].get("suggested_date")
+            try:
+                return datetime.datetime.strptime(date_str, "%Y-%m-%d")
+            except Exception:
+                return datetime.datetime.min
+
+        analyzed_docs.sort(key=get_sort_date)
+
+        # 5. Phase B: Ingest in chronological order
+        pipeline = IngestionPipeline(db)
+
+        for item in analyzed_docs:
+            file_path = item["file_path"]
+            sug = item["suggestions"]
+            title = sug["title"]
+            category_key = sug["suggested_category"]
+            date_str = sug["suggested_date"]
+            rel = sug["relationship"]
+
+            logger.info(f"Re-indexing document in order: {title} (Date: {date_str})")
+
+            # Resolve allowed groups
+            category_item = None
+            for cat in config.get("categories", []):
+                if cat.get("key") == category_key:
+                    category_item = cat
+                    break
+
+            if not category_item:
+                allowed_groups = ["Management", "HR", "Finance", "User"]
+            else:
+                allowed_groups = category_item.get("allowed_groups", ["Management", "HR", "Finance", "User"])
+
+            security_acl = {"allowed_groups": allowed_groups}
+
+            # Parse date
+            try:
+                release_date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+            except Exception:
+                release_date = datetime.datetime.utcnow()
+
+            # Metadata dict
+            metadata = {
+                "department": category_key,
+                "year": release_date.year,
+                "created_at": release_date.isoformat(),
+                "freshness_status": "current",
+                "relationship_type": rel.get("relationship_type", "none"),
+            }
+
+            # Check if replaces target
+            rel_type = rel.get("relationship_type", "none")
+            target_doc = None
+            if rel_type == "replaces" and rel.get("target_document_id"):
+                try:
+                    target_uuid = uuid.UUID(rel.get("target_document_id"))
+                    target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid).first()
+                    if target_doc:
+                        logger.info(f"Reindex: Archiving replaced document {target_doc.title}")
+                        target_doc.freshness_status = "archived"
+                        if not target_doc.metadata_json:
+                            target_doc.metadata_json = {}
+                        target_doc.metadata_json["replaced_by_document_title"] = title
+                        
+                        db.query(DBChunk).filter(DBChunk.document_id == target_uuid).update(
+                            {"freshness_status": "archived"}
+                        )
+                        metadata["replaces_document_id"] = str(target_uuid)
+                        metadata["replaces_document_title"] = target_doc.title
+                        db.flush()
+                except Exception as ex:
+                    logger.error(f"Reindex relationship archival error: {ex}")
+
+            elif rel_type == "modifies" and rel.get("target_document_id"):
+                metadata["modifies_document_id"] = rel.get("target_document_id")
+                metadata["modifies_document_title"] = rel.get("target_document_title")
+
+            # Ingest
+            try:
+                doc = await pipeline.ingest_file(
+                    file_path=file_path,
+                    document_type="policy" if "policy" in file_path.lower() else "document",
+                    security_acl=security_acl,
+                    metadata_json=metadata,
+                )
+                doc.title = title
+                doc.created_at = release_date
+
+                if target_doc:
+                    target_doc.metadata_json["replaced_by_document_id"] = str(doc.document_id)
+                    db.add(target_doc)
+
+                db.commit()
+                logger.info(f"Successfully reindexed file: {title} -> doc_id: {doc.document_id}")
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to ingest file {title} during reindex phase B: {e}")
+
+    except Exception as e:
+        logger.error(f"Re-indexing failed: {e}")
+    finally:
+        db.close()
+        logger.info("Background re-indexing finished.")
+
+
+@router.post("/reindex-all")
+async def reindex_all_endpoint(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db_session)
+):
+    """Trigger background re-indexing of all local documents in the data folder."""
+    background_tasks.add_task(run_reindex_all_task)
+    return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů byla spuštěna na pozadí."}
+
+

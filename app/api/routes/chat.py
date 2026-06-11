@@ -108,6 +108,7 @@ async def chat_interaction(
                     page_number=item.page_number,
                     freshness_status=item.freshness_status,
                     score=item.score,
+                    allowed_groups=item.metadata.get("allowed_groups", []),
                 )
             )
 

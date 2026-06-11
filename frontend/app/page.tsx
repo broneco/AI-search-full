@@ -12,6 +12,7 @@ interface ChatSource {
   page_number: number | null;
   freshness_status: string;
   score: number;
+  allowed_groups?: string[];
 }
 
 interface Message {
@@ -32,16 +33,161 @@ interface IngestedDocument {
   freshness_status: string;
   ingested_at: string;
   chunk_count: number;
+  created_at?: string;
+  security_acl?: {
+    allowed_groups: string[];
+  };
+  metadata_json?: {
+    department?: string;
+    replaces_document_title?: string;
+    replaced_by_document_title?: string;
+    modifies_document_title?: string;
+    [key: string]: any;
+  };
+}
+
+interface Category {
+  key: string;
+  label: string;
+  description: string;
+  allowed_groups: string[];
+  role_name?: string;
+}
+
+interface Config {
+  categories: Category[];
+  analysis_rules: string;
+}
+
+// Interactive pill selector component for allowed_groups
+function CategoryTagInput({
+  allowedGroups,
+  onChange
+}: {
+  allowedGroups: string[];
+  onChange: (groups: string[]) => void;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const predefinedGroups = ["Management", "HR", "Finance", "User"];
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = inputValue.trim();
+      if (val && !allowedGroups.includes(val)) {
+        onChange([...allowedGroups, val]);
+        setInputValue("");
+      }
+    }
+  };
+
+  const addGroup = (group: string) => {
+    if (!allowedGroups.includes(group)) {
+      onChange([...allowedGroups, group]);
+    }
+    setInputValue("");
+    setShowSuggestions(false);
+  };
+
+  const removeGroup = (group: string) => {
+    onChange(allowedGroups.filter((g) => g !== group));
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredSuggestions = predefinedGroups.filter(
+    (g) => g.toLowerCase().includes(inputValue.toLowerCase()) && !allowedGroups.includes(g)
+  );
+
+  return (
+    <div className="relative space-y-1.5">
+      <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-black/40 border border-white/[0.08] min-h-[40px] items-center">
+        {allowedGroups.map((group) => (
+          <span
+            key={group}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-900/60 border border-indigo-500/20 text-xs text-indigo-300 font-bold"
+          >
+            {group}
+            <button
+              type="button"
+              onClick={() => removeGroup(group)}
+              className="hover:text-red-400 font-bold ml-1 transition-colors text-[10px]"
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            setShowSuggestions(true);
+          }}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setShowSuggestions(true)}
+          placeholder={allowedGroups.length === 0 ? "Přidejte skupinu (stiskněte Enter)..." : ""}
+          className="flex-1 min-w-[120px] bg-transparent border-none focus:outline-none text-xs text-zinc-200 placeholder-zinc-600"
+        />
+      </div>
+      {showSuggestions && (inputValue || filteredSuggestions.length > 0) && (
+        <div
+          ref={suggestionsRef}
+          className="absolute z-10 w-full mt-1 bg-[#0f172a] border border-white/[0.08] rounded-xl shadow-xl max-h-36 overflow-y-auto divide-y divide-white/5"
+        >
+          {filteredSuggestions.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => addGroup(g)}
+              className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-white/[0.03] hover:text-white transition-all font-semibold"
+            >
+              ➕ Přidat {g}
+            </button>
+          ))}
+          {inputValue &&
+            !allowedGroups.includes(inputValue.trim()) &&
+            !predefinedGroups.includes(inputValue.trim()) && (
+              <button
+                type="button"
+                onClick={() => addGroup(inputValue.trim())}
+                className="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-white/[0.03] hover:text-white transition-all font-mono"
+              >
+                ✨ Vytvořit "{inputValue.trim()}"
+              </button>
+            )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Home() {
+  // Application Navigation
+  const [activeTab, setActiveTab] = useState<"chat" | "ingest" | "config">("chat");
+
+  // Dynamic Categories and Config
+  const [config, setConfig] = useState<Config | null>(null);
+  const [editingConfig, setEditingConfig] = useState<Config | null>(null);
+  const [savingConfig, setSavingConfig] = useState(false);
+
   // Application State
   const [query, setQuery] = useState("");
   const [searchStrategy, setSearchStrategy] = useState<"hybrid" | "vector" | "keyword">("hybrid");
   const [chatMode, setChatMode] = useState<"flash" | "thinking">("flash");
   
   // Interactive testing states for security & freshness
-  const [userRole, setUserRole] = useState<"management" | "hr" | "finance" | "user">("management");
+  const [userRole, setUserRole] = useState<string>("management");
   const [freshnessFilter, setFreshnessFilter] = useState<"all" | "this_year" | "latest">("all");
 
   const [messages, setMessages] = useState<Message[]>([
@@ -57,28 +203,90 @@ export default function Home() {
   const [documents, setDocuments] = useState<IngestedDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
+  // Ingestion Form State
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [analyzingDraft, setAnalyzingDraft] = useState(false);
+  const [draftResult, setDraftResult] = useState<{
+    title: string;
+    suggested_date: string;
+    suggested_category: string;
+    relationship: {
+      relationship_type: string;
+      target_document_id: string | null;
+      target_document_title: string | null;
+    };
+    temp_file_path: string;
+    original_filename: string;
+  } | null>(null);
+
+  const [confirmedTitle, setConfirmedTitle] = useState("");
+  const [confirmedDate, setConfirmedDate] = useState("");
+  const [confirmedCategory, setConfirmedCategory] = useState("");
+  const [confirmedRelType, setConfirmedRelType] = useState("none");
+  const [confirmedRelTargetId, setConfirmedRelTargetId] = useState("");
+  const [ingestingConfirmed, setIngestingConfirmed] = useState(false);
+  const [ingestStatus, setIngestStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
   // Chat message container ref for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Backend API URL Base
   const BACKEND_URL = "http://localhost:8000";
 
-  // Map visual roles to dynamic Entra ID headers
+  // Helper to resolve category label from key/UUID
+  const getCategoryLabel = (catKey?: string) => {
+    if (!catKey || !config?.categories) return "Obecné";
+    const cat = config.categories.find((c) => c.key === catKey);
+    return cat ? cat.label : "Obecné";
+  };
+
+  // Helper to format date in Czech style
+  const formatReleaseDate = (dateStr?: string) => {
+    if (!dateStr) return null;
+    try {
+      return new Date(dateStr).toLocaleDateString("cs-CZ");
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Fetch dynamic categories config
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/categories`);
+      if (res.ok) {
+        const data = await res.json();
+        setConfig(data);
+        setEditingConfig(data);
+        
+        // Match default user role dynamically to first category key
+        if (data.categories && data.categories.length > 0) {
+          const keys = data.categories.map((c: Category) => c.key.toLowerCase());
+          setUserRole((prev) => (keys.includes(prev.toLowerCase()) ? prev.toLowerCase() : keys[0]));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch categories config", err);
+    }
+  };
+
+  // Map visual roles to dynamic Entra ID headers based on dynamic config
   const getHeaders = () => {
     const headers: Record<string, string> = {};
-    if (userRole === "management") {
-      headers["X-User-Id"] = "ondrej.bronec";
-      headers["X-User-Groups"] = "Management";
-    } else if (userRole === "hr") {
-      headers["X-User-Id"] = "eva.hr";
-      headers["X-User-Groups"] = "HR";
-    } else if (userRole === "finance") {
-      headers["X-User-Id"] = "jan.finance";
-      headers["X-User-Groups"] = "Finance";
-    } else {
-      headers["X-User-Id"] = "public.guest";
-      headers["X-User-Groups"] = "User";
+    if (config?.categories) {
+      const activeCat = config.categories.find(
+        (cat) => cat.key.toLowerCase() === userRole.toLowerCase()
+      );
+      if (activeCat) {
+        headers["X-User-Id"] = `${userRole.toLowerCase()}.user`;
+        headers["X-User-Groups"] = activeCat.role_name || activeCat.key;
+        return headers;
+      }
     }
+    // Fallback defaults
+    headers["X-User-Id"] = "public.guest";
+    headers["X-User-Groups"] = "User";
     return headers;
   };
 
@@ -110,6 +318,7 @@ export default function Home() {
     };
 
     checkHealth();
+    fetchConfig();
     
     // Periodically check API health
     const interval = setInterval(checkHealth, 15000);
@@ -119,7 +328,7 @@ export default function Home() {
   // Fetch documents list whenever userRole changes to demonstrate live dynamic ACL hiding
   useEffect(() => {
     fetchDocuments();
-  }, [userRole]);
+  }, [userRole, config]);
 
   // Auto-scroll chat window when new messages arrive
   useEffect(() => {
@@ -204,6 +413,206 @@ export default function Home() {
     }
   };
 
+  // Ingestion File Upload Handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type === "application/pdf" || file.name.endsWith(".pdf") || file.name.endsWith(".txt")) {
+        triggerDraftAnalysis(file);
+      } else {
+        alert("Podporovány jsou pouze soubory PDF a TXT.");
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      triggerDraftAnalysis(e.target.files[0]);
+    }
+  };
+
+  // Call Analyze endpoint to get suggested metadata
+  const triggerDraftAnalysis = async (file: File) => {
+    setFileToUpload(file);
+    setAnalyzingDraft(true);
+    setDraftResult(null);
+    setIngestStatus(null);
+    
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/analyze-draft`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Analýza konceptu selhala: ${res.status}`);
+      }
+
+      const data = await res.json();
+      setDraftResult(data);
+      
+      // Seed editable form with suggested values
+      setConfirmedTitle(data.title);
+      setConfirmedDate(data.suggested_date || new Date().toISOString().split("T")[0]);
+      setConfirmedCategory(data.suggested_category);
+      setConfirmedRelType(data.relationship.relationship_type);
+      setConfirmedRelTargetId(data.relationship.target_document_id || "");
+    } catch (err: any) {
+      console.error(err);
+      setIngestStatus({
+        type: "error",
+        message: `Chyba při analýze dokumentu: ${err.message || err}`,
+      });
+      setFileToUpload(null);
+    } finally {
+      setAnalyzingDraft(false);
+    }
+  };
+
+  // Submit confirmed metadata to complete RAG ingestion
+  const handleConfirmIngest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!draftResult || ingestingConfirmed) return;
+
+    setIngestingConfirmed(true);
+    setIngestStatus(null);
+
+    const targetDoc = documents.find((doc) => doc.document_id === confirmedRelTargetId);
+
+    const payload = {
+      title: confirmedTitle,
+      date: confirmedDate,
+      category: confirmedCategory,
+      relationship: {
+        relationship_type: confirmedRelType,
+        target_document_id: confirmedRelType !== "none" ? confirmedRelTargetId : null,
+        target_document_title: confirmedRelType !== "none" && targetDoc ? targetDoc.title : null,
+      },
+      temp_file_path: draftResult.temp_file_path,
+      original_filename: draftResult.original_filename,
+    };
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/ingest-confirmed`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || `Ingest selhal: ${res.status}`);
+      }
+
+      const data = await res.json();
+      setIngestStatus({
+        type: "success",
+        message: data.message,
+      });
+      
+      // Reset form states
+      setDraftResult(null);
+      setFileToUpload(null);
+      
+      // Refresh accessible documents list
+      fetchDocuments();
+    } catch (err: any) {
+      console.error(err);
+      setIngestStatus({
+        type: "error",
+        message: `Chyba při dokončení importu: ${err.message || err}`,
+      });
+    } finally {
+      setIngestingConfirmed(false);
+    }
+  };
+
+  // Config Editor Handlers
+  const handleCategoryFieldChange = (index: number, field: string, value: string) => {
+    if (!editingConfig) return;
+    const updated = [...editingConfig.categories];
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    };
+    setEditingConfig({ ...editingConfig, categories: updated });
+  };
+
+  const handleAllowedGroupsChange = (index: number, groups: string[]) => {
+    if (!editingConfig) return;
+    const updated = [...editingConfig.categories];
+    updated[index] = {
+      ...updated[index],
+      allowed_groups: groups
+    };
+    setEditingConfig({ ...editingConfig, categories: updated });
+  };
+
+  const handleRulesChange = (value: string) => {
+    if (!editingConfig) return;
+    setEditingConfig({ ...editingConfig, analysis_rules: value });
+  };
+
+  const handleSaveConfig = async () => {
+    if (!editingConfig) return;
+    setSavingConfig(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/categories`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(editingConfig)
+      });
+
+      if (res.ok) {
+        await fetchConfig();
+        const runReindex = confirm("Konfigurace byla úspěšně uložena. Chcete nyní spustit znovunačtení (reindexaci) všech dokumentů na pozadí?");
+        if (runReindex) {
+          try {
+            const reindexRes = await fetch(`${BACKEND_URL}/api/documents/reindex-all`, {
+              method: "POST"
+            });
+            if (reindexRes.ok) {
+              alert("Znovunačtení všech dokumentů na pozadí bylo zahájeno. Seznam souborů se po dokončení obnoví.");
+              fetchDocuments();
+            } else {
+              alert("Spuštění znovunačtení selhalo.");
+            }
+          } catch (err) {
+            console.error("Failed to trigger re-indexing", err);
+            alert("Chyba při komunikaci se serverem.");
+          }
+        } else {
+          alert("Konfigurace uložena. Změny se projeví u nově nahrávaných dokumentů.");
+        }
+      } else {
+        alert("Selhalo ukládání konfigurace.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Chyba při připojování k serveru.");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   // Handle clicking on inline citation button
   const handleCitationClick = (sourceIndex: number, sourcesList?: ChatSource[]) => {
     if (!sourcesList || sourcesList.length < sourceIndex) return;
@@ -247,10 +656,10 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col flex-1 h-screen overflow-hidden bg-[#090d16] font-sans">
+    <div className="flex flex-col flex-1 h-screen overflow-hidden bg-[#090d16] font-sans text-zinc-200">
       
       {/* 1. Global Navigation Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-white/[0.05] bg-[#0c1220]/80 backdrop-blur-md">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-white/[0.05] bg-[#0c1220]/80 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white font-extrabold text-lg shadow-lg shadow-indigo-500/20">
             AI
@@ -265,27 +674,73 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Dynamic Tab Switcher */}
+        <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/[0.05]">
+          <button
+            type="button"
+            onClick={() => setActiveTab("chat")}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              activeTab === "chat"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            💬 Vyhledávání
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("ingest")}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              activeTab === "ingest"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            📁 Nahrávání (Ingest)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("config")}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              activeTab === "config"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            ⚙️ Nastavení (Config)
+          </button>
+        </div>
+
         {/* Real-time system states */}
         <div className="flex items-center gap-6">
-          {/* Dynamic Active User Role Selection (SSO Handshake Mockup) */}
+          {/* Dynamic Active User Role Selection (Switches permissions immediately) */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
             <span className="text-xs text-zinc-400 font-medium">Uživatel:</span>
             <select
               value={userRole}
-              onChange={(e) => setUserRole(e.target.value as any)}
+              onChange={(e) => setUserRole(e.target.value)}
               className="bg-black/60 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
             >
-              <option value="management">👑 Vedení (Management)</option>
-              <option value="hr">💼 Personální (HR Specialist)</option>
-              <option value="finance">📊 Finanční (Finance Auditor)</option>
-              <option value="user">👤 Zaměstnanec (Standard User)</option>
+              {config?.categories.map((cat) => (
+                <option key={cat.key} value={cat.key.toLowerCase()}>
+                  👑 {cat.label}
+                </option>
+              ))}
+              {(!config || config.categories.length === 0) && (
+                <>
+                  <option value="management">👑 Vedení (Management)</option>
+                  <option value="hr">💼 Personální (HR Specialist)</option>
+                  <option value="finance">📊 Finanční (Finance Auditor)</option>
+                  <option value="user">👤 Zaměstnanec (Standard User)</option>
+                </>
+              )}
             </select>
           </div>
 
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.05] text-xs">
             <span className={`pulse-dot ${apiOnline === false ? "bg-red-500 shadow-red-500/50" : ""}`} />
-            <span className="text-zinc-300 font-medium">
-              {apiOnline === null ? "Připojování..." : apiOnline ? "FastAPI: Online" : "FastAPI: Odpojeno"}
+            <span className="text-zinc-300 font-medium font-mono">
+              {apiOnline === null ? "Připojování..." : apiOnline ? "API: Online" : "API: Odpojeno"}
             </span>
           </div>
         </div>
@@ -295,14 +750,14 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         
         {/* Left Sidebar: Live Ingested Documents List */}
-        <aside className="hidden lg:flex flex-col w-80 border-r border-white/[0.05] bg-[#070b13]/40 overflow-y-auto p-4 gap-4">
+        <aside className="hidden lg:flex flex-col w-80 border-r border-white/[0.05] bg-[#070b13]/40 overflow-y-auto p-4 gap-4 shrink-0">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold tracking-wide text-zinc-400 uppercase">
+            <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
               Přístupné soubory
             </h3>
             <button 
               onClick={fetchDocuments}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold transition-colors flex items-center gap-1"
               title="Obnovit seznam souborů"
             >
               🔄 Obnovit
@@ -330,15 +785,22 @@ export default function Home() {
                       href={`${BACKEND_URL}/api/documents/view/${doc.document_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs font-semibold text-zinc-300 hover:text-indigo-400 hover:underline truncate block flex-1"
+                      className="text-xs font-bold text-zinc-300 hover:text-indigo-400 hover:underline truncate block flex-1"
                       title={`Kliknutím otevřete PDF: ${doc.title}`}
                     >
                       📄 {doc.title}
                     </a>
                   </div>
+
+                  {/* Resolved Category Label */}
+                  <div className="text-[9px] text-indigo-400 font-semibold uppercase flex items-center gap-1">
+                    <span>📁</span>
+                    <span>{getCategoryLabel(doc.metadata_json?.department)}</span>
+                  </div>
+
                   <div className="flex items-center justify-between text-[10px] text-zinc-500">
-                    <span>{doc.chunk_count} pasáží</span>
-                    <span className={`px-1.5 py-0.5 rounded border uppercase font-semibold text-[8px] ${
+                    <span className="font-medium font-mono">{doc.chunk_count} pasáží</span>
+                    <span className={`px-1.5 py-0.5 rounded border uppercase font-extrabold text-[8px] tracking-wider ${
                       doc.freshness_status === "current"
                         ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                         : "bg-amber-500/10 text-amber-400 border-amber-500/20"
@@ -346,8 +808,48 @@ export default function Home() {
                       {doc.freshness_status === "current" ? "Platný" : "Archiv"}
                     </span>
                   </div>
-                  <div className="text-[9px] text-zinc-600 truncate">
-                    Seřazeno: {new Date(doc.ingested_at).toLocaleDateString()}
+
+                  {/* Allowed security groups (ACL badges) */}
+                  {doc.security_acl?.allowed_groups && doc.security_acl.allowed_groups.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {doc.security_acl.allowed_groups.map((g: string) => (
+                        <span key={g} className="px-1.5 py-0.5 bg-zinc-800 text-[8px] text-zinc-400 rounded border border-white/[0.03] font-mono leading-none">
+                          {g}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Relationship Badges */}
+                  {doc.metadata_json?.replaces_document_title && (
+                    <div className="text-[9px] text-amber-500 font-medium flex items-center gap-1 mt-0.5">
+                      <span>🔄 Nahrazuje:</span>
+                      <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaces_document_title}>
+                        {doc.metadata_json.replaces_document_title}
+                      </span>
+                    </div>
+                  )}
+                  {doc.metadata_json?.replaced_by_document_title && (
+                    <div className="text-[9px] text-zinc-500 font-medium flex items-center gap-1 mt-0.5">
+                      <span>⬇️ Nahrazen:</span>
+                      <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaced_by_document_title}>
+                        {doc.metadata_json.replaced_by_document_title}
+                      </span>
+                    </div>
+                  )}
+                  {doc.metadata_json?.modifies_document_title && (
+                    <div className="text-[9px] text-cyan-500 font-medium flex items-center gap-1 mt-0.5">
+                      <span>✏️ Upravuje:</span>
+                      <span className="truncate block max-w-[170px]" title={doc.metadata_json.modifies_document_title}>
+                        {doc.metadata_json.modifies_document_title}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-0.5 text-[9px] text-zinc-600 font-medium border-t border-white/[0.03] pt-1">
+                    {doc.created_at && (
+                      <div>Vydáno: {formatReleaseDate(doc.created_at)}</div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -355,313 +857,611 @@ export default function Home() {
           )}
         </aside>
 
-        {/* Center Section: Conversational AI Grounded Search Screen */}
-        <main className="flex flex-col flex-1 bg-[#090d16] relative overflow-hidden">
-          
-          {/* Top Search Controls Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 border-b border-white/[0.04] bg-[#0a0f1b]/50">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-400 font-medium">Vyhledávání:</span>
-              <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/[0.05]">
-                <button
-                  type="button"
-                  onClick={() => setSearchStrategy("hybrid")}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    searchStrategy === "hybrid"
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Hybridní (RRF)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSearchStrategy("vector")}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    searchStrategy === "vector"
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Sémantická (Vector)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSearchStrategy("keyword")}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    searchStrategy === "keyword"
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Lexikální (FTS)
-                </button>
-              </div>
-            </div>
-
-            {/* Freshness Filter Selector */}
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-400 font-medium">Platnost (Freshness):</span>
-              <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/[0.05]">
-                <button
-                  type="button"
-                  onClick={() => setFreshnessFilter("all")}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                    freshnessFilter === "all"
-                      ? "bg-emerald-600 text-white shadow-md"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Všechny
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFreshnessFilter("this_year")}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                    freshnessFilter === "this_year"
-                      ? "bg-emerald-600 text-white shadow-md"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Jen 2026
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFreshnessFilter("latest")}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                    freshnessFilter === "latest"
-                      ? "bg-emerald-600 text-white shadow-md"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Jen platné
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Chat Messages Feed Area */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex gap-4 max-w-4xl ${msg.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"}`}
-              >
-                {/* Visual Avatar icons */}
-                <div className={`flex items-center justify-center w-8 h-8 rounded-lg text-sm font-bold shrink-0 ${
-                  msg.role === "user" 
-                    ? "bg-zinc-800 text-zinc-200" 
-                    : "bg-indigo-900/50 text-indigo-300 border border-indigo-500/20"
-                }`}>
-                  {msg.role === "user" ? "U" : "AI"}
+        {/* 3. Render content depending on activeTab */}
+        {activeTab === "chat" && (
+          <>
+            {/* Center Section: Conversational Search */}
+            <main className="flex flex-col flex-1 bg-[#090d16] relative overflow-hidden">
+              
+              {/* Top Search Controls Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-4 p-4 border-b border-white/[0.04] bg-[#0a0f1b]/50">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-zinc-400 font-medium">Vyhledávání:</span>
+                  <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/[0.05]">
+                    <button
+                      type="button"
+                      onClick={() => setSearchStrategy("hybrid")}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                        searchStrategy === "hybrid"
+                          ? "bg-indigo-600 text-white shadow-md"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Hybridní (RRF)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSearchStrategy("vector")}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                        searchStrategy === "vector"
+                          ? "bg-indigo-600 text-white shadow-md"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Sémantická (Vector)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSearchStrategy("keyword")}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                        searchStrategy === "keyword"
+                          ? "bg-indigo-600 text-white shadow-md"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Lexikální (FTS)
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-indigo-600/90 text-white rounded-tr-none"
-                      : "glass-panel text-zinc-100 rounded-tl-none border-white/[0.03]"
-                  }`}>
-                    {renderMessageContent(msg)}
+                {/* Freshness Filter Selector */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-zinc-400 font-medium">Platnost:</span>
+                  <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/[0.05]">
+                    <button
+                      type="button"
+                      onClick={() => setFreshnessFilter("all")}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                        freshnessFilter === "all"
+                          ? "bg-emerald-600 text-white shadow-md"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Všechny
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFreshnessFilter("this_year")}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                        freshnessFilter === "this_year"
+                          ? "bg-emerald-600 text-white shadow-md"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Jen 2026
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFreshnessFilter("latest")}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                        freshnessFilter === "latest"
+                          ? "bg-emerald-600 text-white shadow-md"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Jen platné
+                    </button>
                   </div>
-                  
-                  {/* Message latency and metadata details */}
-                  {msg.role === "assistant" && msg.latency_ms && (
-                    <div className="flex items-center gap-3 px-2 text-[10px] text-zinc-500 font-medium">
-                      <span>⚡ Latency: {msg.latency_ms} ms</span>
-                      <span className="w-1 h-1 rounded-full bg-zinc-600" />
-                      <span className="uppercase">Retriever: {msg.strategy}</span>
+                </div>
+              </div>
+
+              {/* Chat Messages Feed Area */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {messages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`flex gap-4 max-w-4xl ${msg.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"}`}
+                  >
+                    {/* Visual Avatar icons */}
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold shrink-0 ${
+                      msg.role === "user" 
+                        ? "bg-zinc-800 text-zinc-200" 
+                        : "bg-indigo-900/50 text-indigo-300 border border-indigo-500/20"
+                    }`}>
+                      {msg.role === "user" ? "U" : "AI"}
                     </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-indigo-600/90 text-white rounded-tr-none"
+                          : "glass-panel text-zinc-100 rounded-tl-none border-white/[0.03]"
+                      }`}>
+                        {renderMessageContent(msg)}
+                      </div>
+                      
+                      {/* Message latency and metadata details */}
+                      {msg.role === "assistant" && msg.latency_ms && (
+                        <div className="flex items-center gap-3 px-2 text-[10px] text-zinc-500 font-semibold font-mono">
+                          <span>⚡ Latency: {msg.latency_ms} ms</span>
+                          <span className="w-1 h-1 rounded-full bg-zinc-600" />
+                          <span className="uppercase">Retriever: {msg.strategy}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Simulated generation loading visual status indicators */}
+                {loading && (
+                  <div className="flex gap-4 mr-auto">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-900/50 text-indigo-300 border border-indigo-500/20 text-xs font-bold animate-pulse">
+                      AI
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <div className="glass-panel p-4 rounded-2xl rounded-tl-none border-white/[0.03]">
+                        <div className="flex items-center gap-3">
+                          <div className="flex gap-1">
+                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </div>
+                          <span className="text-xs text-indigo-400 font-medium">Vyhledávám v Azure PostgreSQL (filtry: {userRole}, {freshnessFilter}) a generuji odpověď...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Bottom Chat Input Form Bar */}
+              <div className="p-4 border-t border-white/[0.04] bg-[#070b13]/60 backdrop-blur-md">
+                <form onSubmit={handleSubmit} className="flex gap-3 max-w-4xl mx-auto relative">
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Zadejte dotaz (např. 'Jaká jsou pravidla pro whistleblowing?')..."
+                    className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/[0.06] text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
+                    disabled={loading}
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading || !query.trim()}
+                    className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px]"
+                  >
+                    Vyhledat
+                  </button>
+                </form>
+                <div className="text-[10px] text-center text-zinc-600 mt-2 font-medium">
+                  Podporováno hybridním retrievrem RRF (pgvector + full-text search)
+                </div>
+              </div>
+
+            </main>
+
+            {/* Right Sidebar: Citations drawer */}
+            <aside className={`fixed inset-y-0 right-0 z-50 flex flex-col w-[450px] border-l border-white/[0.08] bg-[#0c1222] shadow-2xl transition-all duration-300 transform ${
+              workspaceOpen ? "translate-x-0" : "translate-x-full"
+            } lg:relative lg:translate-x-0 lg:z-0 shrink-0`}>
+              
+              <div className="flex items-center justify-between p-4 border-b border-white/[0.05] bg-[#0f172a]">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📁</span>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Pracovní prostor citací</h3>
+                    <p className="text-[10px] text-zinc-500">Ověření groundedness a audit přístupu</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setWorkspaceOpen(false)}
+                  className="lg:hidden text-zinc-400 hover:text-white text-lg transition-colors p-1"
+                  title="Zavřít panel"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                {activeSource ? (
+                  <div className="space-y-4">
+                    
+                    {/* Source Document Section */}
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
+                      <span className="text-[9px] font-bold text-indigo-400 tracking-wider uppercase block mb-1">
+                        Zdrojový dokument (Kliknutím otevřete)
+                      </span>
+                      <h4 className="text-sm font-bold text-white leading-snug">
+                        <a
+                          href={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}${getSearchHash(activeSource)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-white hover:text-indigo-400 hover:underline transition-colors block"
+                          title={activeSource.page_number ? `Kliknutím otevřete PDF na straně ${activeSource.page_number}` : "Kliknutím otevřete celý PDF dokument"}
+                        >
+                          📄 {activeSource.title} {activeSource.page_number ? `(strana ${activeSource.page_number})` : ""}
+                        </a>
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">Číslo strany</span>
+                          <span className="font-semibold text-zinc-300 font-mono">Strana {activeSource.page_number || "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[10px]">Kapitola / Sekce</span>
+                          <span className="font-semibold text-zinc-300 truncate block" title={activeSource.section_title || "Několik sekcí"}>
+                            {activeSource.section_title || "Hlavní text"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cited Passage */}
+                    <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/[0.04] space-y-2">
+                      <span className="text-[9px] font-bold text-cyan-400 tracking-wider uppercase block">
+                        Citovaná pasáž
+                      </span>
+                      <div className="highlight-chunk">
+                        <p className="text-xs text-zinc-300 leading-relaxed font-mono">
+                          {activeSource.content}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Security Metrics */}
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] space-y-3">
+                      <span className="text-[9px] font-bold text-emerald-400 tracking-wider uppercase block">
+                        Bezpečnost a auditovatelnost
+                      </span>
+                      
+                      <div className="space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-500">Stav platnosti:</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] border font-bold uppercase tracking-wide ${
+                            activeSource.freshness_status === "current"
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          }`}>
+                            {activeSource.freshness_status === "current" ? "Platný" : "Archivováno"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-500">RRF Shoda (Fused score):</span>
+                          <span className="font-mono text-zinc-300 font-semibold">{activeSource.score.toFixed(6)}</span>
+                        </div>
+
+                        <div className="w-full h-px bg-white/5 my-2" />
+
+                        <div>
+                          <span className="text-zinc-500 block mb-1">Povolené skupiny (Security ACL):</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {activeSource.allowed_groups && activeSource.allowed_groups.length > 0 ? (
+                              activeSource.allowed_groups.map((group, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300 font-semibold"
+                                >
+                                  {group}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">
+                                Management
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-96 text-center text-zinc-600 gap-3 border border-dashed border-white/5 rounded-2xl p-6">
+                    <span className="text-3xl">🗂️</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-zinc-500">Prázdný pracovní prostor</h4>
+                      <p className="text-[10px] text-zinc-600 mt-1 max-w-[250px] mx-auto leading-relaxed">
+                        Klikněte na libovolnou citaci <span className="citation-badge">📄 Zdroj X</span> v odpovědi asistenta pro zobrazení podrobných informací a zobrazení celého dokumentu.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </aside>
+          </>
+        )}
+
+        {activeTab === "ingest" && (
+          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
+            {/* Ingestion drag & drop with review form */}
+            <div className="glass-panel p-6 flex flex-col gap-6 w-full max-w-3xl self-start border-white/[0.04]">
+              <div>
+                <h2 className="text-md font-bold text-white flex items-center gap-2">
+                  <span>📤</span> Nahrát a otagovat nový dokument
+                </h2>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Vložte PDF/TXT soubor. Umělá inteligence navrhne datum vydání, kategorii a vazby na archivní verze.
+                </p>
+              </div>
+
+              {/* Upload Drop Zone */}
+              {!fileToUpload ? (
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`flex flex-col items-center justify-center py-12 px-6 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-200 text-center ${
+                    isDragOver 
+                      ? "border-indigo-500 bg-indigo-500/5 text-zinc-200" 
+                      : "border-white/10 hover:border-white/20 bg-black/10 hover:bg-black/20 text-zinc-400"
+                  }`}
+                  onClick={() => document.getElementById("file-input-id")?.click()}
+                >
+                  <span className="text-3xl mb-3">📄</span>
+                  <p className="text-sm font-semibold text-zinc-300">
+                    Sem přetáhněte soubor směrnice
+                  </p>
+                  <p className="text-[10px] text-zinc-500 mt-1">
+                    nebo klikněte pro vyhledání (PDF, TXT, max 20 MB)
+                  </p>
+                  <input
+                    id="file-input-id"
+                    type="file"
+                    accept=".pdf,.txt"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/[0.05] rounded-xl">
+                  <div className="flex items-center gap-2.5 truncate">
+                    <span className="text-2xl shrink-0">📄</span>
+                    <div className="truncate">
+                      <p className="text-xs font-bold text-zinc-300 truncate">{fileToUpload.name}</p>
+                      <p className="text-[10px] text-zinc-500 font-mono">{(fileToUpload.size / 1024).toFixed(1)} kB</p>
+                    </div>
+                  </div>
+                  {!analyzingDraft && !ingestingConfirmed && (
+                    <button
+                      onClick={() => { setFileToUpload(null); setDraftResult(null); }}
+                      className="text-zinc-500 hover:text-red-400 text-sm font-bold p-1"
+                      title="Odebrat soubor"
+                    >
+                      ✕
+                    </button>
                   )}
                 </div>
-              </div>
-            ))}
+              )}
 
-            {/* Simulated generation loading visual status indicators */}
-            {loading && (
-              <div className="flex gap-4 mr-auto">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-900/50 text-indigo-300 border border-indigo-500/20 text-sm font-bold animate-pulse">
-                  AI
-                </div>
-                <div className="flex flex-col gap-2">
-                  <div className="glass-panel p-4 rounded-2xl rounded-tl-none border-white/[0.03]">
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
-                      </div>
-                      <span className="text-xs text-indigo-400 font-medium">Vyhledávám v Azure PostgreSQL (filtry: {userRole}, {freshnessFilter}) a generuji odpověď...</span>
-                    </div>
+              {/* Loader while LLM parses document draft */}
+              {analyzingDraft && (
+                <div className="flex flex-col items-center justify-center py-10 gap-3 border border-indigo-500/10 rounded-2xl bg-indigo-500/[0.01] animate-pulse">
+                  <div className="flex gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
+                  <span className="text-xs text-indigo-400 font-bold">LLM analyzuje dokument (kategorie, data, vazby)...</span>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Bottom Chat Input Form Bar */}
-          <div className="p-4 border-t border-white/[0.04] bg-[#070b13]/60 backdrop-blur-md">
-            <form onSubmit={handleSubmit} className="flex gap-3 max-w-4xl mx-auto relative">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Zadejte dotaz (např. 'Jaká jsou pravidla pro registr smluv?')..."
-                className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/[0.06] text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
-                disabled={loading}
-              />
-              <button
-                type="submit"
-                disabled={loading || !query.trim()}
-                className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px]"
-              >
-                Odeslat
-              </button>
-            </form>
-            <div className="text-[10px] text-center text-zinc-600 mt-2">
-              Podporováno hybridním retrievrem RRF (pgvector + full-text search)
-            </div>
-          </div>
-
-        </main>
-
-        {/* Right Sidebar: Grounded Citations Document Preview Workspace */}
-        <aside className={`fixed inset-y-0 right-0 z-50 flex flex-col w-[450px] border-l border-white/[0.08] bg-[#0c1222] shadow-2xl transition-all duration-300 transform ${
-          workspaceOpen ? "translate-x-0" : "translate-x-full"
-        } lg:relative lg:translate-x-0 lg:z-0`}>
-          
-          {/* Citation Sidebar Header */}
-          <div className="flex items-center justify-between p-4 border-b border-white/[0.05] bg-[#0f172a]">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">📁</span>
-              <div>
-                <h3 className="text-sm font-bold text-white">Pracovní prostor citací</h3>
-                <p className="text-[10px] text-zinc-500">Ověření groundedness a audit přístupu</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setWorkspaceOpen(false)}
-              className="lg:hidden text-zinc-400 hover:text-white text-lg transition-colors p-1"
-              title="Zavřít panel"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Citation Workspace Body */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            {activeSource ? (
-              <div className="space-y-4">
-                
-                {/* 1. Header Metadata Section */}
-                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
-                  <span className="text-[9px] font-bold text-indigo-400 tracking-wider uppercase block mb-1">
-                    Zdrojový dokument (Kliknutím otevřete)
-                  </span>
-                  <h4 className="text-sm font-bold text-white leading-snug">
-                    <a
-                      href={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}${getSearchHash(activeSource)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-white hover:text-indigo-400 hover:underline transition-colors block"
-                      title={activeSource.page_number ? `Kliknutím otevřete PDF na straně ${activeSource.page_number}` : "Kliknutím otevřete celý PDF dokument v nové záložce"}
-                    >
-                      📄 {activeSource.title} {activeSource.page_number ? `(strana ${activeSource.page_number})` : ""}
-                    </a>
-                  </h4>
-                  <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">Číslo strany</span>
-                      <span className="font-semibold text-zinc-300">Strana {activeSource.page_number || "N/A"}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">Kapitola / Sekce</span>
-                      <span className="font-semibold text-zinc-300 truncate block" title={activeSource.section_title || "Několik sekcí"}>
-                        {activeSource.section_title || "Hlavní text"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Text Segment Content */}
-                <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/[0.04] space-y-2">
-                  <span className="text-[9px] font-bold text-cyan-400 tracking-wider uppercase block">
-                    Citovaná pasáž
-                  </span>
-                  <div className="highlight-chunk">
-                    <p className="text-xs text-zinc-300 leading-relaxed font-mono">
-                      {activeSource.content}
-                    </p>
-                  </div>
-                </div>
-
-                {/* 3. Security, ACL and Governance parameters */}
-                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] space-y-3">
-                  <span className="text-[9px] font-bold text-emerald-400 tracking-wider uppercase block">
-                    Bezpečnost a auditovatelnost
-                  </span>
+              {/* Editable suggestions form */}
+              {draftResult && (
+                <form onSubmit={handleConfirmIngest} className="space-y-4">
+                  <div className="h-px bg-white/5 my-2" />
                   
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-500">Stav čerstvosti (Freshness):</span>
-                      <span className={`px-2 py-0.5 rounded text-[10px] border font-semibold uppercase ${
-                        activeSource.freshness_status === "current"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                          : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                      }`}>
-                        {activeSource.freshness_status === "current" ? "Platný (Current)" : "Archivováno"}
-                      </span>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Název směrnice</label>
+                    <input
+                      type="text"
+                      value={confirmedTitle}
+                      onChange={(e) => setConfirmedTitle(e.target.value)}
+                      className="w-full bg-black/40 border border-white/[0.08] text-xs text-white rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Datum vydání</label>
+                      <input
+                        type="date"
+                        value={confirmedDate}
+                        onChange={(e) => setConfirmedDate(e.target.value)}
+                        className="w-full bg-black/40 border border-white/[0.08] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 font-mono"
+                        required
+                      />
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-500">RRF Shoda (Fused score):</span>
-                      <span className="font-mono text-zinc-300 font-semibold">{activeSource.score.toFixed(6)}</span>
-                    </div>
-
-                    <div className="w-full h-px bg-white/5 my-2" />
-
-                    <div>
-                      <span className="text-zinc-500 block mb-1">Povolené skupiny (Security ACL):</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Management</span>
-                        {(activeSource.title.toLowerCase().includes("organizacni") || activeSource.title.toLowerCase().includes("150") || activeSource.title.toLowerCase().includes("whistleblowing") || activeSource.title.toLowerCase().includes("170")) && (
-                          <>
-                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
-                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Finance</span>
-                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">User</span>
-                          </>
-                        )}
-                        {(activeSource.title.toLowerCase().includes("podpisovy") || activeSource.title.toLowerCase().includes("160")) && (
-                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">HR</span>
-                        )}
-                        {(activeSource.title.toLowerCase().includes("obchod") || activeSource.title.toLowerCase().includes("marketing") || activeSource.title.toLowerCase().includes("300")) && (
-                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">Finance</span>
-                        )}
-                        {(activeSource.title.toLowerCase().includes("projektovy") || activeSource.title.toLowerCase().includes("310")) && (
-                          <span className="px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-[10px] text-zinc-300">User</span>
-                        )}
-                      </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Kategorie (Bezpečnostní ACL)</label>
+                      <select
+                        value={confirmedCategory}
+                        onChange={(e) => setConfirmedCategory(e.target.value)}
+                        className="w-full bg-black/60 border border-white/[0.08] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                        required
+                      >
+                        {config?.categories.map((cat) => (
+                          <option key={cat.key} value={cat.key}>
+                            {cat.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                </div>
 
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-96 text-center text-zinc-600 gap-3 border border-dashed border-white/5 rounded-2xl p-6">
-                <span className="text-3xl">🗂️</span>
-                <div>
-                  <h4 className="text-xs font-bold text-zinc-500">Prázdný pracovní prostor</h4>
-                  <p className="text-[10px] text-zinc-600 mt-1 max-w-[250px] mx-auto">
-                    Klikněte na libovolnou citaci <span className="citation-badge">📄 Zdroj X</span> v odpovědi asistenta pro zobrazení podrobných informací a zobrazení celého dokumentu.
-                  </p>
+                  {/* Replacement / Modification relationships */}
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] space-y-3">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                      Vztah k ostatním dokumentům
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-zinc-500 block">Typ vztahu</label>
+                        <select
+                          value={confirmedRelType}
+                          onChange={(e) => setConfirmedRelType(e.target.value)}
+                          className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
+                        >
+                          <option value="none">Nemá vztah</option>
+                          <option value="replaces">🔄 Nahrazuje původní</option>
+                          <option value="modifies">✏️ Upravuje / Doplňuje</option>
+                        </select>
+                      </div>
+
+                      {confirmedRelType !== "none" && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-zinc-500 block">Cílový dokument</label>
+                          <select
+                            value={confirmedRelTargetId}
+                            onChange={(e) => setConfirmedRelTargetId(e.target.value)}
+                            className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
+                            required
+                          >
+                            <option value="">-- Vyberte dokument --</option>
+                            {documents.map((doc) => (
+                              <option key={doc.document_id} value={doc.document_id}>
+                                {doc.title}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {confirmedRelType === "replaces" && (
+                      <p className="text-[9px] text-amber-500 font-semibold leading-relaxed">
+                        ⚠️ Upozornění: Po dokončení bude cílový dokument automaticky označen jako 'archivní' (včetně jeho vyhledávacích pasáží) a bude ve výchozím nastavení skryt z vyhledávání.
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={ingestingConfirmed}
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px] flex items-center justify-center gap-2"
+                  >
+                    {ingestingConfirmed ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Probíhá zpracování, tvorba embedings a ukládání...
+                      </>
+                    ) : (
+                      "Potvrdit metadata a naimportovat"
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {/* Status Alert logs */}
+              {ingestStatus && (
+                <div className={`p-4 rounded-xl border text-xs leading-relaxed ${
+                  ingestStatus.type === "success" 
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
+                    : "bg-red-500/10 text-red-400 border-red-500/20"
+                }`}>
+                  <p className="font-bold mb-1">{ingestStatus.type === "success" ? "✓ Úspěch:" : "❌ Chyba:"}</p>
+                  <p>{ingestStatus.message}</p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
+        )}
 
-        </aside>
+        {activeTab === "config" && (
+          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
+            {/* Right Box: Dynamic categories configuration manager */}
+            <div className="glass-panel p-6 flex flex-col gap-6 w-full max-w-3xl self-start border-white/[0.04]">
+              <div>
+                <h2 className="text-md font-bold text-white flex items-center gap-2">
+                  <span>⚙️</span> Konfigurace kategorií a AI pravidel
+                </h2>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Měňte názvy kategorií, popisy pro LLM klasifikátor a bezpečnostní role. Změna se projeví v celé aplikaci.
+                </p>
+              </div>
+
+              {editingConfig ? (
+                <div className="space-y-5">
+                  <div className="space-y-3">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                      Seznam kategorií (Readjustuje celou aplikaci)
+                    </span>
+
+                    {editingConfig.categories.map((cat, idx) => (
+                      <div 
+                        key={cat.key}
+                        className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.04] space-y-3"
+                      >
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <span className="text-[10px] text-zinc-600 block">Klíč (ID)</span>
+                            <span className="text-xs font-mono font-bold text-zinc-500 block truncate" title={cat.key}>{cat.key}</span>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-zinc-500 block">Název (Štítek)</label>
+                            <input
+                              type="text"
+                              value={cat.label}
+                              onChange={(e) => handleCategoryFieldChange(idx, "label", e.target.value)}
+                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-zinc-500 block">Skupina (role_name)</label>
+                            <input
+                              type="text"
+                              value={cat.role_name || ""}
+                              onChange={(e) => handleCategoryFieldChange(idx, "role_name", e.target.value)}
+                              placeholder="e.g. HR"
+                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-zinc-500 block">Popis kategorie pro AI (Určuje chování LLM klasifikátoru)</label>
+                          <textarea
+                            value={cat.description}
+                            onChange={(e) => handleCategoryFieldChange(idx, "description", e.target.value)}
+                            className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 h-14 resize-none focus:outline-none focus:border-indigo-500 leading-normal"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-zinc-500 block">Bezpečnostní skupiny (Pills pro ACL)</label>
+                          <CategoryTagInput
+                            allowedGroups={cat.allowed_groups}
+                            onChange={(groups) => handleAllowedGroupsChange(idx, groups)}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* General LLM Analysis Rules */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                      Obecná pravidla pro analýzu dokumentů
+                    </label>
+                    <textarea
+                      value={editingConfig.analysis_rules}
+                      onChange={(e) => handleRulesChange(e.target.value)}
+                      className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-300 rounded px-3 py-2.5 h-20 resize-none focus:outline-none focus:border-indigo-500 leading-normal"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleSaveConfig}
+                    disabled={savingConfig}
+                    className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all shadow-lg shadow-cyan-600/10 disabled:opacity-50"
+                  >
+                    {savingConfig ? "Ukládám a rekonfiguruji..." : "Uložit konfiguraci a pravidla"}
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xs text-zinc-500 text-center py-6">
+                  Načítám konfigurační soubory...
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

@@ -26,6 +26,9 @@ Phase 2 Next.js Dashboard Client (conversational chat workspace, inline citation
 Phase 2/3 Productization (Granular Security ACLs, Dynamic Freshness Filters, Blob Storage client, inline streamed PDF viewer, target="_blank" direct document links, and dynamic page-scrolling PDF links) - [x] Completed.
 Phase 2/3 Productization (resilient dynamic PDF highlight annotations via character-mapping sliding-window matching and line-by-line merging) - [x] Completed.
 Transition to Dolphin Consulting (universal product branding, parallel database setup, and new corporate document ingestion) - [x] Completed.
+Phase 2/3 Metadata Auto-Tagging & dynamic category administration panel (drag-and-drop analysis, release date parsing, replacement relationships, archival updates, custom rules configuration editor) - [x] Completed.
+Phase 2/3 Cloud Deployment Guide (Azure Container Apps packaging and publishing guide) - [x] Completed.
+Phase 2/3 Universal category IDs, persistent blob configuration, background reindexing trigger and UI refinements - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 

@@ -27,6 +27,15 @@ async def main():
 
     db = SessionLocal()
     pipeline = IngestionPipeline(db)
+    
+    # Imports for dynamic metadata analysis
+    from app.ingestion.tagger import MetadataTagger
+    from app.storage.models import DBDocument, DBChunk
+    import uuid
+    import datetime
+
+    tagger = MetadataTagger(db_session=db)
+    config = await tagger.load_config()
 
     # 3. Scan data directory for PDFs
     data_dir = os.path.abspath("data")
@@ -44,82 +53,118 @@ async def main():
         db.close()
         return
 
-    # 4. Process files sequentially in RAG pipeline
-    success_count = 0
-    import datetime
+    # 4. Phase A: Analyze metadata for all files to sort them chronologically
+    logger.info("Running dynamic MetadataTagger analysis phase...")
+    analyzed_docs = []
     for file_path in files:
-        file_name = os.path.basename(file_path)
         try:
-            logger.info(f"Processing file: {file_path}")
-            
-            # Formulate realistic corporate security ACLs, freshness statuses and creation dates based on PDF filenames
-            if "organizacni" in file_name.lower() or "150" in file_name.lower():
-                # S-10.150 Organizační řád (Public)
-                security_acl = {"allowed_groups": ["Management", "HR", "Finance", "User"]}
-                metadata = {
-                    "freshness_status": "archived",
-                    "created_at": datetime.datetime(2026, 1, 10, 9, 0, 0),
-                    "department": "Management",
-                    "year": 2026,
-                }
-            elif "podpisovy" in file_name.lower() or "160" in file_name.lower():
-                # S-10.160 Podpisový řád (Management & HR only)
-                security_acl = {"allowed_groups": ["Management", "HR"]}
-                metadata = {
-                    "freshness_status": "current",
-                    "created_at": datetime.datetime(2026, 2, 15, 10, 0, 0),
-                    "department": "HR",
-                    "year": 2026,
-                }
-            elif "whistleblowing" in file_name.lower() or "170" in file_name.lower():
-                # S-10.170 Whistleblowing (Public)
-                security_acl = {"allowed_groups": ["Management", "HR", "Finance", "User"]}
-                metadata = {
-                    "freshness_status": "current",
-                    "created_at": datetime.datetime(2026, 3, 1, 11, 0, 0),
-                    "department": "HR",
-                    "year": 2026,
-                }
-            elif "obchod" in file_name.lower() or "marketing" in file_name.lower() or "300" in file_name.lower():
-                # S-10.300 Obchod a Marketing (Management & Finance only)
-                security_acl = {"allowed_groups": ["Management", "Finance"]}
-                metadata = {
-                    "freshness_status": "current",
-                    "created_at": datetime.datetime(2026, 4, 20, 13, 0, 0),
-                    "department": "Finance",
-                    "year": 2026,
-                }
-            elif "projektovy" in file_name.lower() or "310" in file_name.lower():
-                # S-10.310 Projektový management (Management & User)
-                security_acl = {"allowed_groups": ["Management", "User"]}
-                metadata = {
-                    "freshness_status": "current",
-                    "created_at": datetime.datetime(2026, 5, 12, 14, 0, 0),
-                    "department": "Management",
-                    "year": 2026,
-                }
-            else:
-                # Default fallback
-                security_acl = {"allowed_groups": ["Management", "User"]}
-                metadata = {
-                    "freshness_status": "current",
-                    "created_at": datetime.datetime.utcnow(),
-                    "department": "Public",
-                    "year": 2026,
-                }
+            suggestions = await tagger.analyze_file(file_path)
+            analyzed_docs.append({
+                "file_path": file_path,
+                "suggestions": suggestions
+            })
+        except Exception as e:
+            logger.error(f"Failed to analyze file {file_path}: {e}")
 
-            await pipeline.ingest_file(
+    def get_sort_date(item):
+        date_str = item["suggestions"].get("suggested_date")
+        try:
+            return datetime.datetime.strptime(date_str, "%Y-%m-%d")
+        except Exception:
+            return datetime.datetime.min
+
+    analyzed_docs.sort(key=get_sort_date)
+
+    # 5. Phase B: Process files sequentially in chronological order
+    success_count = 0
+    for item in analyzed_docs:
+        file_path = item["file_path"]
+        sug = item["suggestions"]
+        title = sug["title"]
+        category_key = sug["suggested_category"]
+        date_str = sug["suggested_date"]
+        rel = sug["relationship"]
+
+        try:
+            logger.info(f"Ingesting file: {file_path} (Classified category key: {category_key})")
+            
+            # Resolve allowed groups from dynamic config
+            category_item = None
+            for cat in config.get("categories", []):
+                if cat.get("key") == category_key:
+                    category_item = cat
+                    break
+
+            if not category_item:
+                allowed_groups = ["Management", "HR", "Finance", "User"]
+            else:
+                allowed_groups = category_item.get("allowed_groups", ["Management", "HR", "Finance", "User"])
+
+            security_acl = {"allowed_groups": allowed_groups}
+
+            try:
+                release_date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+            except Exception:
+                release_date = datetime.datetime.utcnow()
+
+            # Metadata dict
+            metadata = {
+                "department": category_key,
+                "year": release_date.year,
+                "created_at": release_date.isoformat(),
+                "freshness_status": "current",
+                "relationship_type": rel.get("relationship_type", "none"),
+            }
+
+            # Check if replaces target
+            rel_type = rel.get("relationship_type", "none")
+            target_doc = None
+            if rel_type == "replaces" and rel.get("target_document_id"):
+                try:
+                    target_uuid = uuid.UUID(rel.get("target_document_id"))
+                    target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid).first()
+                    if target_doc:
+                        logger.info(f"Archiving replaced document: {target_doc.title}")
+                        target_doc.freshness_status = "archived"
+                        if not target_doc.metadata_json:
+                            target_doc.metadata_json = {}
+                        target_doc.metadata_json["replaced_by_document_title"] = title
+                        
+                        db.query(DBChunk).filter(DBChunk.document_id == target_uuid).update(
+                            {"freshness_status": "archived"}
+                        )
+                        metadata["replaces_document_id"] = str(target_uuid)
+                        metadata["replaces_document_title"] = target_doc.title
+                        db.flush()
+                except Exception as ex:
+                    logger.error(f"Archival relationship error: {ex}")
+
+            elif rel_type == "modifies" and rel.get("target_document_id"):
+                metadata["modifies_document_id"] = rel.get("target_document_id")
+                metadata["modifies_document_title"] = rel.get("target_document_title")
+
+            doc = await pipeline.ingest_file(
                 file_path=file_path,
                 document_type="policy" if "policy" in file_path.lower() else "document",
                 security_acl=security_acl,
                 metadata_json=metadata,
             )
+            doc.title = title
+            doc.created_at = release_date
+
+            if target_doc:
+                target_doc.metadata_json["replaced_by_document_id"] = str(doc.document_id)
+                db.add(target_doc)
+
+            db.commit()
             success_count += 1
         except Exception as e:
+            db.rollback()
             logger.error(f"Failed to ingest file {file_path}: {e}")
 
     db.close()
     logger.info(f"Full refresh ingestion complete. Discovered: {len(files)}, successfully processed: {success_count}.")
+
 
 
 if __name__ == "__main__":

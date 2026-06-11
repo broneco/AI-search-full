@@ -191,6 +191,7 @@ class VectorRetriever(BaseRetriever):
                     metadata={
                         **(doc.metadata_json or {}),
                         **(chunk.metadata_json or {}),
+                        "allowed_groups": doc.security_acl.get("allowed_groups", []) if doc.security_acl else [],
                     },
                 )
             )

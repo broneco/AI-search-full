@@ -22,3 +22,32 @@ class DocumentIngestResponse(BaseModel):
     chunk_id: str
     title: str
     status: str
+
+
+class RelationshipInfo(BaseModel):
+    relationship_type: str = Field("none", description="replaces, modifies or none")
+    target_document_id: Optional[str] = Field(None, description="UUID of target document")
+    target_document_title: Optional[str] = Field(None, description="Title of target document")
+
+
+class DocumentConfirmedIngestRequest(BaseModel):
+    title: str = Field(..., description="Document title")
+    date: str = Field(..., description="Release date in YYYY-MM-DD")
+    category: str = Field(..., description="Selected category key")
+    relationship: RelationshipInfo = Field(default_factory=RelationshipInfo)
+    temp_file_path: str = Field(..., description="Path to the temporary file on disk")
+    original_filename: str = Field(..., description="Original filename")
+
+
+class CategoryItem(BaseModel):
+    key: str
+    label: str
+    description: str
+    allowed_groups: List[str]
+    role_name: Optional[str] = None
+
+
+class CategoryConfigRequest(BaseModel):
+    categories: List[CategoryItem]
+    analysis_rules: str
+

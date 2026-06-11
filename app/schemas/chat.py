@@ -11,6 +11,7 @@ class ChatSource(BaseModel):
     page_number: Optional[int] = None
     freshness_status: str
     score: float
+    allowed_groups: List[str] = []
 
 
 class ChatMetadata(BaseModel):
