@@ -321,10 +321,51 @@ async def get_categories(db: Session = Depends(get_db_session)):
 
 @router.post("/categories")
 async def update_categories(request: CategoryConfigRequest, db: Session = Depends(get_db_session)):
-    """Save the updated classification configuration to Blob Storage and disk."""
+    """Save the updated classification configuration to Blob Storage and disk, and execute migrations if any."""
     from app.ingestion.tagger import MetadataTagger
     tagger = MetadataTagger(db_session=db)
-    await tagger.save_config(request.model_dump())
+    
+    # Save the config (excluding category_migrations since it shouldn't persist in json)
+    config_dict = request.model_dump(exclude={"category_migrations"})
+    await tagger.save_config(config_dict)
+    
+    # Process category migrations in database
+    if request.category_migrations:
+        for deleted_key, replacement_key in request.category_migrations.items():
+            logger.info(f"Migrating documents from category {deleted_key} to {replacement_key}")
+            
+            # Find the allowed groups of the replacement category in the request
+            replacement_cat = next((c for c in request.categories if c.key == replacement_key), None)
+            if not replacement_cat:
+                logger.warning(f"Replacement category {replacement_key} not found in the new configuration.")
+                continue
+                
+            allowed_groups = replacement_cat.allowed_groups
+            security_acl_val = {"allowed_groups": allowed_groups}
+            
+            # Fetch and update all documents belonging to the deleted category key
+            documents_to_migrate = db.query(DBDocument).all()
+            migrated_count = 0
+            for doc in documents_to_migrate:
+                if doc.metadata_json and doc.metadata_json.get("department") == deleted_key:
+                    # Update metadata
+                    meta = dict(doc.metadata_json)
+                    meta["department"] = replacement_key
+                    doc.metadata_json = meta
+                    
+                    # Update security ACL on document
+                    doc.security_acl = security_acl_val
+                    
+                    # Update security ACL and freshness status on its chunks
+                    db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).update(
+                        {"security_acl": security_acl_val}
+                    )
+                    migrated_count += 1
+            
+            if migrated_count > 0:
+                db.commit()
+                logger.info(f"Successfully migrated {migrated_count} documents from {deleted_key} to {replacement_key}")
+                
     return {"status": "success", "message": "Kategorie byly úspěšně uloženy."}
 
 

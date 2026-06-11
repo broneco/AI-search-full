@@ -50,4 +50,5 @@ class CategoryItem(BaseModel):
 class CategoryConfigRequest(BaseModel):
     categories: List[CategoryItem]
     analysis_rules: str
+    category_migrations: Optional[Dict[str, str]] = None
 

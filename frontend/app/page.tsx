@@ -181,6 +181,12 @@ export default function Home() {
   const [editingConfig, setEditingConfig] = useState<Config | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
 
+  // Category migrations state (keeps track of where to migrate documents of deleted categories)
+  const [categoryMigrations, setCategoryMigrations] = useState<Record<string, string>>({});
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [deletingCatIndex, setDeletingCatIndex] = useState<number | null>(null);
+  const [migrationTargetKey, setMigrationTargetKey] = useState<string>("");
+
   // Application State
   const [query, setQuery] = useState("");
   const [searchStrategy, setSearchStrategy] = useState<"hybrid" | "vector" | "keyword">("hybrid");
@@ -598,27 +604,57 @@ export default function Home() {
       alert("Musíte ponechat alespoň jednu kategorii.");
       return;
     }
-    if (confirm("Opravdu chcete tuto kategorii odebrat? Změna se projeví až po uložení konfigurace.")) {
-      const updated = editingConfig.categories.filter((_, idx) => idx !== index);
-      setEditingConfig({ ...editingConfig, categories: updated });
+    
+    setDeletingCatIndex(index);
+    const remaining = editingConfig.categories.filter((_, idx) => idx !== index);
+    if (remaining.length > 0) {
+      setMigrationTargetKey(remaining[0].key);
     }
+    setShowMigrationModal(true);
+  };
+
+  const handleConfirmCategoryDeletion = () => {
+    if (!editingConfig || deletingCatIndex === null) return;
+    
+    const catToDelete = editingConfig.categories[deletingCatIndex];
+    const updated = editingConfig.categories.filter((_, idx) => idx !== deletingCatIndex);
+    
+    setCategoryMigrations(prev => ({
+      ...prev,
+      [catToDelete.key]: migrationTargetKey
+    }));
+    
+    setEditingConfig({ ...editingConfig, categories: updated });
+    setShowMigrationModal(false);
+    setDeletingCatIndex(null);
   };
 
   const handleSaveConfig = async () => {
     if (!editingConfig) return;
     setSavingConfig(true);
     try {
+      const payload = {
+        ...editingConfig,
+        category_migrations: categoryMigrations
+      };
+
       const res = await fetch(`${BACKEND_URL}/api/documents/categories`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(editingConfig)
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
+        setCategoryMigrations({});
         await fetchConfig();
-        const runReindex = confirm("Konfigurace byla úspěšně uložena. Chcete nyní spustit znovunačtení (reindexaci) všech dokumentů na pozadí?");
+        const promptMsg = (
+          "Konfigurace byla úspěšně uložena a existující dokumenty byly bezpečně převedeny do náhradních kategorií.\n\n" +
+          "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
+          "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva. Pokud reindexaci nespustíte, stávající dokumenty zůstanou bezpečně uloženy pod nově přiřazenými skupinami."
+        );
+        const runReindex = confirm(promptMsg);
         if (runReindex) {
           try {
             const reindexRes = await fetch(`${BACKEND_URL}/api/documents/reindex-all`, {
@@ -1518,6 +1554,65 @@ export default function Home() {
         )}
 
       </div>
+
+      {/* Dynamic Category Migration Modal */}
+      {showMigrationModal && deletingCatIndex !== null && editingConfig && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="glass-panel max-w-md w-full p-6 space-y-4 border-white/[0.08] shadow-2xl bg-[#0c1222]">
+            <div>
+              <h3 className="text-md font-bold text-white flex items-center gap-2">
+                <span>⚠️</span> Převod dokumentů před smazáním
+              </h3>
+              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                Chystáte se smazat kategorii <span className="font-bold text-indigo-400">"{editingConfig.categories[deletingCatIndex]?.label}"</span>.
+                V databázi mohou existovat dokumenty spojené s touto kategorií. 
+              </p>
+              <p className="text-[11px] text-amber-500 font-semibold mt-2 leading-relaxed">
+                Z bezpečnostních důvodů vyberte, do které zbývající kategorie se mají tyto dokumenty bezpečně převést, aby se zabránilo jejich zneveřejnění (úniku dat do veřejné zóny):
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                Cílová kategorie pro dokumenty
+              </label>
+              <select
+                value={migrationTargetKey}
+                onChange={(e) => setMigrationTargetKey(e.target.value)}
+                className="w-full bg-[#090d16] border border-white/[0.08] text-xs text-white rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+              >
+                {editingConfig.categories
+                  .filter((_, idx) => idx !== deletingCatIndex)
+                  .map((cat) => (
+                    <option key={cat.key} value={cat.key}>
+                      {cat.label} ({cat.role_name || "bez role"})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMigrationModal(false);
+                  setDeletingCatIndex(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-zinc-400 hover:text-white hover:bg-white/5 text-xs font-bold transition-all cursor-pointer text-center"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCategoryDeletion}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all cursor-pointer text-center"
+              >
+                Potvrdit a převést
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

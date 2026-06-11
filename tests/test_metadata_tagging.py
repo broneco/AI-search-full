@@ -218,3 +218,82 @@ async def test_ingest_confirmed_with_archival(mock_embed, db_setup, tmp_path):
     assert "HR" in new_doc.security_acl["allowed_groups"]
     assert "Management" in new_doc.security_acl["allowed_groups"]
     assert "User" not in new_doc.security_acl["allowed_groups"]
+
+
+@pytest.mark.anyio
+async def test_category_migration_api_endpoint(db_setup):
+    db = db_setup
+
+    # 1. Fetch current config to restore it later
+    get_res = client.get("/api/documents/categories")
+    assert get_res.status_code == 200
+    original_config = get_res.json()
+
+    # 2. Seed a document and chunk in the deleted category
+    doc = DBDocument(
+        source_type="local",
+        source_uri="file://test_migrated.pdf",
+        title="Migrated Document",
+        document_type="policy",
+        freshness_status="current",
+        security_acl={"allowed_groups": ["SecretGroup"]},
+        metadata_json={"department": "DELETED_CAT_UUID"},
+        created_at=datetime.datetime.utcnow(),
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    
+    chunk = DBChunk(
+        document_id=doc.document_id,
+        chunk_index=0,
+        content="Migrated chunk content.",
+        embedding=[0.0] * 1536,
+        freshness_status="current",
+        security_acl={"allowed_groups": ["SecretGroup"]}
+    )
+    db.add(chunk)
+    db.commit()
+
+    # 3. Request categories configuration update with migrations
+    new_categories = [
+        {
+            "key": "REPLACEMENT_CAT_UUID",
+            "label": "Replacement Cat",
+            "description": "Allowed group for replacements",
+            "allowed_groups": ["ReplacementGroup"],
+            "role_name": "ReplacementRole"
+        }
+    ]
+    payload = {
+        "categories": new_categories,
+        "analysis_rules": "Test migration rules",
+        "category_migrations": {
+            "DELETED_CAT_UUID": "REPLACEMENT_CAT_UUID"
+        }
+    }
+
+    try:
+        res = client.post("/api/documents/categories", json=payload)
+        assert res.status_code == 200
+        assert res.json()["status"] == "success"
+
+        # Refresh session
+        db.expire_all()
+
+        # 4. Verify document was migrated
+        migrated_doc = db.query(DBDocument).filter(DBDocument.document_id == doc.document_id).first()
+        assert migrated_doc.metadata_json["department"] == "REPLACEMENT_CAT_UUID"
+        assert migrated_doc.security_acl["allowed_groups"] == ["ReplacementGroup"]
+
+        # Verify chunk was migrated
+        migrated_chunk = db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).first()
+        assert migrated_chunk.security_acl["allowed_groups"] == ["ReplacementGroup"]
+
+    finally:
+        # Restore original configuration
+        client.post("/api/documents/categories", json=original_config)
+        # Clean up database records
+        db.delete(chunk)
+        db.delete(doc)
+        db.commit()
