@@ -15,6 +15,56 @@ from app.schemas.documents import RelationshipInfo, DocumentConfirmedIngestReque
 client = TestClient(app)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def categories_setup(db_setup):
+    import copy
+    # 1. Fetch current config to back it up
+    get_res = client.get("/api/documents/categories")
+    original_config = get_res.json() if get_res.status_code == 200 else None
+
+    # 2. Seed standard categories for the duration of tests
+    test_config = {
+        "categories": [
+            {
+                "key": "Management",
+                "label": "Management",
+                "description": "Dokumenty pro vedení",
+                "allowed_groups": ["Management"],
+                "role_name": "Management"
+            },
+            {
+                "key": "HR",
+                "label": "HR",
+                "description": "Dokumenty pro HR",
+                "allowed_groups": ["Management", "HR"],
+                "role_name": "HR"
+            },
+            {
+                "key": "Finance",
+                "label": "IT",
+                "description": "Dokumenty pro IT",
+                "allowed_groups": ["Management", "IT"],
+                "role_name": "IT"
+            },
+            {
+                "key": "User",
+                "label": "User",
+                "description": "Dokumenty pro User",
+                "allowed_groups": ["Management", "HR", "IT", "User"],
+                "role_name": "User"
+            }
+        ],
+        "analysis_rules": "Test rules"
+    }
+    client.post("/api/documents/categories", json=test_config)
+
+    yield
+
+    # 3. Restore original config
+    if original_config:
+        client.post("/api/documents/categories", json=original_config)
+
+
 @pytest.fixture(scope="module")
 def db_setup():
     init_db()
