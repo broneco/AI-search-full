@@ -100,3 +100,16 @@ This test suite validates the **Automated Metadata Tagging and Archival System**
   * Deep-copies the active configuration, appends a new group (`"SpecialGroup"`) to `"HR"`'s allowed groups list, and posts the updated config.
   * Asserts that the database automatically identifies all matching records and updates the document and chunk `security_acl` allowed groups to `["Management", "HR", "SpecialGroup"]` immediately.
   * Cleans up database records and restores the original configuration from the deep-copied backup.
+
+---
+
+### Test 9: `test_category_role_rename_propagation`
+* **High-Level Purpose:**
+  We verify that renaming a category's group/role name (e.g. from `IT` to `Test`) automatically renames all occurrences of that group name in the allowed groups configurations of all categories, and dynamically propagates the updated allowed groups to all matching database documents and chunks (including public categories like `User` that allow multiple groups).
+* **Low-Level Technical Details:**
+  * Seeds a document and chunk for category `"Finance"` with allowed groups `["Management", "IT"]`.
+  * Seeds a document and chunk for category `"User"` (public) with allowed groups `["Management", "HR", "IT", "User"]`.
+  * Sends a `POST` request to `/api/documents/categories` with the `"Finance"` category's `role_name` updated to `"Test"`, leaving the rest of the configuration (including original `"IT"` allowed groups) unchanged.
+  * Asserts that the server automatically detects the role rename, replaces `"IT"` with `"Test"` in all categories' `allowed_groups`, and saves the updated configuration.
+  * Asserts that all matching documents and chunks in the database for both the renamed category and the public `"User"` category have their `security_acl` allowed groups updated to replace `"IT"` with `"Test"` immediately.
+  * Cleans up database records and restores the original configuration.

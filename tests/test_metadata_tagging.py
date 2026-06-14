@@ -419,3 +419,126 @@ async def test_category_allowed_groups_propagation(db_setup):
         db.delete(chunk)
         db.delete(doc)
         db.commit()
+
+
+@pytest.mark.anyio
+async def test_category_role_rename_propagation(db_setup):
+    import copy
+    db = db_setup
+
+    # 1. Fetch original categories configuration
+    original_config = client.get("/api/documents/categories").json()
+    original_config_backup = copy.deepcopy(original_config)
+
+    # Force a known starting state: "Finance" role_name is "IT", allowed_groups contains "IT"
+    # and "User" allowed_groups contains "IT"
+    start_payload = copy.deepcopy(original_config)
+    for cat in start_payload["categories"]:
+        if cat["key"] == "Finance":
+            cat["role_name"] = "IT"
+            cat["allowed_groups"] = ["Management", "IT"]
+        elif cat["key"] == "User":
+            cat["allowed_groups"] = ["Management", "HR", "IT", "User"]
+                
+    # Save the starting configuration
+    start_res = client.post("/api/documents/categories", json=start_payload)
+    assert start_res.status_code == 200
+
+    # 2. Add two documents: one in Finance (which has group IT) and one in User (which has group IT)
+    doc_fin = DBDocument(
+        source_type="local",
+        source_uri="file://test_rename_fin.pdf",
+        title="Test Rename Finance Doc",
+        document_type="policy",
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "IT"]},
+        metadata_json={"department": "Finance", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(doc_fin)
+    
+    doc_user = DBDocument(
+        source_type="local",
+        source_uri="file://test_rename_user.pdf",
+        title="Test Rename User Doc",
+        document_type="policy",
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "HR", "IT", "User"]},
+        metadata_json={"department": "User", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(doc_user)
+    db.commit()
+    db.refresh(doc_fin)
+    db.refresh(doc_user)
+
+    chunk_fin = DBChunk(
+        document_id=doc_fin.document_id,
+        chunk_index=0,
+        content="Finance rename content.",
+        embedding=[0.0] * 1536,
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "IT"]},
+        metadata_json={"department": "Finance", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(chunk_fin)
+
+    chunk_user = DBChunk(
+        document_id=doc_user.document_id,
+        chunk_index=0,
+        content="User rename content.",
+        embedding=[0.0] * 1536,
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "HR", "IT", "User"]},
+        metadata_json={"department": "User", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(chunk_user)
+    db.commit()
+
+    # 3. Modify the Finance category's role_name to "Test" without changing allowed_groups in payload
+    # (Leaving allowed_groups containing "IT" in the payload)
+    rename_payload = copy.deepcopy(start_payload)
+    for cat in rename_payload["categories"]:
+        if cat["key"] == "Finance":
+            cat["role_name"] = "Test"
+            break
+
+    try:
+        res = client.post("/api/documents/categories", json=rename_payload)
+        assert res.status_code == 200
+
+        # 4. Fetch the updated config and verify allowed_groups now contains "Test" instead of "IT"
+        updated_config = client.get("/api/documents/categories").json()
+        
+        fin_cat = next(c for c in updated_config["categories"] if c["key"] == "Finance")
+        assert "Test" in fin_cat["allowed_groups"]
+        assert "IT" not in fin_cat["allowed_groups"]
+
+        user_cat = next(c for c in updated_config["categories"] if c["key"] == "User")
+        assert "Test" in user_cat["allowed_groups"]
+        assert "IT" not in user_cat["allowed_groups"]
+
+        # 5. Verify the documents in the DB were updated
+        db.expire_all()
+        updated_doc_fin = db.query(DBDocument).filter(DBDocument.document_id == doc_fin.document_id).first()
+        assert "Test" in updated_doc_fin.security_acl["allowed_groups"]
+        assert "IT" not in updated_doc_fin.security_acl["allowed_groups"]
+
+        updated_chunk_fin = db.query(DBChunk).filter(DBChunk.document_id == doc_fin.document_id).first()
+        assert "Test" in updated_chunk_fin.security_acl["allowed_groups"]
+        assert "IT" not in updated_chunk_fin.security_acl["allowed_groups"]
+
+        updated_doc_user = db.query(DBDocument).filter(DBDocument.document_id == doc_user.document_id).first()
+        assert "Test" in updated_doc_user.security_acl["allowed_groups"]
+        assert "IT" not in updated_doc_user.security_acl["allowed_groups"]
+
+        updated_chunk_user = db.query(DBChunk).filter(DBChunk.document_id == doc_user.document_id).first()
+        assert "Test" in updated_chunk_user.security_acl["allowed_groups"]
+        assert "IT" not in updated_chunk_user.security_acl["allowed_groups"]
+
+    finally:
+        # Restore config and clean up
+        client.post("/api/documents/categories", json=original_config_backup)
+        db.delete(chunk_fin)
+        db.delete(chunk_user)
+        db.delete(doc_fin)
+        db.delete(doc_user)
+        db.commit()

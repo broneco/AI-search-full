@@ -21,13 +21,13 @@
     },
     {
       "key": "Finance",
-      "label": "IT",
+      "label": "Test",
       "description": "Dokumenty spojené s nastavením IT infrastruktury a pravidel používání počítačových systémů.",
       "allowed_groups": [
         "Management",
-        "IT"
+        "Test"
       ],
-      "role_name": null
+      "role_name": "Test"
     },
     {
       "key": "User",
@@ -36,7 +36,7 @@
       "allowed_groups": [
         "Management",
         "HR",
-        "IT",
+        "Test",
         "User"
       ],
       "role_name": null

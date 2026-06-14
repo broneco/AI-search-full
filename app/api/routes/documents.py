@@ -325,6 +325,43 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
     from app.ingestion.tagger import MetadataTagger
     tagger = MetadataTagger(db_session=db)
     
+    # 1. Load the old config to detect group/role renames
+    try:
+        old_config = await tagger.load_config()
+    except Exception as e:
+        logger.warning(f"Could not load old config for rename propagation: {e}")
+        old_config = {"categories": []}
+        
+    old_categories = {c["key"]: c for c in old_config.get("categories", [])}
+    
+    # Track group/role renames
+    renames = {}
+    for new_cat in request.categories:
+        old_cat = old_categories.get(new_cat.key)
+        if old_cat:
+            # Determine old role name
+            old_role = old_cat.get("role_name")
+            if not old_role:
+                non_mgmt = [g for g in old_cat.get("allowed_groups", []) if g != "Management"]
+                old_role = non_mgmt[0] if non_mgmt else old_cat["key"]
+            
+            # Determine new role name
+            new_role = new_cat.role_name
+            if not new_role:
+                non_mgmt = [g for g in new_cat.allowed_groups if g != "Management"]
+                new_role = non_mgmt[0] if non_mgmt else new_cat.key
+            
+            if old_role and new_role and old_role != new_role:
+                renames[old_role] = new_role
+                logger.info(f"Group rename detected: {old_role} -> {new_role}")
+
+    if renames:
+        for new_cat in request.categories:
+            updated_groups = []
+            for g in new_cat.allowed_groups:
+                updated_groups.append(renames.get(g, g))
+            new_cat.allowed_groups = updated_groups
+            
     # Save the config (excluding category_migrations since it shouldn't persist in json)
     config_dict = request.model_dump(exclude={"category_migrations"})
     await tagger.save_config(config_dict)
@@ -378,6 +415,9 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
             if doc.metadata_json and doc.metadata_json.get("department") == cat.key:
                 if doc.security_acl != security_acl_val:
                     doc.security_acl = security_acl_val
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(doc, "security_acl")
+                    
                     db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).update(
                         {"security_acl": security_acl_val}
                     )
