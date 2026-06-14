@@ -44,12 +44,41 @@ class IngestionPipeline:
 
         # Check if the document already exists in the database
         from sqlalchemy import select
-        existing_doc_stmt = select(DBDocument).where(DBDocument.source_uri == f"file://{file_name}")
+        container_name = settings.AZURE_BLOB_CONTAINER_ORIGINALS or "originals"
+        existing_doc_stmt = select(DBDocument).where(
+            (DBDocument.source_uri == f"file://{file_name}") |
+            (DBDocument.source_uri == f"azure://{container_name}/{file_name}")
+        )
         existing_doc = self.db.execute(existing_doc_stmt).scalar_one_or_none()
 
         if existing_doc and existing_doc.checksum == checksum:
-            logger.info(f"│  ├── ℹ️ Document {file_name} already exists and is unchanged. skipping ingestion.")
-            logger.info(f"└─ 📋 Ingestion skipped: {file_name}")
+            logger.info(f"│  ├── ℹ️ Document {file_name} already exists and is unchanged. Updating metadata and security ACL...")
+            from sqlalchemy.orm.attributes import flag_modified
+            if security_acl is not None:
+                existing_doc.security_acl = security_acl
+                flag_modified(existing_doc, "security_acl")
+            if metadata_json is not None:
+                existing_doc.metadata_json = metadata_json
+                flag_modified(existing_doc, "metadata_json")
+                if "freshness_status" in metadata_json:
+                    existing_doc.freshness_status = metadata_json["freshness_status"]
+            self.db.add(existing_doc)
+            self.db.commit()
+            
+            # Update associated chunks as well
+            update_data = {}
+            if security_acl is not None:
+                update_data["security_acl"] = security_acl
+            if metadata_json is not None:
+                update_data["metadata_json"] = metadata_json
+                if "freshness_status" in metadata_json:
+                    update_data["freshness_status"] = metadata_json["freshness_status"]
+                    
+            if update_data:
+                self.db.query(DBChunk).filter(DBChunk.document_id == existing_doc.document_id).update(update_data)
+                self.db.commit()
+                
+            logger.info(f"└─ 📋 Ingestion updated: {file_name}")
             return existing_doc
 
         # If it exists but changed, delete old version to perform update

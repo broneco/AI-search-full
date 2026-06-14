@@ -297,3 +297,125 @@ async def test_category_migration_api_endpoint(db_setup):
         db.delete(chunk)
         db.delete(doc)
         db.commit()
+
+
+@pytest.mark.anyio
+@patch("app.providers.azure_openai.AzureOpenAIEmbeddingProvider.embed_documents")
+async def test_ingest_confirmed_updates_existing_doc(mock_embed, db_setup, tmp_path):
+    db = db_setup
+    mock_embed.return_value = [[0.15] * 1536]
+
+    # Create a temp file
+    temp_file = tmp_path / "duplicate_checksum.txt"
+    temp_content = "This is a document content for testing duplicate checksum metadata updates."
+    temp_file.write_text(temp_content, encoding="utf-8")
+
+    # Ingest the document once as HR
+    req1 = {
+        "title": "Dup Doc",
+        "date": "2026-01-01",
+        "category": "HR",
+        "relationship": {"relationship_type": "none"},
+        "temp_file_path": str(temp_file),
+        "original_filename": "duplicate_checksum.txt"
+    }
+
+    res1 = client.post("/api/documents/ingest-confirmed", json=req1)
+    assert res1.status_code == 200
+
+    # Retrieve and verify it has HR ACL
+    db.expire_all()
+    inserted_doc = db.query(DBDocument).filter(DBDocument.title == "Dup Doc").first()
+    assert inserted_doc is not None
+    assert inserted_doc.metadata_json["department"] == "HR"
+    assert inserted_doc.security_acl["allowed_groups"] == ["Management", "HR"]
+
+    # Now write the same file contents to a new temp file (same checksum)
+    temp_file2 = tmp_path / "duplicate_checksum_2.txt"
+    temp_file2.write_text(temp_content, encoding="utf-8")
+
+    # Ingest again but confirm category as Management
+    req2 = {
+        "title": "Dup Doc",
+        "date": "2026-01-02",
+        "category": "Management",
+        "relationship": {"relationship_type": "none"},
+        "temp_file_path": str(temp_file2),
+        "original_filename": "duplicate_checksum_2.txt"
+    }
+
+    res2 = client.post("/api/documents/ingest-confirmed", json=req2)
+    assert res2.status_code == 200
+
+    # Retrieve again and verify it updated to Management
+    db.expire_all()
+    updated_doc = db.query(DBDocument).filter(DBDocument.document_id == inserted_doc.document_id).first()
+    assert updated_doc.metadata_json["department"] == "Management"
+    assert updated_doc.security_acl["allowed_groups"] == ["Management"]
+
+    # Clean up
+    db.query(DBChunk).filter(DBChunk.document_id == inserted_doc.document_id).delete()
+    db.delete(updated_doc)
+    db.commit()
+
+
+@pytest.mark.anyio
+async def test_category_allowed_groups_propagation(db_setup):
+    import copy
+    db = db_setup
+
+    # 1. Fetch original categories configuration
+    original_config = client.get("/api/documents/categories").json()
+    original_config_backup = copy.deepcopy(original_config)
+
+    # 2. Insert a document belonging to HR category
+    doc = DBDocument(
+        source_type="local",
+        source_uri="file://test_propagation.pdf",
+        title="Test Propagation Doc",
+        document_type="policy",
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "HR"]},
+        metadata_json={"department": "HR", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    chunk = DBChunk(
+        document_id=doc.document_id,
+        chunk_index=0,
+        content="Propagation chunk content.",
+        embedding=[0.0] * 1536,
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "HR"]},
+        metadata_json={"department": "HR", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(chunk)
+    db.commit()
+
+    # 3. Update the HR category's allowed groups to ["Management", "HR", "SpecialGroup"]
+    payload = copy.deepcopy(original_config)
+    for cat in payload["categories"]:
+        if cat["key"] == "HR":
+            cat["allowed_groups"] = ["Management", "HR", "SpecialGroup"]
+            break
+
+    try:
+        res = client.post("/api/documents/categories", json=payload)
+        assert res.status_code == 200
+
+        # 4. Verify the document and chunk security_acl updated automatically
+        db.expire_all()
+        updated_doc = db.query(DBDocument).filter(DBDocument.document_id == doc.document_id).first()
+        assert updated_doc.security_acl["allowed_groups"] == ["Management", "HR", "SpecialGroup"]
+
+        updated_chunk = db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).first()
+        assert updated_chunk.security_acl["allowed_groups"] == ["Management", "HR", "SpecialGroup"]
+
+    finally:
+        # Restore config and clean up
+        client.post("/api/documents/categories", json=original_config_backup)
+        db.delete(chunk)
+        db.delete(doc)
+        db.commit()

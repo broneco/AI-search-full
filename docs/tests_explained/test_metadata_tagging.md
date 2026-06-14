@@ -67,3 +67,36 @@ This test suite validates the **Automated Metadata Tagging and Archival System**
   * Asserts that the old document and its child chunks are updated to `freshness_status = "archived"` in PostgreSQL.
   * Asserts that the new document is created with `freshness_status = "current"` and includes cross-references (`replaces_document_id` and `replaces_document_title`) in its metadata.
   * Asserts that the new document's allowed security groups match the dynamic permissions assigned to the category in the configuration file.
+
+---
+
+### Test 6: `test_category_migration_api_endpoint`
+* **High-Level Purpose:**
+  We verify that deleting a category triggers an automatic secure migration, shifting all existing documents and their chunks to the selected replacement category and updating their security ACLs to prevent leaks.
+* **Low-Level Technical Details:**
+  * Seeds a mock document and chunk in the database associated with a category key `DELETED_CAT_UUID` and allowed groups `SecretGroup`.
+  * Sends a `POST` request to `/api/documents/categories` to save a new configuration with `category_migrations` mapping `DELETED_CAT_UUID` to `REPLACEMENT_CAT_UUID` (which has allowed groups `ReplacementGroup`).
+  * Asserts that the database updates the document's metadata department key and resets the document's and its chunks' `security_acl` allowed groups to `ReplacementGroup` immediately.
+  * Cleans up database records and restores the original categories configuration.
+
+---
+
+### Test 7: `test_ingest_confirmed_updates_existing_doc`
+* **High-Level Purpose:**
+  We verify that when confirming manual ingestion of a document that already exists in the database (same checksum), the system correctly updates its metadata, category, and security ACLs in-place rather than skipping without making database changes.
+* **Low-Level Technical Details:**
+  * Ingests a mock document with category `"HR"` and allowed groups `["Management", "HR"]`.
+  * Triggers a second manual upload confirmation `/api/documents/ingest-confirmed` using the same file content (matching checksum) but selecting `"Management"` category.
+  * Asserts that the database successfully finds the duplicate checksum record, overwrites the category to `"Management"`, updates its `security_acl` to `["Management"]`, and flags both attributes as modified to force SQLAlchemy JSONB change tracking persistence.
+  * Cleans up the database records.
+
+---
+
+### Test 8: `test_category_allowed_groups_propagation`
+* **High-Level Purpose:**
+  We verify that modifying the allowed groups list of an existing category dynamically propagates those changes to all documents and chunks associated with that category in the database.
+* **Low-Level Technical Details:**
+  * Seeds a document and chunk associated with category `"HR"` and original allowed groups `["Management", "HR"]`.
+  * Deep-copies the active configuration, appends a new group (`"SpecialGroup"`) to `"HR"`'s allowed groups list, and posts the updated config.
+  * Asserts that the database automatically identifies all matching records and updates the document and chunk `security_acl` allowed groups to `["Management", "HR", "SpecialGroup"]` immediately.
+  * Cleans up database records and restores the original configuration from the deep-copied backup.

@@ -286,7 +286,20 @@ export default function Home() {
       );
       if (activeCat) {
         headers["X-User-Id"] = `${userRole.toLowerCase()}.user`;
-        headers["X-User-Groups"] = activeCat.role_name || activeCat.key;
+        let resolvedRole = activeCat.role_name;
+        if (!resolvedRole) {
+          if (activeCat.key.toLowerCase() === "management") {
+            resolvedRole = "Management";
+          } else if (activeCat.key.toLowerCase() === "user") {
+            resolvedRole = "User";
+          } else {
+            const groups = activeCat.allowed_groups.filter(
+              (g) => g.toLowerCase() !== "management"
+            );
+            resolvedRole = groups.length > 0 ? groups[0] : activeCat.key;
+          }
+        }
+        headers["X-User-Groups"] = resolvedRole;
         return headers;
       }
     }

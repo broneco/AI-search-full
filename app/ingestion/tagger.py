@@ -198,11 +198,23 @@ class MetadataTagger:
         """Classify the document into one of the configured categories using LLM and map it to a UUID key."""
         categories_info = []
         for cat in config["categories"]:
+            # Resolve a friendly role name for LLM classification
+            resolved_role = cat.get("role_name")
+            if not resolved_role:
+                if cat.get("key", "").lower() == "management":
+                    resolved_role = "Management"
+                elif cat.get("key", "").lower() == "user":
+                    resolved_role = "User"
+                else:
+                    groups = [g for g in cat.get("allowed_groups", []) if g.lower() != "management"]
+                    resolved_role = groups[0] if groups else cat.get("key")
+            
             categories_info.append({
-                "role_name": cat.get("role_name"),
+                "role_name": resolved_role,
                 "label": cat.get("label"),
                 "description": cat.get("description")
             })
+            
         categories_str = json.dumps(categories_info, ensure_ascii=False, indent=2)
         rules = config.get("analysis_rules", "")
         
@@ -226,7 +238,7 @@ class MetadataTagger:
         # Find user category key in config if exists
         for cat in config["categories"]:
             role_val = cat.get("role_name") or cat.get("key") or ""
-            if role_val.lower() == "user":
+            if role_val.lower() == "user" or cat.get("key", "").lower() == "user":
                 fallback_key = cat.get("key")
                 break
                 
@@ -234,10 +246,29 @@ class MetadataTagger:
             result = await self.llm.generate(messages, model_profile="flash", temperature=0.0)
             role_name = result.strip().replace('"', '').replace("'", "")
             
-            # Map role_name back to UUID key
+            # Map role_name back to UUID key with robust matching
             for cat in config["categories"]:
-                role_val = cat.get("role_name") or cat.get("key") or ""
-                if role_val.lower() == role_name.lower():
+                resolved_role = cat.get("role_name")
+                if not resolved_role:
+                    if cat.get("key", "").lower() == "management":
+                        resolved_role = "Management"
+                    elif cat.get("key", "").lower() == "user":
+                        resolved_role = "User"
+                    else:
+                        groups = [g for g in cat.get("allowed_groups", []) if g.lower() != "management"]
+                        resolved_role = groups[0] if groups else cat.get("key")
+                
+                label_val = cat.get("label") or ""
+                key_val = cat.get("key") or ""
+                
+                # Check if role matches resolved_role, key, label, or contains label
+                if (
+                    resolved_role.lower() == role_name.lower() or 
+                    key_val.lower() == role_name.lower() or
+                    label_val.lower() == role_name.lower() or
+                    role_name.lower() in label_val.lower() or
+                    label_val.lower() in role_name.lower()
+                ):
                     logger.info(f"LLM classified role: {role_name} -> key: {cat['key']}")
                     return cat["key"]
                     

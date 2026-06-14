@@ -366,6 +366,26 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
                 db.commit()
                 logger.info(f"Successfully migrated {migrated_count} documents from {deleted_key} to {replacement_key}")
                 
+    # Propagate allowed groups changes to existing documents/chunks for ALL categories in the configuration
+    for cat in request.categories:
+        allowed_groups = cat.allowed_groups
+        security_acl_val = {"allowed_groups": allowed_groups}
+        
+        # Query all documents in this category
+        docs_to_update = db.query(DBDocument).all()
+        updated_count = 0
+        for doc in docs_to_update:
+            if doc.metadata_json and doc.metadata_json.get("department") == cat.key:
+                if doc.security_acl != security_acl_val:
+                    doc.security_acl = security_acl_val
+                    db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).update(
+                        {"security_acl": security_acl_val}
+                    )
+                    updated_count += 1
+        if updated_count > 0:
+            db.commit()
+            logger.info(f"Propagated config allowed_groups to {updated_count} documents in category {cat.key}")
+                
     return {"status": "success", "message": "Kategorie byly úspěšně uloženy."}
 
 
