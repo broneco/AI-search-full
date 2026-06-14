@@ -113,3 +113,15 @@ This test suite validates the **Automated Metadata Tagging and Archival System**
   * Asserts that the server automatically detects the role rename, replaces `"IT"` with `"Test"` in all categories' `allowed_groups`, and saves the updated configuration.
   * Asserts that all matching documents and chunks in the database for both the renamed category and the public `"User"` category have their `security_acl` allowed groups updated to replace `"IT"` with `"Test"` immediately.
   * Cleans up database records and restores the original configuration.
+
+---
+
+### Test 10: `test_update_document_metadata_api_endpoint`
+* **High-Level Purpose:**
+  We verify that updating an existing document's title, date, category, and freshness status via the `/api/documents/update-metadata` endpoint correctly persists all modifications and propagates the corresponding security ACL groups to all associated text chunks in the database.
+* **Low-Level Technical Details:**
+  * Seeds a document and chunk in category `"HR"` (which has allowed groups `["Management", "HR"]`).
+  * Sends a `POST` request to `/api/documents/update-metadata` with new metadata payload: title `"New Updated Title"`, date `"2026-05-05"`, category `"Management"`, and freshness `"archived"`.
+  * Asserts that the response returns status `200` and `"success"`.
+  * Queries the database to verify that both the `DBDocument` and its corresponding `DBChunk` records have been updated to `freshness_status = "archived"`, category/department `"Management"`, release date `"2026-05-05T00:00:00"`, and security ACL allowed groups `["Management"]`.
+  * Cleans up database records.

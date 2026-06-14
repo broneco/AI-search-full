@@ -21,13 +21,13 @@
     },
     {
       "key": "Finance",
-      "label": "Test",
+      "label": "Informační Technologie",
       "description": "Dokumenty spojené s nastavením IT infrastruktury a pravidel používání počítačových systémů.",
       "allowed_groups": [
         "Management",
-        "Test"
+        "IT"
       ],
-      "role_name": "Test"
+      "role_name": "IT"
     },
     {
       "key": "User",
@@ -36,10 +36,19 @@
       "allowed_groups": [
         "Management",
         "HR",
-        "Test",
+        "IT",
         "User"
       ],
       "role_name": null
+    },
+    {
+      "key": "9702a691-b354-433f-9c29-f53349fb08c1",
+      "label": "Tester",
+      "description": "Tyto dokumenty jsou určené testerům.",
+      "allowed_groups": [
+        "Management"
+      ],
+      "role_name": "Tester"
     }
   ],
   "analysis_rules": "Zaměř se na vyhledávání oficiálních názvů, čísel směrnic, legislativních odkazů, typických korporátních schvalovacích formulí a dat účinnosti."

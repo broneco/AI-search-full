@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.api.dependencies import get_db_session
 from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
@@ -383,20 +384,30 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
             # Fetch and update all documents belonging to the deleted category key
             documents_to_migrate = db.query(DBDocument).all()
             migrated_count = 0
+            from sqlalchemy.orm.attributes import flag_modified
             for doc in documents_to_migrate:
                 if doc.metadata_json and doc.metadata_json.get("department") == deleted_key:
                     # Update metadata
                     meta = dict(doc.metadata_json)
                     meta["department"] = replacement_key
                     doc.metadata_json = meta
+                    flag_modified(doc, "metadata_json")
                     
                     # Update security ACL on document
                     doc.security_acl = security_acl_val
+                    flag_modified(doc, "security_acl")
                     
-                    # Update security ACL and freshness status on its chunks
-                    db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).update(
-                        {"security_acl": security_acl_val}
-                    )
+                    # Fetch and update security ACL and department on its chunks
+                    chunks = db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).all()
+                    for chunk in chunks:
+                        chunk.security_acl = security_acl_val
+                        flag_modified(chunk, "security_acl")
+                        if chunk.metadata_json:
+                            chunk_meta = dict(chunk.metadata_json)
+                            chunk_meta["department"] = replacement_key
+                            chunk.metadata_json = chunk_meta
+                            flag_modified(chunk, "metadata_json")
+                            
                     migrated_count += 1
             
             if migrated_count > 0:
@@ -427,6 +438,78 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
             logger.info(f"Propagated config allowed_groups to {updated_count} documents in category {cat.key}")
                 
     return {"status": "success", "message": "Kategorie byly úspěšně uloženy."}
+
+
+class DocumentUpdateMetadataRequest(BaseModel):
+    document_id: str
+    title: str
+    date: str
+    category: str
+    freshness_status: str
+
+
+@router.post("/update-metadata")
+async def update_document_metadata(
+    request: DocumentUpdateMetadataRequest,
+    db: Session = Depends(get_db_session)
+):
+    """Update metadata, category, allowed groups and freshness status for an existing document and its chunks in the database."""
+    import uuid
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.ingestion.tagger import MetadataTagger
+    
+    try:
+        doc_uuid = uuid.UUID(request.document_id)
+        doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Dokument nenalezen.")
+            
+        # 1. Update document title and freshness
+        doc.title = request.title
+        doc.freshness_status = request.freshness_status
+        
+        # Update metadata_json
+        meta = dict(doc.metadata_json) if doc.metadata_json else {}
+        meta["department"] = request.category
+        meta["created_at"] = f"{request.date}T00:00:00"
+        doc.metadata_json = meta
+        flag_modified(doc, "metadata_json")
+        
+        # 2. Resolve security ACL groups based on the selected category's allowed_groups
+        tagger = MetadataTagger(db_session=db)
+        config = await tagger.load_config()
+        
+        category_item = next((c for c in config.get("categories", []) if c["key"] == request.category), None)
+        if category_item:
+            allowed_groups = category_item.get("allowed_groups", [])
+        else:
+            allowed_groups = ["Management"]
+            
+        security_acl_val = {"allowed_groups": allowed_groups}
+        doc.security_acl = security_acl_val
+        flag_modified(doc, "security_acl")
+        
+        # 3. Update all chunks of this document to match
+        chunks = db.query(DBChunk).filter(DBChunk.document_id == doc_uuid).all()
+        for chunk in chunks:
+            chunk.freshness_status = request.freshness_status
+            chunk.security_acl = security_acl_val
+            flag_modified(chunk, "security_acl")
+            
+            chunk_meta = dict(chunk.metadata_json) if chunk.metadata_json else {}
+            chunk_meta["department"] = request.category
+            chunk_meta["created_at"] = f"{request.date}T00:00:00"
+            chunk.metadata_json = chunk_meta
+            flag_modified(chunk, "metadata_json")
+            
+        db.commit()
+        logger.info(f"Successfully updated document {doc_uuid} metadata to category {request.category} and freshness {request.freshness_status}")
+        return {"status": "success", "message": "Metadata dokumentu byla úspěšně upravena."}
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update document metadata: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/analyze-draft")

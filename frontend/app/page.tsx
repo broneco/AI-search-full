@@ -62,15 +62,17 @@ interface Config {
 // Interactive pill selector component for allowed_groups
 function CategoryTagInput({
   allowedGroups,
-  onChange
+  onChange,
+  suggestions = ["Management", "HR", "Finance", "User"]
 }: {
   allowedGroups: string[];
   onChange: (groups: string[]) => void;
+  suggestions?: string[];
 }) {
   const [inputValue, setInputValue] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const predefinedGroups = ["Management", "HR", "Finance", "User"];
+  const predefinedGroups = suggestions;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -233,6 +235,10 @@ export default function Home() {
   const [confirmedRelTargetId, setConfirmedRelTargetId] = useState("");
   const [ingestingConfirmed, setIngestingConfirmed] = useState(false);
   const [ingestStatus, setIngestStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  
+  // Existing Document Editing State
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [confirmedFreshnessStatus, setConfirmedFreshnessStatus] = useState<"current" | "archived">("current");
 
   // Chat message container ref for auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -562,6 +568,79 @@ export default function Home() {
     }
   };
 
+  // Submit updated metadata for an existing document
+  const handleSaveDocEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDocId || ingestingConfirmed) return;
+
+    setIngestingConfirmed(true);
+    setIngestStatus(null);
+
+    const payload = {
+      document_id: editingDocId,
+      title: confirmedTitle,
+      date: confirmedDate,
+      category: confirmedCategory,
+      freshness_status: confirmedFreshnessStatus,
+    };
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/update-metadata`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || `Úprava selhala: ${res.status}`);
+      }
+
+      const data = await res.json();
+      setIngestStatus({
+        type: "success",
+        message: data.message,
+      });
+
+      // Clear edit state
+      setEditingDocId(null);
+      
+      // Refresh accessible documents list
+      fetchDocuments();
+    } catch (err: any) {
+      console.error(err);
+      setIngestStatus({
+        type: "error",
+        message: `Chyba při ukládání změn: ${err.message || err}`,
+      });
+    } finally {
+      setIngestingConfirmed(false);
+    }
+  };
+
+  const handleStartEditDoc = (doc: IngestedDocument) => {
+    // Reset ingestion states first
+    setFileToUpload(null);
+    setDraftResult(null);
+    setIngestStatus(null);
+    
+    // Set edit states
+    setEditingDocId(doc.document_id);
+    setConfirmedTitle(doc.title);
+    
+    let dateStr = "";
+    if (doc.metadata_json?.created_at) {
+      dateStr = doc.metadata_json.created_at.split("T")[0];
+    } else if (doc.created_at) {
+      dateStr = doc.created_at.split("T")[0];
+    }
+    setConfirmedDate(dateStr);
+    setConfirmedCategory(doc.metadata_json?.department || "");
+    setConfirmedFreshnessStatus(doc.freshness_status as "current" | "archived" || "current");
+  };
+
   // Config Editor Handlers
   const handleCategoryFieldChange = (index: number, field: string, value: string) => {
     if (!editingConfig) return;
@@ -626,29 +705,16 @@ export default function Home() {
     setShowMigrationModal(true);
   };
 
-  const handleConfirmCategoryDeletion = () => {
-    if (!editingConfig || deletingCatIndex === null) return;
-    
-    const catToDelete = editingConfig.categories[deletingCatIndex];
-    const updated = editingConfig.categories.filter((_, idx) => idx !== deletingCatIndex);
-    
-    setCategoryMigrations(prev => ({
-      ...prev,
-      [catToDelete.key]: migrationTargetKey
-    }));
-    
-    setEditingConfig({ ...editingConfig, categories: updated });
-    setShowMigrationModal(false);
-    setDeletingCatIndex(null);
-  };
-
-  const handleSaveConfig = async () => {
-    if (!editingConfig) return;
+  const saveConfigToServer = async (
+    configToSave: Config,
+    migrationsToSave: Record<string, string>,
+    isDeletion = false
+  ) => {
     setSavingConfig(true);
     try {
       const payload = {
-        ...editingConfig,
-        category_migrations: categoryMigrations
+        ...configToSave,
+        category_migrations: migrationsToSave
       };
 
       const res = await fetch(`${BACKEND_URL}/api/documents/categories`, {
@@ -662,11 +728,17 @@ export default function Home() {
       if (res.ok) {
         setCategoryMigrations({});
         await fetchConfig();
-        const promptMsg = (
-          "Konfigurace byla úspěšně uložena a existující dokumenty byly bezpečně převedeny do náhradních kategorií.\n\n" +
-          "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
-          "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva. Pokud reindexaci nespustíte, stávající dokumenty zůstanou bezpečně uloženy pod nově přiřazenými skupinami."
-        );
+        // Always refresh the documents list from DB so any migrated/updated document ACLs are loaded
+        fetchDocuments();
+
+        const promptMsg = isDeletion
+          ? "Kategorie byla úspěšně smazána a dokumenty byly bezpečně převedeny do náhradních kategorií.\n\n" +
+            "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
+            "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva."
+          : "Konfigurace byla úspěšně uložena a existující dokumenty byly bezpečně rekonfigurovány.\n\n" +
+            "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
+            "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva.";
+
         const runReindex = confirm(promptMsg);
         if (runReindex) {
           try {
@@ -684,7 +756,7 @@ export default function Home() {
             alert("Chyba při komunikaci se serverem.");
           }
         } else {
-          alert("Konfigurace uložena. Změny se projeví u nově nahrávaných dokumentů.");
+          alert("Změny byly uloženy. Seznam dokumentů byl aktualizován.");
         }
       } else {
         alert("Selhalo ukládání konfigurace.");
@@ -695,6 +767,31 @@ export default function Home() {
     } finally {
       setSavingConfig(false);
     }
+  };
+
+  const handleConfirmCategoryDeletion = async () => {
+    if (!editingConfig || deletingCatIndex === null) return;
+    
+    const catToDelete = editingConfig.categories[deletingCatIndex];
+    const updatedCategories = editingConfig.categories.filter((_, idx) => idx !== deletingCatIndex);
+    const updatedConfig = { ...editingConfig, categories: updatedCategories };
+    
+    const newMigrations = {
+      ...categoryMigrations,
+      [catToDelete.key]: migrationTargetKey
+    };
+    
+    setCategoryMigrations({});
+    setEditingConfig(updatedConfig);
+    setShowMigrationModal(false);
+    setDeletingCatIndex(null);
+    
+    await saveConfigToServer(updatedConfig, newMigrations, true);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!editingConfig) return;
+    await saveConfigToServer(editingConfig, categoryMigrations, false);
   };
 
   // Handle clicking on inline citation button
@@ -739,6 +836,15 @@ export default function Home() {
     );
   };
 
+  // Dynamic list of all category group names for suggestions in tag input
+  const uniqueGroups = (editingConfig || config)
+    ? Array.from(new Set(
+        (editingConfig || config)!.categories
+          .map(c => c.role_name || c.key)
+          .filter(Boolean) as string[]
+      ))
+    : ["Management", "HR", "User"];
+
   return (
     <div className="flex flex-col flex-1 h-screen overflow-hidden bg-[#090d16] font-sans text-zinc-200">
       
@@ -780,7 +886,7 @@ export default function Home() {
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            📁 Nahrávání (Ingest)
+            📁 Editování/Přidání Souborů
           </button>
           <button
             type="button"
@@ -859,84 +965,113 @@ export default function Home() {
             </div>
           ) : (
             <div className="flex flex-col gap-2.5">
-              {documents.map((doc) => (
-                <div 
-                  key={doc.document_id}
-                  className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] transition-all hover:bg-white/[0.04] flex flex-col gap-1.5"
-                >
-                  <div className="flex items-start gap-1">
-                    <a
-                      href={`${BACKEND_URL}/api/documents/view/${doc.document_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-bold text-zinc-300 hover:text-indigo-400 hover:underline truncate block flex-1"
-                      title={`Kliknutím otevřete PDF: ${doc.title}`}
-                    >
-                      📄 {doc.title}
-                    </a>
-                  </div>
+              {(() => {
+                const filteredDocs = documents.filter((doc) => {
+                  if (freshnessFilter === "latest") {
+                    return doc.freshness_status === "current";
+                  }
+                  if (freshnessFilter === "this_year") {
+                    const docDate = doc.metadata_json?.created_at || doc.created_at || "";
+                    return docDate.startsWith("2026");
+                  }
+                  return true;
+                });
+                if (filteredDocs.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-xs text-zinc-500 border border-dashed border-white/5 rounded-xl">
+                      Žádné soubory neodpovídají filtru.
+                    </div>
+                  );
+                }
+                return filteredDocs.map((doc) => (
+                  <div 
+                    key={doc.document_id}
+                    className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] transition-all hover:bg-white/[0.04] flex flex-col gap-1.5"
+                  >
+                    <div className="flex items-start gap-1">
+                      <a
+                        href={`${BACKEND_URL}/api/documents/view/${doc.document_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-zinc-300 hover:text-indigo-400 hover:underline truncate block flex-1"
+                        title={`Kliknutím otevřete PDF: ${doc.title}`}
+                      >
+                        📄 {doc.title}
+                      </a>
+                    </div>
 
-                  {/* Resolved Category Label */}
-                  <div className="text-[9px] text-indigo-400 font-semibold uppercase flex items-center gap-1">
-                    <span>📁</span>
-                    <span>{getCategoryLabel(doc.metadata_json?.department)}</span>
-                  </div>
+                    {/* Resolved Category Label */}
+                    <div className="text-[9px] text-indigo-400 font-semibold uppercase flex items-center gap-1">
+                      <span>📁</span>
+                      <span>{getCategoryLabel(doc.metadata_json?.department)}</span>
+                    </div>
 
-                  <div className="flex items-center justify-between text-[10px] text-zinc-500">
-                    <span className="font-medium font-mono">{doc.chunk_count} pasáží</span>
-                    <span className={`px-1.5 py-0.5 rounded border uppercase font-extrabold text-[8px] tracking-wider ${
-                      doc.freshness_status === "current"
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                        : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                    }`}>
-                      {doc.freshness_status === "current" ? "Platný" : "Archiv"}
-                    </span>
-                  </div>
+                    <div className="flex items-center justify-between text-[10px] text-zinc-500">
+                      <span className="font-medium font-mono">{doc.chunk_count} pasáží</span>
+                      <span className={`px-1.5 py-0.5 rounded border uppercase font-extrabold text-[8px] tracking-wider ${
+                        doc.freshness_status === "current"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                      }`}>
+                        {doc.freshness_status === "current" ? "Platný" : "Archiv"}
+                      </span>
+                    </div>
 
-                  {/* Allowed security groups (ACL badges) */}
-                  {doc.security_acl?.allowed_groups && doc.security_acl.allowed_groups.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {doc.security_acl.allowed_groups.map((g: string) => (
-                        <span key={g} className="px-1.5 py-0.5 bg-zinc-800 text-[8px] text-zinc-400 rounded border border-white/[0.03] font-mono leading-none">
-                          {g}
+                    {/* Allowed security groups (ACL badges) */}
+                    {doc.security_acl?.allowed_groups && doc.security_acl.allowed_groups.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {doc.security_acl.allowed_groups.map((g: string) => (
+                          <span key={g} className="px-1.5 py-0.5 bg-zinc-800 text-[8px] text-zinc-400 rounded border border-white/[0.03] font-mono leading-none">
+                            {g}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Relationship Badges */}
+                    {doc.metadata_json?.replaces_document_title && (
+                      <div className="text-[9px] text-amber-500 font-medium flex items-center gap-1 mt-0.5">
+                        <span>🔄 Nahrazuje:</span>
+                        <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaces_document_title}>
+                          {doc.metadata_json.replaces_document_title}
                         </span>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                    {doc.metadata_json?.replaced_by_document_title && (
+                      <div className="text-[9px] text-zinc-500 font-medium flex items-center gap-1 mt-0.5">
+                        <span>⬇️ Nahrazen:</span>
+                        <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaced_by_document_title}>
+                          {doc.metadata_json.replaced_by_document_title}
+                        </span>
+                      </div>
+                    )}
+                    {doc.metadata_json?.modifies_document_title && (
+                      <div className="text-[9px] text-cyan-500 font-medium flex items-center gap-1 mt-0.5">
+                        <span>✏️ Upravuje:</span>
+                        <span className="truncate block max-w-[170px]" title={doc.metadata_json.modifies_document_title}>
+                          {doc.metadata_json.modifies_document_title}
+                        </span>
+                      </div>
+                    )}
 
-                  {/* Relationship Badges */}
-                  {doc.metadata_json?.replaces_document_title && (
-                    <div className="text-[9px] text-amber-500 font-medium flex items-center gap-1 mt-0.5">
-                      <span>🔄 Nahrazuje:</span>
-                      <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaces_document_title}>
-                        {doc.metadata_json.replaces_document_title}
-                      </span>
+                    <div className="flex flex-col gap-0.5 text-[9px] text-zinc-600 font-medium border-t border-white/[0.03] pt-1">
+                      {doc.created_at && (
+                        <div>Vydáno: {formatReleaseDate(doc.created_at)}</div>
+                      )}
                     </div>
-                  )}
-                  {doc.metadata_json?.replaced_by_document_title && (
-                    <div className="text-[9px] text-zinc-500 font-medium flex items-center gap-1 mt-0.5">
-                      <span>⬇️ Nahrazen:</span>
-                      <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaced_by_document_title}>
-                        {doc.metadata_json.replaced_by_document_title}
-                      </span>
-                    </div>
-                  )}
-                  {doc.metadata_json?.modifies_document_title && (
-                    <div className="text-[9px] text-cyan-500 font-medium flex items-center gap-1 mt-0.5">
-                      <span>✏️ Upravuje:</span>
-                      <span className="truncate block max-w-[170px]" title={doc.metadata_json.modifies_document_title}>
-                        {doc.metadata_json.modifies_document_title}
-                      </span>
-                    </div>
-                  )}
 
-                  <div className="flex flex-col gap-0.5 text-[9px] text-zinc-600 font-medium border-t border-white/[0.03] pt-1">
-                    {doc.created_at && (
-                      <div>Vydáno: {formatReleaseDate(doc.created_at)}</div>
+                    {activeTab === "ingest" && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditDoc(doc)}
+                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 mt-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-1 rounded-md self-start transition-all cursor-pointer"
+                      >
+                        ✏️ Upravit metadata
+                      </button>
                     )}
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           )}
         </aside>
@@ -1255,15 +1390,17 @@ export default function Home() {
             <div className="glass-panel p-6 flex flex-col gap-6 w-full max-w-3xl self-start border-white/[0.04]">
               <div>
                 <h2 className="text-md font-bold text-white flex items-center gap-2">
-                  <span>📤</span> Nahrát a otagovat nový dokument
+                  <span>{editingDocId ? "✏️" : "📤"}</span> {editingDocId ? "Upravit metadata dokumentu" : "Nahrát a otagovat nový dokument"}
                 </h2>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Vložte PDF/TXT soubor. Umělá inteligence navrhne datum vydání, kategorii a vazby na archivní verze.
+                  {editingDocId 
+                    ? "Upravte název, datum vydání, kategorii a stav platnosti pro vybraný dokument."
+                    : "Vložte PDF/TXT soubor. Umělá inteligence navrhne datum vydání, kategorii a vazby na archivní verze."}
                 </p>
               </div>
 
-              {/* Upload Drop Zone */}
-              {!fileToUpload ? (
+              {/* Upload Drop Zone / Editing Banner */}
+              {!fileToUpload && !editingDocId ? (
                 <div
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
@@ -1290,7 +1427,7 @@ export default function Home() {
                     className="hidden"
                   />
                 </div>
-              ) : (
+              ) : fileToUpload ? (
                 <div className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/[0.05] rounded-xl">
                   <div className="flex items-center gap-2.5 truncate">
                     <span className="text-2xl shrink-0">📄</span>
@@ -1309,6 +1446,22 @@ export default function Home() {
                     </button>
                   )}
                 </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                  <div className="flex items-center gap-2.5 truncate">
+                    <span className="text-2xl shrink-0">✏️</span>
+                    <div className="truncate">
+                      <p className="text-xs font-bold text-indigo-300 truncate">Režim úprav: {confirmedTitle}</p>
+                      <p className="text-[10px] text-indigo-400 font-medium">Upravujete metadata existujícího dokumentu</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setEditingDocId(null); setIngestStatus(null); }}
+                    className="text-zinc-400 hover:text-red-400 text-xs font-bold bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer"
+                  >
+                    Zrušit úpravy
+                  </button>
+                </div>
               )}
 
               {/* Loader while LLM parses document draft */}
@@ -1323,9 +1476,9 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Editable suggestions form */}
-              {draftResult && (
-                <form onSubmit={handleConfirmIngest} className="space-y-4">
+              {/* Editable form for BOTH Ingest and Edit modes */}
+              {(draftResult || editingDocId) && (
+                <form onSubmit={editingDocId ? handleSaveDocEdit : handleConfirmIngest} className="space-y-4">
                   <div className="h-px bg-white/5 my-2" />
                   
                   <div className="space-y-1">
@@ -1359,6 +1512,7 @@ export default function Home() {
                         className="w-full bg-black/60 border border-white/[0.08] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
                         required
                       >
+                        <option value="">-- Vyberte kategorii --</option>
                         {config?.categories.map((cat) => (
                           <option key={cat.key} value={cat.key}>
                             {cat.label}
@@ -1368,65 +1522,82 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Replacement / Modification relationships */}
-                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] space-y-3">
-                    <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                      Vztah k ostatním dokumentům
-                    </span>
+                  {/* Freshness selection (Only for Editing Mode) */}
+                  {editingDocId && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Stav platnosti</label>
+                      <select
+                        value={confirmedFreshnessStatus}
+                        onChange={(e) => setConfirmedFreshnessStatus(e.target.value as "current" | "archived")}
+                        className="w-full bg-black/60 border border-white/[0.08] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                      >
+                        <option value="current">🟢 Platný (Current)</option>
+                        <option value="archived">🟡 Archivovaný (Archived)</option>
+                      </select>
+                    </div>
+                  )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-zinc-500 block">Typ vztahu</label>
-                        <select
-                          value={confirmedRelType}
-                          onChange={(e) => setConfirmedRelType(e.target.value)}
-                          className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
-                        >
-                          <option value="none">Nemá vztah</option>
-                          <option value="replaces">🔄 Nahrazuje původní</option>
-                          <option value="modifies">✏️ Upravuje / Doplňuje</option>
-                        </select>
-                      </div>
+                  {/* Replacement / Modification relationships (Only for Ingestion Mode) */}
+                  {!editingDocId && (
+                    <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] space-y-3">
+                      <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                        Vztah k ostatním dokumentům
+                      </span>
 
-                      {confirmedRelType !== "none" && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] text-zinc-500 block">Cílový dokument</label>
+                          <label className="text-[10px] text-zinc-500 block">Typ vztahu</label>
                           <select
-                            value={confirmedRelTargetId}
-                            onChange={(e) => setConfirmedRelTargetId(e.target.value)}
+                            value={confirmedRelType}
+                            onChange={(e) => setConfirmedRelType(e.target.value)}
                             className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
-                            required
                           >
-                            <option value="">-- Vyberte dokument --</option>
-                            {documents.map((doc) => (
-                              <option key={doc.document_id} value={doc.document_id}>
-                                {doc.title}
-                              </option>
-                            ))}
+                            <option value="none">Nemá vztah</option>
+                            <option value="replaces">🔄 Nahrazuje původní</option>
+                            <option value="modifies">✏️ Upravuje / Doplňuje</option>
                           </select>
                         </div>
+
+                        {confirmedRelType !== "none" && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-zinc-500 block">Cílový dokument</label>
+                            <select
+                              value={confirmedRelTargetId}
+                              onChange={(e) => setConfirmedRelTargetId(e.target.value)}
+                              className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
+                              required
+                            >
+                              <option value="">-- Vyberte dokument --</option>
+                              {documents.map((doc) => (
+                                <option key={doc.document_id} value={doc.document_id}>
+                                  {doc.title}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {confirmedRelType === "replaces" && (
+                        <p className="text-[9px] text-amber-500 font-semibold leading-relaxed">
+                          ⚠️ Upozornění: Po dokončení bude cílový dokument automaticky označen jako 'archivní' (včetně jeho vyhledávacích pasáží) a bude ve výchozím nastavení skryt z vyhledávání.
+                        </p>
                       )}
                     </div>
-                    
-                    {confirmedRelType === "replaces" && (
-                      <p className="text-[9px] text-amber-500 font-semibold leading-relaxed">
-                        ⚠️ Upozornění: Po dokončení bude cílový dokument automaticky označen jako 'archivní' (včetně jeho vyhledávacích pasáží) a bude ve výchozím nastavení skryt z vyhledávání.
-                      </p>
-                    )}
-                  </div>
+                  )}
 
                   <button
                     type="submit"
                     disabled={ingestingConfirmed}
-                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px] flex items-center justify-center gap-2"
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px] flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {ingestingConfirmed ? (
                       <>
                         <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Probíhá zpracování, tvorba embedings a ukládání...
+                        Zpracovávám změny...
                       </>
                     ) : (
-                      "Potvrdit metadata a naimportovat"
+                      editingDocId ? "Uložit změny" : "Potvrdit metadata a naimportovat"
                     )}
                   </button>
                 </form>
@@ -1520,6 +1691,7 @@ export default function Home() {
                           <CategoryTagInput
                             allowedGroups={cat.allowed_groups}
                             onChange={(groups) => handleAllowedGroupsChange(idx, groups)}
+                            suggestions={uniqueGroups}
                           />
                         </div>
                       </div>

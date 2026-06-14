@@ -30,6 +30,7 @@ Phase 2/3 Metadata Auto-Tagging & dynamic category administration panel (drag-an
 Phase 2/3 Cloud Deployment Guide (Azure Container Apps packaging and publishing guide) - [x] Completed.
 Phase 2/3 Universal category IDs, persistent blob configuration, background reindexing trigger and UI refinements - [x] Completed.
 Phase 2/3 Label consistency, manual ingestion updates, and strict viewport scrolling layout - [x] Completed.
+Phase 2/3 Dynamic category tag suggestions, automatic deletion save and list refreshing - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 

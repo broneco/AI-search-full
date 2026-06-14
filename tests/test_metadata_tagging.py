@@ -542,3 +542,69 @@ async def test_category_role_rename_propagation(db_setup):
         db.delete(doc_fin)
         db.delete(doc_user)
         db.commit()
+
+
+@pytest.mark.anyio
+async def test_update_document_metadata_api_endpoint(db_setup):
+    db = db_setup
+
+    # 1. Seed a document and chunk in HR category
+    doc = DBDocument(
+        source_type="local",
+        source_uri="file://test_update_meta.pdf",
+        title="Original Title",
+        document_type="policy",
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "HR"]},
+        metadata_json={"department": "HR", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    chunk = DBChunk(
+        document_id=doc.document_id,
+        chunk_index=0,
+        content="Original chunk content.",
+        embedding=[0.0] * 1536,
+        freshness_status="current",
+        security_acl={"allowed_groups": ["Management", "HR"]},
+        metadata_json={"department": "HR", "created_at": "2026-06-14T00:00:00"}
+    )
+    db.add(chunk)
+    db.commit()
+
+    # 2. Call the update-metadata endpoint to change it to Management
+    payload = {
+        "document_id": str(doc.document_id),
+        "title": "New Updated Title",
+        "date": "2026-05-05",
+        "category": "Management",
+        "freshness_status": "archived"
+    }
+
+    try:
+        res = client.post("/api/documents/update-metadata", json=payload)
+        assert res.status_code == 200
+        assert res.json()["status"] == "success"
+
+        # 3. Verify changes were propagated to document and chunk in database
+        db.expire_all()
+        updated_doc = db.query(DBDocument).filter(DBDocument.document_id == doc.document_id).first()
+        assert updated_doc.title == "New Updated Title"
+        assert updated_doc.freshness_status == "archived"
+        assert updated_doc.metadata_json["department"] == "Management"
+        assert updated_doc.metadata_json["created_at"] == "2026-05-05T00:00:00"
+        assert updated_doc.security_acl["allowed_groups"] == ["Management"]
+
+        updated_chunk = db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).first()
+        assert updated_chunk.freshness_status == "archived"
+        assert updated_chunk.metadata_json["department"] == "Management"
+        assert updated_chunk.metadata_json["created_at"] == "2026-05-05T00:00:00"
+        assert updated_chunk.security_acl["allowed_groups"] == ["Management"]
+
+    finally:
+        # Clean up
+        db.delete(chunk)
+        db.delete(doc)
+        db.commit()
