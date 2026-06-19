@@ -3,26 +3,26 @@
     {
       "key": "Management",
       "label": "Management",
-      "description": "Dokumenty určené pouze pro vedení společnosti, strategická rozhodnutí, plány, hospodaření a interní dohody vedení.",
+      "description": "Dokumenty určené pouze pro vedení společnosti a nevhodné pro běžné zaměstance.",
       "allowed_groups": [
         "Management"
       ],
-      "role_name": null
+      "role_name": "Management"
     },
     {
       "key": "HR",
-      "label": "Personální (HR)",
-      "description": "Dokumenty týkající se lidských zdrojů, náboru, benefitů, dovolených, platů a vnitřního chodu týmu.",
+      "label": "HR",
+      "description": "Dokumenty určené pro management a HR a nevhodné pro běžné zaměstanance. Týkají se fungování back office společnosti a některých firemních procesů.",
       "allowed_groups": [
         "Management",
         "HR"
       ],
-      "role_name": null
+      "role_name": "HR"
     },
     {
       "key": "Finance",
-      "label": "Informační Technologie",
-      "description": "Dokumenty spojené s nastavením IT infrastruktury a pravidel používání počítačových systémů.",
+      "label": "IT",
+      "description": "Dokumenty pro IT zaměstnance společnosti. Týkají se nakládání s daty a řízení IT systémů.",
       "allowed_groups": [
         "Management",
         "IT"
@@ -31,25 +31,16 @@
     },
     {
       "key": "User",
-      "label": "Zaměstnanecké (User / Public)",
-      "description": "Obecné směrnice, návody, dokumenty a informace přístupné pro všechny řadové zaměstnance společnosti.",
+      "label": "User",
+      "description": "Dokumenty nemající žádné omezení. Dostanou se k nim všichni zaměstnanci společnosti.",
       "allowed_groups": [
         "Management",
         "HR",
         "IT",
         "User"
       ],
-      "role_name": null
-    },
-    {
-      "key": "9702a691-b354-433f-9c29-f53349fb08c1",
-      "label": "Tester",
-      "description": "Tyto dokumenty jsou určené testerům.",
-      "allowed_groups": [
-        "Management"
-      ],
-      "role_name": "Tester"
+      "role_name": "User"
     }
   ],
-  "analysis_rules": "Zaměř se na vyhledávání oficiálních názvů, čísel směrnic, legislativních odkazů, typických korporátních schvalovacích formulí a dat účinnosti."
+  "analysis_rules": "Projdi následující dokument a rozhodni do jaké kategorie ho zařadit. Je hlavní posoudit jestli je bezpečné aby jej viděli všichni zaměstnanci nebo je třeba to omezit."
 }

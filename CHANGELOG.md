@@ -7,6 +7,9 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ## [Unreleased]
 
 ### Added
+- **Real-Time Re-Indexing Progress Tracking (Backend)**: Added global `reindex_progress` tracking in `app/api/routes/documents.py` to monitor background re-indexing tasks (clearing DB, scanning, metadata analysis, and vector ingestion phases) and exposed it via a new `GET /api/documents/reindex-progress` endpoint.
+- **Docker Deployment Configuration**: Created a production `Dockerfile` (using Python 3.12-slim) and a `.dockerignore` file in the root of the project to enable building containerized images of the backend API.
+- **Dynamic Glassmorphic Re-Indexing Progress Modal (Frontend)**: Implemented a sleek centered modal in Next.js `page.tsx` that blocks user interaction during re-indexing. It polls the backend progress endpoint every 1 second, displaying Czech translation labels, real-time percentage progress (split 0%-50% for metadata analysis, 50%-100% for ingestion), file names, processing counts, and action buttons.
 - **Automated Metadata Tagging System**: Created `app/ingestion/tagger.py` utilizing `gpt-5.4-mini` (flash model) to perform regex-based date candidate extraction, LLM-based release date identification, category classification, and replacement relationship mapping.
 - **Dynamic Categories & AI Rules Configuration**: Added `app/core/classification_config.json` defining visual categories, allowed security groups, descriptions, and custom guidelines for document analysis.
 - **Dynamic categories API Endpoints**: Created endpoints in `app/api/routes/documents.py` to get/save categories config (`/categories`), analyze uploaded file drafts (`/analyze-draft`), and ingest documents with confirmed metadata and relationship archival updates (`/ingest-confirmed`).
@@ -18,6 +21,8 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 - **Tagger Test Suite**: Added a test file `tests/test_metadata_tagging.py` to automatically verify date parsing, category classification, and relationship updates.
 
 ### Changed
+- **Static Next.js Export Configuration**: Configured `frontend/next.config.ts` to output a static export (`output: 'export'`) and disable image optimization (`images: { unoptimized: true }`), preparing the frontend for serverless hosting on Azure Static Web Apps.
+- **Configurable Frontend API URL**: Refactored `frontend/app/page.tsx` to read the backend API URL from `process.env.NEXT_PUBLIC_API_URL` (falling back to `http://localhost:8000`), allowing the frontend to target the newly deployed Azure Container App without modifying code.
 - **Strict Viewport Scroll Layout**: Set strict viewport height (`h-screen overflow-hidden` on `body`) in `frontend/app/globals.css` and `frontend/app/layout.tsx` to prevent the browser window from scrolling. Only the internal feed, sidebars, and forms now scroll, keeping the header and chat input box fixed.
 - **Dynamic Frontend Role Fallback**: Updated the frontend role header generator (`getHeaders`) to automatically extract the specific group from the category's `allowed_groups` (filtering out `"Management"`) if `role_name` is null or empty, preventing permission mismatches.
 - **Dynamic LLM Category Mapping**: Refactored the LLM classification prompt and mapping logic in `app/ingestion/tagger.py` to dynamically resolve friendly role names and robustly match LLM responses against category labels and keys case-insensitively.

@@ -244,7 +244,76 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Backend API URL Base
-  const BACKEND_URL = "http://localhost:8000";
+  const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  // Re-indexing progress state
+  const [showReindexModal, setShowReindexModal] = useState(false);
+  const [reindexProgress, setReindexProgress] = useState<{
+    status: "idle" | "running" | "completed" | "failed";
+    total_files: number;
+    processed_files: number;
+    current_file: string | null;
+    phase: "clearing_db" | "scanning_files" | "analyzing" | "ingesting" | null;
+    error: string | null;
+  } | null>(null);
+
+  // Polling handler for re-indexing progress
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startPollingProgress = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/documents/reindex-progress`);
+        if (res.ok) {
+          const data = await res.json();
+          setReindexProgress(data);
+          if (data.status === "completed" || data.status === "failed") {
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            // Refresh documents when complete
+            fetchDocuments();
+          }
+        }
+      } catch (err) {
+        console.error("Error polling re-index progress:", err);
+      }
+    }, 1000);
+  };
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const getReindexPercentage = () => {
+    if (!reindexProgress) return 0;
+    const { status, phase, total_files, processed_files } = reindexProgress;
+    if (status === "completed") return 100;
+    if (status === "idle") return 0;
+    
+    if (phase === "clearing_db" || phase === "scanning_files") {
+      return 5;
+    }
+    if (phase === "analyzing") {
+      if (!total_files) return 10;
+      return Math.round((processed_files / total_files) * 50);
+    }
+    if (phase === "ingesting") {
+      if (!total_files) return 60;
+      return Math.round(50 + (processed_files / total_files) * 50);
+    }
+    return 0;
+  };
 
   // Helper to resolve category label from key/UUID
   const getCategoryLabel = (catKey?: string) => {
@@ -742,18 +811,41 @@ export default function Home() {
         const runReindex = confirm(promptMsg);
         if (runReindex) {
           try {
+            setReindexProgress({
+              status: "running",
+              total_files: 0,
+              processed_files: 0,
+              current_file: null,
+              phase: "clearing_db",
+              error: null
+            });
+            setShowReindexModal(true);
+
             const reindexRes = await fetch(`${BACKEND_URL}/api/documents/reindex-all`, {
               method: "POST"
             });
             if (reindexRes.ok) {
-              alert("Znovunačtení všech dokumentů na pozadí bylo zahájeno. Seznam souborů se po dokončení obnoví.");
-              fetchDocuments();
+              startPollingProgress();
             } else {
-              alert("Spuštění znovunačtení selhalo.");
+              setReindexProgress({
+                status: "failed",
+                total_files: 0,
+                processed_files: 0,
+                current_file: null,
+                phase: null,
+                error: "Spuštění znovunačtení selhalo na serveru."
+              });
             }
           } catch (err) {
             console.error("Failed to trigger re-indexing", err);
-            alert("Chyba při komunikaci se serverem.");
+            setReindexProgress({
+              status: "failed",
+              total_files: 0,
+              processed_files: 0,
+              current_file: null,
+              phase: null,
+              error: "Chyba při komunikaci se serverem: " + (err instanceof Error ? err.message : String(err))
+            });
           }
         } else {
           alert("Změny byly uloženy. Seznam dokumentů byl aktualizován.");
@@ -1795,6 +1887,115 @@ export default function Home() {
                 Potvrdit a převést
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Re-indexing Progress Modal */}
+      {showReindexModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn">
+          <div className="glass-panel max-w-md w-full p-6 space-y-5 border-white/[0.08] shadow-2xl bg-[#0c1222]">
+            <div className="text-center space-y-2">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 mb-1">
+                {reindexProgress?.status === "running" && (
+                  <svg className="animate-spin h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                )}
+                {reindexProgress?.status === "completed" && (
+                  <span className="text-xl text-emerald-400">✓</span>
+                )}
+                {reindexProgress?.status === "failed" && (
+                  <span className="text-xl text-red-400">✕</span>
+                )}
+              </div>
+              <h3 className="text-md font-extrabold text-white tracking-wide">
+                {reindexProgress?.status === "running" && "Probíhá reindexace dokumentů"}
+                {reindexProgress?.status === "completed" && "Reindexace úspěšně dokončena"}
+                {reindexProgress?.status === "failed" && "Reindexace selhala"}
+              </h3>
+              <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
+                Během reindexace dochází k pročištění databáze a novému spárování a ohodnocení všech dokumentů dle upravených pravidel.
+              </p>
+            </div>
+
+            {/* Progress Bar Container */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-[11px] font-semibold">
+                <span className="text-indigo-400">
+                  {reindexProgress?.status === "running" && (
+                    reindexProgress.phase === "clearing_db" ? "Pročišťování starých záznamů..." :
+                    reindexProgress.phase === "scanning_files" ? "Hledání souborů..." :
+                    reindexProgress.phase === "analyzing" ? "Fáze 1/2: Analýza metadat (AI)..." :
+                    reindexProgress.phase === "ingesting" ? "Fáze 2/2: Ingestování a tvorba embeddingů..." :
+                    "Pracuji..."
+                  )}
+                  {reindexProgress?.status === "completed" && "Všechny dokumenty byly úspěšně reindexovány."}
+                  {reindexProgress?.status === "failed" && "Během zpracování nastala chyba."}
+                </span>
+                <span className="text-indigo-300 font-bold">{getReindexPercentage()}%</span>
+              </div>
+
+              <div className="w-full h-2.5 rounded-full bg-white/[0.03] border border-white/[0.05] overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ease-out ${
+                    reindexProgress?.status === "failed" 
+                      ? "bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.4)]" 
+                      : reindexProgress?.status === "completed"
+                      ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
+                      : "bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-[0_0_10px_rgba(99,102,241,0.4)] animate-pulse"
+                  }`}
+                  style={{ width: `${getReindexPercentage()}%` }}
+                />
+              </div>
+
+              {/* Detail info */}
+              {reindexProgress?.status === "running" && reindexProgress.total_files > 0 && (
+                <div className="rounded-xl bg-black/40 border border-white/[0.05] p-3 text-[11px] font-semibold text-zinc-300 space-y-1 mt-2">
+                  <div className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider">
+                    {reindexProgress.phase === "analyzing" ? "Analýza metadat a vztahů" : "Indexace obsahu"}
+                  </div>
+                  {reindexProgress.current_file && (
+                    <div className="truncate text-white text-[11px]">
+                      📁 {reindexProgress.current_file}
+                    </div>
+                  )}
+                  <div className="text-indigo-400 text-[10px]">
+                    Soubor {Math.min(reindexProgress.processed_files + 1, reindexProgress.total_files)} z {reindexProgress.total_files}
+                  </div>
+                </div>
+              )}
+
+              {reindexProgress?.status === "failed" && reindexProgress.error && (
+                <div className="rounded-xl bg-red-950/20 border border-red-500/20 p-3 text-[11px] text-red-400 font-semibold leading-relaxed mt-2">
+                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-red-500 mb-1">
+                    Chybová zpráva
+                  </div>
+                  {reindexProgress.error}
+                </div>
+              )}
+            </div>
+
+            {/* Close/Action buttons */}
+            {(reindexProgress?.status === "completed" || reindexProgress?.status === "failed") && (
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReindexModal(false);
+                    setReindexProgress(null);
+                  }}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                    reindexProgress?.status === "failed"
+                      ? "bg-red-600 hover:bg-red-500 text-white"
+                      : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                  }`}
+                >
+                  Zavřít
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

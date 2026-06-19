@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 # Cache or reuse provider instance
 embedding_provider = AzureOpenAIEmbeddingProvider()
 
+# Global state for re-indexing progress tracking
+reindex_progress = {
+    "status": "idle",       # "idle" | "running" | "completed" | "failed"
+    "total_files": 0,
+    "processed_files": 0,
+    "current_file": None,
+    "phase": None,          # "clearing_db" | "scanning_files" | "analyzing" | "ingesting"
+    "error": None
+}
+
 
 @router.post("/ingest", response_model=DocumentIngestResponse)
 async def ingest_document(
@@ -702,6 +712,14 @@ async def run_reindex_all_task():
     from app.storage.models import DBDocument, DBChunk
     import uuid
 
+    # Reset progress state
+    reindex_progress["status"] = "running"
+    reindex_progress["phase"] = "clearing_db"
+    reindex_progress["total_files"] = 0
+    reindex_progress["processed_files"] = 0
+    reindex_progress["current_file"] = None
+    reindex_progress["error"] = None
+
     # Use fresh db session context manager
     db = SessionLocal()
     try:
@@ -718,19 +736,30 @@ async def run_reindex_all_task():
         config = await tagger.load_config()
 
         # 3. Scan data directory
+        reindex_progress["phase"] = "scanning_files"
         data_dir = os.path.abspath("data")
         if not os.path.exists(data_dir):
             logger.info("Data directory not found. Re-indexing completed with 0 files.")
+            reindex_progress["status"] = "completed"
+            reindex_progress["phase"] = None
             return
 
         files = list_local_files(data_dir, extensions=[".pdf", ".txt"])
         if not files:
             logger.info("No documents found in data directory for re-indexing.")
+            reindex_progress["status"] = "completed"
+            reindex_progress["phase"] = None
             return
+
+        reindex_progress["total_files"] = len(files)
+        reindex_progress["phase"] = "analyzing"
+        reindex_progress["processed_files"] = 0
 
         # 4. Phase A: Extract metadata for all files to sort them
         analyzed_docs = []
-        for file_path in files:
+        for idx, file_path in enumerate(files):
+            reindex_progress["current_file"] = os.path.basename(file_path)
+            reindex_progress["processed_files"] = idx
             try:
                 suggestions = await tagger.analyze_file(file_path)
                 analyzed_docs.append({
@@ -752,14 +781,20 @@ async def run_reindex_all_task():
 
         # 5. Phase B: Ingest in chronological order
         pipeline = IngestionPipeline(db)
+        reindex_progress["phase"] = "ingesting"
+        reindex_progress["processed_files"] = 0
+        reindex_progress["total_files"] = len(analyzed_docs)
 
-        for item in analyzed_docs:
+        for idx, item in enumerate(analyzed_docs):
             file_path = item["file_path"]
             sug = item["suggestions"]
             title = sug["title"]
             category_key = sug["suggested_category"]
             date_str = sug["suggested_date"]
             rel = sug["relationship"]
+
+            reindex_progress["current_file"] = os.path.basename(file_path)
+            reindex_progress["processed_files"] = idx
 
             logger.info(f"Re-indexing document in order: {title} (Date: {date_str})")
 
@@ -840,11 +875,25 @@ async def run_reindex_all_task():
                 db.rollback()
                 logger.error(f"Failed to ingest file {title} during reindex phase B: {e}")
 
+        # Finalize success
+        reindex_progress["status"] = "completed"
+        reindex_progress["processed_files"] = len(analyzed_docs)
+        reindex_progress["current_file"] = None
+        reindex_progress["phase"] = None
+
     except Exception as e:
         logger.error(f"Re-indexing failed: {e}")
+        reindex_progress["status"] = "failed"
+        reindex_progress["error"] = str(e)
     finally:
         db.close()
         logger.info("Background re-indexing finished.")
+
+
+@router.get("/reindex-progress")
+async def get_reindex_progress():
+    """Get the current progress of the background re-indexing task."""
+    return reindex_progress
 
 
 @router.post("/reindex-all")

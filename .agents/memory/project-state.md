@@ -1,6 +1,6 @@
 # Project State Memory
 
-Last updated: 2026-05-26
+Last updated: 2026-06-18
 
 ## Product summary
 
@@ -31,6 +31,7 @@ Phase 2/3 Cloud Deployment Guide (Azure Container Apps packaging and publishing 
 Phase 2/3 Universal category IDs, persistent blob configuration, background reindexing trigger and UI refinements - [x] Completed.
 Phase 2/3 Label consistency, manual ingestion updates, and strict viewport scrolling layout - [x] Completed.
 Phase 2/3 Dynamic category tag suggestions, automatic deletion save and list refreshing - [x] Completed.
+Phase 2/3 Real-time re-indexing progress bar (backend global state tracking, progress polling endpoint, frontend glassmorphic progress modal with per-file updates) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 
