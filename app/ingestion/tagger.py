@@ -346,6 +346,34 @@ class MetadataTagger:
             logger.error(f"Failed to detect relationships using LLM: {e}")
             return relationship_fallback
 
+    async def detect_language(self, text_excerpt: str) -> str:
+        """Detect if the document text is written in Czech ('cs') or English ('en')."""
+        system_prompt = (
+            "You are a language detection assistant.\n"
+            "Identify the language of the following text excerpt.\n"
+            "Rules:\n"
+            "- If the text is primarily in Czech, answer: cs\n"
+            "- If the text is primarily in English, answer: en\n"
+            "- If it is another language, answer: cs (default)\n"
+            "- Output ONLY the two-letter language code (cs or en). No other text, quotes, or formatting."
+        )
+        
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=f"Text excerpt:\n{text_excerpt[:2000]}")
+        ]
+        
+        try:
+            result = await self.llm.generate(messages, model_profile="flash", temperature=0.0)
+            lang = result.strip().lower().replace('"', '').replace("'", "")
+            if lang in ("cs", "en"):
+                logger.info(f"LLM successfully detected language: {lang}")
+                return lang
+        except Exception as e:
+            logger.error(f"Failed to detect language using LLM: {e}")
+            
+        return "cs"
+
     async def analyze_file(self, file_path: str) -> Dict[str, Any]:
         """Perform text extraction and run LLM analyses to extract draft metadata suggestions."""
         logger.info(f"Starting metadata draft analysis for: {file_path}")
@@ -364,13 +392,14 @@ class MetadataTagger:
         # Load configuration
         config = await self.load_config()
         
-        # Run date extraction, category classification and relationships concurrently
+        # Run date extraction, category classification, relationships and language detection concurrently
         date_task = self.determine_release_date(full_text, file_path)
         category_task = self.classify_category(first_pages_text, config)
         relationship_task = self.detect_relationships(first_pages_text)
+        language_task = self.detect_language(first_pages_text)
         
-        date_str, category_key, relationship = await asyncio.gather(
-            date_task, category_task, relationship_task
+        date_str, category_key, relationship, language = await asyncio.gather(
+            date_task, category_task, relationship_task, language_task
         )
         
         suggested_title = os.path.splitext(os.path.basename(file_path))[0]
@@ -380,6 +409,7 @@ class MetadataTagger:
             "suggested_date": date_str,
             "suggested_category": category_key,
             "relationship": relationship,
+            "suggested_language": language,
             "original_filename": os.path.basename(file_path)
         }
 

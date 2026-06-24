@@ -35,15 +35,15 @@ az account set --subscription "<your-subscription-name-or-id>"
 Create an Azure Container Registry to host the docker images:
 ```bash
 az acr create \
-  --resource-group dolphin-search-rg \
-  --name dolphinacr \
+  --resource-group DOLPHIN_DS \
+  --name dolphinds \
   --sku Basic \
   --admin-enabled true
 ```
 
 Get registry credentials:
 ```bash
-az acr credential show --name dolphinacr
+az acr credential show --name dolphinds
 ```
 
 ### Step 2: Build and Push Docker Image
@@ -72,37 +72,37 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 Build and push the docker image to your registry:
 ```bash
 # Log in to ACR
-az acr login --name dolphinacr
+az acr login --name dolphinds
 
 # Build image
-docker build -t dolphinacr.azurecr.io/ai-search-backend:v1.0.0 .
+docker build -t dolphinds-b7asdeh8fyayaya2.azurecr.io/ai-search-backend:v1.0.0 .
 
 # Push image
-docker push dolphinacr.azurecr.io/ai-search-backend:v1.0.0
+docker push dolphinds-b7asdeh8fyayaya2.azurecr.io/ai-search-backend:v1.0.0
 ```
 
 ### Step 3: Create Container App Environment
 Create the Log Analytics workspace and Container App Environment:
 ```bash
 az containerapp env create \
-  --resource-group dolphin-search-rg \
-  --name dolphin-env \
-  --location westeurope
+  --resource-group DOLPHIN_DS \
+  --name dolphinds-ai-container-env \
+  --location northeurope
 ```
 
 ### Step 4: Deploy Container App
 Deploy the container to Azure Container Apps, exposing port 8000:
 ```bash
 az containerapp create \
-  --resource-group dolphin-search-rg \
-  --name dolphin-search-backend \
-  --environment dolphin-env \
-  --image dolphinacr.azurecr.io/ai-search-backend:v1.0.0 \
+  --resource-group DOLPHIN_DS \
+  --name dolphin-ai-search-backend \
+  --environment dolphinds-ai-container-env \
+  --image dolphinds-b7asdeh8fyayaya2.azurecr.io/ai-search-backend:v1.0.0 \
   --target-port 8000 \
   --ingress external \
   --min-replicas 1 \
   --max-replicas 3 \
-  --registry-server dolphinacr.azurecr.io
+  --registry-server dolphinds-b7asdeh8fyayaya2.azurecr.io
 ```
 
 ### Step 5: Configure Environment Variables & Secrets
@@ -111,16 +111,16 @@ Configure environmental secrets for database credentials and Azure OpenAI connec
 ```bash
 # Set backend secrets
 az containerapp secret set \
-  --resource-group dolphin-search-rg \
-  --name dolphin-search-backend \
+  --resource-group DOLPHIN_DS \
+  --name dolphin-ai-search-backend \
   --secrets \
     db-password="<your-postgres-password>" \
     openai-key="<your-azure-openai-key>"
 
 # Bind secrets to environment variables
 az containerapp update \
-  --resource-group dolphin-search-rg \
-  --name dolphin-search-backend \
+  --resource-group DOLPHIN_DS \
+  --name dolphin-ai-search-backend \
   --set-env-vars \
     APP_ENV="production" \
     POSTGRES_HOST="<your-postgres-host>.postgres.database.azure.com" \
@@ -148,8 +148,8 @@ If your frontend Next.js container (deployed separately or run locally) communic
 ```bash
 # Allow origins
 az containerapp ingress cors update \
-  --resource-group dolphin-search-rg \
-  --name dolphin-search-backend \
+  --resource-group DOLPHIN_DS \
+  --name dolphin-ai-search-backend \
   --allowed-origins "*" \
   --allowed-methods "GET,POST,OPTIONS" \
   --allowed-headers "*" \
@@ -160,7 +160,7 @@ az containerapp ingress cors update \
 To stream stdout/stderr logs from the running Container App instance:
 ```bash
 az containerapp logs show \
-  --resource-group dolphin-search-rg \
-  --name dolphin-search-backend \
+  --resource-group DOLPHIN_DS \
+  --name dolphin-ai-search-backend \
   --follow
 ```

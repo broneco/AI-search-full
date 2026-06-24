@@ -1,0 +1,11 @@
+=== TARGET CONTENT FROM INDEX 3000 TO 3200 ===
+ "Ukládám změny...",
+    configurationTitle: "AI Search Settings",
+    configurationSubtitle: "Manage categories and configuration rules for LLM metadata tagging",
+    addCategoryBtn: "➕ Add Category"
+
+=== SNIPPET CONTENT FROM INDEX 3000 TO 3200 ===
+ "Ukládám změny...",
+    configurationTitle: "Nastavení AI vyhledávání",
+    configurationSubtitle: "Správa kategorií dokumentů a pravidel pro LLM tagování",
+    addCategoryBtn: "➕ Přidat kategorii",

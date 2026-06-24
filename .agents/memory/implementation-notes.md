@@ -8,3 +8,12 @@ Use this file for durable notes that future agents need but that are not obvious
 - **Python Cosine Similarity Optimization**: Computing cosine similarity sequentially in a database query loop (`select(DBChunk.embedding.cosine_distance(...))`) inside candidate filters is a severe bottleneck for remote PostgreSQL setups. Instead, retrieval computes cosine similarity in pure Python over the loaded embedding lists. Since Azure OpenAI embeddings are L2 normalized, cosine similarity is calculated by dot product divided by vector norms, ensuring lightning-fast candidate evaluation without database network roundtrips.
 - **Swagger Security Headers**: Exposing HTTP headers (like `X-User-Id` and `X-User-Groups`) in Swagger UI (/docs) is achieved by formally declaring them as optional parameters of the endpoint function using `x_user_id: Optional[str] = Header(None, alias="X-User-Id")`. The backend route defaults them to standard defaults (e.g. `User` role and `local_user` user id) to maintain out-of-the-box compatibility for standard REST requests.
 - **Czech Character-Mapping PDF Highlighting Algorithm**: Standard PyMuPDF `page.search_for` matches fail on Czech PDFs due to (1) font corruption where accents are extracted as `\ufffd`, (2) phantom spacing inside words due to loader/font kerning conflicts, and (3) multi-line paragraph layout breaks. The view router builds a character-to-word-index mapping of the page by stripping all accents, spaces, and corrupted characters to standard basic ASCII alphanumeric components (`a-z`, `0-9`). It runs a sliding-window substring search on this basic representation, locates corresponding PDF word bounding boxes, and groups them by `(block_no, line_no)` to draw clean line-by-line rectangles.
+
+## Infrastructure & Deployment Configuration
+
+- **Azure Container Registry (ACR)**: The registry name in the Azure subscription is `dolphinds` (Login Server URL: `dolphinds-b7asdeh8fyayaya2.azurecr.io`). Use `dolphinds` for all future builds and this full URL for image tags.
+- **Resource Group**: `DOLPHIN_DS`
+- **Location**: North Europe (`northeurope`)
+- **Container App**: `dolphin-ai-search-backend` (URL: `https://dolphin-ai-search-backend.graysand-c9254ce4.northeurope.azurecontainerapps.io`)
+- **Container Apps Environment**: `dolphinds-ai-container-env`
+- **Tags**: `owner: Ondrej Bronec`, `purpose: AI Search - internal`

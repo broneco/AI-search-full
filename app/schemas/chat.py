@@ -24,6 +24,7 @@ class ChatMetadata(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(..., description="Conversational query or search question.")
     mode: str = Field("flash", description="Agent query mode: 'flash' or 'thinking'.")
+    locale: str = Field("cs", description="Application locale and LLM response language ('cs' or 'en').")
     filters: Dict[str, Any] = Field(
         default_factory=dict, description="Metadata filters to apply."
     )

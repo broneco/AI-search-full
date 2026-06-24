@@ -32,6 +32,7 @@ Phase 2/3 Universal category IDs, persistent blob configuration, background rein
 Phase 2/3 Label consistency, manual ingestion updates, and strict viewport scrolling layout - [x] Completed.
 Phase 2/3 Dynamic category tag suggestions, automatic deletion save and list refreshing - [x] Completed.
 Phase 2/3 Real-time re-indexing progress bar (backend global state tracking, progress polling endpoint, frontend glassmorphic progress modal with per-file updates) - [x] Completed.
+Phase 2/3 Multi-lingual Frontend & Document Language Filtering (automatic language detection in tagger, localized RAG prompts, CZ/EN toggle switcher, collapsible filter settings panel, visual badges) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 

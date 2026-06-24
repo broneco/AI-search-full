@@ -63,13 +63,11 @@ interface Config {
 function CategoryTagInput({
   allowedGroups,
   onChange,
-  suggestions = ["Management", "HR", "Finance", "User"],
-  locale = "cs"
+  suggestions = ["Management", "HR", "Finance", "User"]
 }: {
   allowedGroups: string[];
   onChange: (groups: string[]) => void;
   suggestions?: string[];
-  locale?: "cs" | "en";
 }) {
   const [inputValue, setInputValue] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -140,7 +138,7 @@ function CategoryTagInput({
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => setShowSuggestions(true)}
-          placeholder={allowedGroups.length === 0 ? (locale === "cs" ? "Přidejte skupinu (stiskněte Enter)..." : "Add group (press Enter)...") : ""}
+          placeholder={allowedGroups.length === 0 ? "Přidejte skupinu (stiskněte Enter)..." : ""}
           className="flex-1 min-w-[120px] bg-transparent border-none focus:outline-none text-xs text-zinc-200 placeholder-zinc-600"
         />
       </div>
@@ -156,7 +154,7 @@ function CategoryTagInput({
               onClick={() => addGroup(g)}
               className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-white/[0.03] hover:text-white transition-all font-semibold"
             >
-              {locale === "cs" ? "➕ Přidat" : "➕ Add"} {g}
+              ➕ Přidat {g}
             </button>
           ))}
           {inputValue &&
@@ -167,7 +165,7 @@ function CategoryTagInput({
                 onClick={() => addGroup(inputValue.trim())}
                 className="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-white/[0.03] hover:text-white transition-all font-mono"
               >
-                {locale === "cs" ? `✨ Vytvořit "${inputValue.trim()}"` : `✨ Create "${inputValue.trim()}"`}
+                ✨ Vytvořit "{inputValue.trim()}"
               </button>
             )}
         </div>
@@ -242,10 +240,10 @@ const TRANSLATIONS = {
     saveChangesBtn: "Uložit změny",
     ingesting: "Ukládám do databáze a generuji embeddings...",
     saving: "Ukládám změny...",
-    configurationTitle: "Konfigurace kategorií a AI pravidel",
-    configurationSubtitle: "Měňte názvy kategorií, popisy pro LLM klasifikátor a bezpečnostní role. Změna se projeví v celé aplikaci.",
-    addCategoryBtn: "➕ Přidat novou kategorii",
-    saveConfigBtn: "Uložit konfiguraci a pravidla",
+    configurationTitle: "Nastavení AI vyhledávání",
+    configurationSubtitle: "Správa kategorií dokumentů a pravidel pro LLM tagování",
+    addCategoryBtn: "➕ Přidat kategorii",
+    saveConfigBtn: "Uložit konfiguraci",
     savingConfig: "Ukládám...",
     analysisRulesLabel: "Pravidla pro LLM analýzu a auto-tagování",
     analysisRulesSub: "Tyto instrukce řídí chování AI při rozřazování nově nahraných dokumentů.",
@@ -264,97 +262,6 @@ const TRANSLATIONS = {
     langFilterAll: "Všechny jazyky",
     langFilterCS: "Čeština",
     langFilterEN: "English",
-
-    // New keys
-    accessibleFiles: "Přístupné soubory",
-    refreshBtn: "Obnovit",
-    refreshTooltip: "Obnovit seznam souborů",
-    releasedLabel: "Vydáno:",
-    editMetadataBtn: "Upravit metadata",
-    sourceDocHeader: "Zdrojový dokument (Kliknutím otevřete)",
-    pageNumberLabel: "Číslo strany",
-    chapterSectionLabel: "Kapitola / Sekce",
-    mainTextLabel: "Hlavní text",
-    citedPassageLabel: "Citovaná pasáž",
-    securityAuditLabel: "Bezpečnost a auditovatelnost",
-    rrfScoreLabel: "RRF Shoda (Fused score):",
-    securityAclLabel: "Povolené skupiny (Security ACL):",
-    emptyWorkspaceTitle: "Prázdný pracovní prostor",
-    emptyWorkspaceDesc: "Klikněte na libovolnou citaci 📄 Zdroj X v odpovědi asistenta pro zobrazení podrobných informací a zobrazení celého dokumentu.",
-    closePanelTitle: "Zavřít panel",
-    clickToOpenPdf: "Kliknutím otevřete PDF na straně {page}",
-    clickToOpenEntire: "Kliknutím otevřete celý PDF dokument",
-    pageLabel: "strana",
-    pageLabelCapitalized: "Strana",
-    editModeBanner: "Režim úprav:",
-    editModeSub: "Upravujete metadata existujícího dokumentu",
-    cancelEditBtn: "Zrušit úpravy",
-    dropzoneDragText: "Sem přetáhněte soubor směrnice",
-    dropzoneBrowseText: "nebo klikněte pro vyhledání (PDF, TXT, max 20 MB)",
-    removeFileTitle: "Odebrat soubor",
-    selectCategoryPlaceholder: "-- Vyberte kategorii --",
-    selectDocumentPlaceholder: "-- Vyberte dokument --",
-    relationshipNoneOption: "Nemá vztah",
-    relationshipReplacesOption: "🔄 Nahrazuje původní",
-    relationshipModifiesOption: "✏️ Upravuje / Doplňuje",
-    relationshipWarning: "⚠️ Upozornění: Po dokončení bude cílový dokument automaticky označen jako 'archivní' (včetně jeho vyhledávacích pasáží) a bude ve výchozím nastavení skryt z vyhledávání.",
-    processingChangesText: "Zpracovávám změny...",
-    categoriesListLabel: "Seznam kategorií (Readjustuje celou aplikaci)",
-    deleteBtn: "Odebrat",
-    keyLabel: "Klíč (ID)",
-    labelLabel: "Název (Štítek)",
-    roleNameLabel: "Skupina (role_name)",
-    categoryDescriptionLabel: "Popis kategorie pro AI (Určuje chování LLM klasifikátoru)",
-    securityGroupsLabel: "Bezpečnostní skupiny (Pills pro ACL)",
-    generalRulesLabel: "Obecná pravidla pro analýzu dokumentů",
-    savingConfigText: "Uklám a rekonfiguruji...",
-    loadingConfigText: "Načítám konfigurační soubory...",
-    noRoleLabel: "bez role",
-    migrationModalTitle: "Převod dokumentů před smazáním",
-    migrationModalDesc: "Chystáte se smazat kategorii",
-    migrationSafetyWarn: "Z bezpečnostních důvodů vyberte, do které zbývající kategorie se mají tyto dokumenty bezpečně převést, aby se zabránilo jejich zneveřejnění (úniku dat do veřejné zóny):",
-    migrationTargetLabel: "Cílová kategorie pro dokumenty",
-    confirmAndTransferBtn: "Potvrdit a převést",
-    reindexProgressTitle: "Probíhá reindexace dokumentů",
-    reindexSuccessTitle: "Reindexace úspěšně dokončena",
-    reindexFailedTitle: "Reindexace selhala",
-    reindexProgressDesc: "Během reindexace dochází k pročištění databáze a novému spárování a ohodnocení všech dokumentů dle upravených pravidel.",
-    reindexPhaseClearing: "Pročišťování starých záznamů...",
-    reindexPhaseScanning: "Hledání souborů...",
-    reindexPhaseAnalyzing: "Fáze 1/2: Analýza metadat (AI)...",
-    reindexPhaseIngesting: "Fáze 2/2: Ingestování a tvorba embeddingů...",
-    reindexPhaseWorking: "Pracuji...",
-    reindexSuccessMsg: "Všechny dokumenty byly úspěšně reindexovány.",
-    reindexErrorMsg: "Během zpracování nastala chyba.",
-    reindexSubphaseAnalyzing: "Analýza metadat a vztahů",
-    reindexSubphaseIngesting: "Indexace obsahu",
-    reindexProgressFile: "Soubor {current} z {total}",
-    errorMessageTitle: "Chybová zpráva",
-    closeBtn: "Zavřít",
-    reindexPromptDeletion: "Kategorie byla úspěšně smazána a dokumenty byly bezpečně převedeny do náhradních kategorií.\n\nChcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\nUPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva.",
-    reindexPromptUpdate: "Konfigurace byla úspěšně uložena a existující dokumenty byly bezpečně rekonfigurovány.\n\nChcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\nUPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva.",
-    apiConnecting: "Připojování...",
-    errorServerCommunication: "Chyba při komunikaci se serverem: {error}. Ujistěte se, že Váš FastAPI server běží na portu 8000.",
-    alertOnlyPdfTxt: "Podporovány jsou pouze soubory PDF a TXT.",
-    errorDraftAnalysis: "Chyba při analýze dokumentu: {error}",
-    errorIngestFailed: "Chyba při dokončení importu: {error}",
-    errorEditFailed: "Úprava selhala: {status} ({detail})",
-    errorSaveFailed: "Chyba při ukládání změn: {error}",
-    alertAtLeastOneCategory: "Musíte ponechat alespoň jednu kategorii.",
-    errorReindexingTrigger: "Spuštění znovunačtení selhalo na serveru.",
-    errorReindexingComm: "Chyba při komunikaci se serverem: {error}",
-    alertChangesSaved: "Změny byly uloženy. Seznam dokumentů byl aktualizován.",
-    alertSaveConfigFailed: "Selhalo ukládání konfigurace.",
-    alertServerConnError: "Chyba při připojování k serveru.",
-    roleVedení: "👑 Vedení (Management)",
-    rolePersonální: "💼 Personální (HR Specialist)",
-    roleFinanční: "📊 Finanční (Finance Auditor)",
-    roleZaměstnanec: "👤 Zaměstnanec (Standard User)",
-    newCategoryLabel: "Nová kategorie",
-    newCategoryDesc: "Popis této kategorie pro LLM klasifikátor.",
-    initialGreeting: "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Dolphin Consulting. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům.",
-    clickToOpenPdfTitle: "Kliknutím otevřete PDF: {title}",
-    multipleSections: "Několik sekcí",
   },
   en: {
     title: "Corporate AI Search",
@@ -443,99 +350,8 @@ const TRANSLATIONS = {
     langFilterAll: "All languages",
     langFilterCS: "Czech",
     langFilterEN: "English",
-
-    // New keys
-    accessibleFiles: "Accessible Files",
-    refreshBtn: "Refresh",
-    refreshTooltip: "Refresh files list",
-    releasedLabel: "Released:",
-    editMetadataBtn: "Edit Metadata",
-    sourceDocHeader: "Source Document (Click to open)",
-    pageNumberLabel: "Page Number",
-    chapterSectionLabel: "Chapter / Section",
-    mainTextLabel: "Main Text",
-    citedPassageLabel: "Cited Passage",
-    securityAuditLabel: "Security & Auditability",
-    rrfScoreLabel: "RRF Score (Fused score):",
-    securityAclLabel: "Allowed Groups (Security ACL):",
-    emptyWorkspaceTitle: "Empty Workspace",
-    emptyWorkspaceDesc: "Click any 📄 Source X citation badge in the AI assistant's response to view detailed information and read the full document.",
-    closePanelTitle: "Close Panel",
-    clickToOpenPdf: "Click to open PDF on page {page}",
-    clickToOpenEntire: "Click to open entire PDF document",
-    pageLabel: "page",
-    pageLabelCapitalized: "Page",
-    editModeBanner: "Edit Mode:",
-    editModeSub: "You are editing metadata of an existing document",
-    cancelEditBtn: "Cancel Editing",
-    dropzoneDragText: "Drop policy file here",
-    dropzoneBrowseText: "or click to browse (PDF, TXT, max 20 MB)",
-    removeFileTitle: "Remove File",
-    selectCategoryPlaceholder: "-- Select Category --",
-    selectDocumentPlaceholder: "-- Select Document --",
-    relationshipNoneOption: "None",
-    relationshipReplacesOption: "🔄 Replaces original",
-    relationshipModifiesOption: "✏️ Modifies / Extends",
-    relationshipWarning: "⚠️ Note: Once saved, the target document will automatically be marked as 'archived' (including its search passages) and will be hidden from default searches.",
-    processingChangesText: "Processing changes...",
-    categoriesListLabel: "Categories List (Readjusts entire application)",
-    deleteBtn: "Remove",
-    keyLabel: "Key (ID)",
-    labelLabel: "Name (Label)",
-    roleNameLabel: "Group (role_name)",
-    categoryDescriptionLabel: "Category description for AI (Guides the LLM classifier)",
-    securityGroupsLabel: "Security groups (Pills for ACL)",
-    generalRulesLabel: "General rules for document analysis",
-    savingConfigText: "Saving and reconfiguring...",
-    loadingConfigText: "Loading configuration files...",
-    noRoleLabel: "no role",
-    migrationModalTitle: "Transfer Documents Before Deletion",
-    migrationModalDesc: "You are about to delete category",
-    migrationSafetyWarn: "For safety reasons, choose which remaining category to securely transfer these documents to, avoiding accidental disclosure (data leakage to public zones):",
-    migrationTargetLabel: "Target category for documents",
-    confirmAndTransferBtn: "Confirm & Transfer",
-    reindexProgressTitle: "Document Re-indexing In Progress",
-    reindexSuccessTitle: "Re-indexing Completed Successfully",
-    reindexFailedTitle: "Re-indexing Failed",
-    reindexProgressDesc: "During re-indexing, the database is cleared, and all documents are re-paired and scored according to the updated rules.",
-    reindexPhaseClearing: "Clearing old records...",
-    reindexPhaseScanning: "Scanning files...",
-    reindexPhaseAnalyzing: "Phase 1/2: Metadata analysis (AI)...",
-    reindexPhaseIngesting: "Phase 2/2: Ingesting and embedding...",
-    reindexPhaseWorking: "Working...",
-    reindexSuccessMsg: "All documents were successfully re-indexed.",
-    reindexErrorMsg: "An error occurred during processing.",
-    reindexSubphaseAnalyzing: "Metadata and relationship analysis",
-    reindexSubphaseIngesting: "Content indexing",
-    reindexProgressFile: "File {current} of {total}",
-    errorMessageTitle: "Error Message",
-    closeBtn: "Close",
-    reindexPromptDeletion: "The category was successfully deleted and documents were safely transferred.\n\nDo you want to trigger a full document re-indexing on the background now?\n\nWARNING: The AI will re-classify all files based on the newly defined categories and descriptions, which may alter their access rights.",
-    reindexPromptUpdate: "Configuration saved successfully and existing documents were safely reconfigured.\n\nDo you want to trigger a full document re-indexing on the background now?\n\nWARNING: The AI will re-classify all files based on the newly defined categories and descriptions, which may alter their access rights.",
-    apiConnecting: "Connecting...",
-    errorServerCommunication: "Error communicating with server: {error}. Make sure your FastAPI server is running on port 8000.",
-    alertOnlyPdfTxt: "Only PDF and TXT files are supported.",
-    errorDraftAnalysis: "Error analyzing document: {error}",
-    errorIngestFailed: "Error completing import: {error}",
-    errorEditFailed: "Editing failed: {status} ({detail})",
-    errorSaveFailed: "Error saving changes: {error}",
-    alertAtLeastOneCategory: "You must keep at least one category.",
-    errorReindexingTrigger: "Triggering reindexing failed on the server.",
-    errorReindexingComm: "Error communicating with server: {error}",
-    alertChangesSaved: "Changes saved. File list updated.",
-    alertSaveConfigFailed: "Failed to save configuration.",
-    alertServerConnError: "Error connecting to the server.",
-    roleVedení: "👑 Management",
-    rolePersonální: "💼 HR Specialist",
-    roleFinanční: "📊 Finance Auditor",
-    roleZaměstnanec: "👤 Standard User",
-    newCategoryLabel: "New category",
-    newCategoryDesc: "Description of this category for the LLM classifier.",
-    initialGreeting: "Hello! I am your corporate search assistant. Enter any query and I will find the answer in the uploaded Dolphin Consulting policies and documents. The answer will be supported by citations and matches your access permissions.",
-    clickToOpenPdfTitle: "Click to open PDF: {title}",
-    multipleSections: "Multiple sections",
   }
-};;
+};
 
 export default function Home() {
   // Application Navigation
@@ -564,7 +380,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: TRANSLATIONS.cs.initialGreeting,
+      content: "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Dolphin Consulting. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům.",
     }
   ]);
   const [loading, setLoading] = useState(false);
@@ -686,10 +502,9 @@ export default function Home() {
 
   // Helper to resolve category label from key/UUID
   const getCategoryLabel = (catKey?: string) => {
-    const fallback = appLanguage === "cs" ? "Obecné" : "General";
-    if (!catKey || !config?.categories) return fallback;
+    if (!catKey || !config?.categories) return "Obecné";
     const cat = config.categories.find((c) => c.key === catKey);
-    return cat ? cat.label : fallback;
+    return cat ? cat.label : "Obecné";
   };
 
   // Helper to format date in Czech style
@@ -805,7 +620,9 @@ export default function Home() {
       setMessages([
         {
           role: "assistant",
-          content: TRANSLATIONS[appLanguage].initialGreeting,
+          content: appLanguage === "cs"
+            ? "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Dolphin Consulting. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům."
+            : "Hello! I am your corporate search assistant. Enter any query and I will find the answer in the uploaded Dolphin Consulting policies and documents. The answer will be supported by citations and matches your access permissions.",
         }
       ]);
     }
@@ -883,7 +700,7 @@ export default function Home() {
       console.error(err);
       const errMsg: Message = {
         role: "assistant",
-        content: TRANSLATIONS[appLanguage].errorServerCommunication.replace("{error}", String(err.message || err)),
+        content: `Chyba při komunikaci se serverem: ${err.message || err}. Ujistěte se, že Váš FastAPI server běží na portu 8000.`,
       };
       setMessages((prev) => [...prev, errMsg]);
     } finally {
@@ -909,7 +726,7 @@ export default function Home() {
       if (file.type === "application/pdf" || file.name.endsWith(".pdf") || file.name.endsWith(".txt")) {
         triggerDraftAnalysis(file);
       } else {
-        alert(TRANSLATIONS[appLanguage].alertOnlyPdfTxt);
+        alert("Podporovány jsou pouze soubory PDF a TXT.");
       }
     }
   };
@@ -937,7 +754,7 @@ export default function Home() {
       });
 
       if (!res.ok) {
-        throw new Error(appLanguage === "cs" ? `Analýza konceptu selhala: ${res.status}` : `Draft analysis failed: ${res.status}`);
+        throw new Error(`Analýza konceptu selhala: ${res.status}`);
       }
 
       const data = await res.json();
@@ -954,7 +771,7 @@ export default function Home() {
       console.error(err);
       setIngestStatus({
         type: "error",
-        message: TRANSLATIONS[appLanguage].errorDraftAnalysis.replace("{error}", String(err.message || err)),
+        message: `Chyba při analýze dokumentu: ${err.message || err}`,
       });
       setFileToUpload(null);
     } finally {
@@ -997,7 +814,7 @@ export default function Home() {
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.detail || (appLanguage === "cs" ? `Ingest selhal: ${res.status}` : `Ingestion failed: ${res.status}`));
+        throw new Error(errData.detail || `Ingest selhal: ${res.status}`);
       }
 
       const data = await res.json();
@@ -1016,7 +833,7 @@ export default function Home() {
       console.error(err);
       setIngestStatus({
         type: "error",
-        message: TRANSLATIONS[appLanguage].errorIngestFailed.replace("{error}", String(err.message || err)),
+        message: `Chyba při dokončení importu: ${err.message || err}`,
       });
     } finally {
       setIngestingConfirmed(false);
@@ -1051,7 +868,7 @@ export default function Home() {
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.detail || TRANSLATIONS[appLanguage].errorEditFailed.replace("{status}", String(res.status)).replace("({detail})", "").trim());
+        throw new Error(errData.detail || `Úprava selhala: ${res.status}`);
       }
 
       const data = await res.json();
@@ -1069,7 +886,7 @@ export default function Home() {
       console.error(err);
       setIngestStatus({
         type: "error",
-        message: TRANSLATIONS[appLanguage].errorSaveFailed.replace("{error}", String(err.message || err)),
+        message: `Chyba při ukládání změn: ${err.message || err}`,
       });
     } finally {
       setIngestingConfirmed(false);
@@ -1135,8 +952,8 @@ export default function Home() {
 
     const newCat: Category = {
       key: newUuid,
-      label: TRANSLATIONS[appLanguage].newCategoryLabel,
-      description: TRANSLATIONS[appLanguage].newCategoryDesc,
+      label: "Nová kategorie",
+      description: "Popis této kategorie pro LLM klasifikátor.",
       allowed_groups: ["Management"],
       role_name: "NewRole"
     };
@@ -1150,7 +967,7 @@ export default function Home() {
   const handleDeleteCategory = (index: number) => {
     if (!editingConfig) return;
     if (editingConfig.categories.length <= 1) {
-      alert(TRANSLATIONS[appLanguage].alertAtLeastOneCategory);
+      alert("Musíte ponechat alespoň jednu kategorii.");
       return;
     }
     
@@ -1189,8 +1006,12 @@ export default function Home() {
         fetchDocuments();
 
         const promptMsg = isDeletion
-          ? TRANSLATIONS[appLanguage].reindexPromptDeletion
-          : TRANSLATIONS[appLanguage].reindexPromptUpdate;
+          ? "Kategorie byla úspěšně smazána a dokumenty byly bezpečně převedeny do náhradních kategorií.\n\n" +
+            "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
+            "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva."
+          : "Konfigurace byla úspěšně uložena a existující dokumenty byly bezpečně rekonfigurovány.\n\n" +
+            "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
+            "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva.";
 
         const runReindex = confirm(promptMsg);
         if (runReindex) {
@@ -1217,7 +1038,7 @@ export default function Home() {
                 processed_files: 0,
                 current_file: null,
                 phase: null,
-                error: TRANSLATIONS[appLanguage].errorReindexingTrigger
+                error: "Spuštění znovunačtení selhalo na serveru."
               });
             }
           } catch (err) {
@@ -1228,18 +1049,18 @@ export default function Home() {
               processed_files: 0,
               current_file: null,
               phase: null,
-              error: TRANSLATIONS[appLanguage].errorReindexingComm.replace("{error}", String(err instanceof Error ? err.message : err))
+              error: "Chyba při komunikaci se serverem: " + (err instanceof Error ? err.message : String(err))
             });
           }
         } else {
-          alert(TRANSLATIONS[appLanguage].alertChangesSaved);
+          alert("Změny byly uloženy. Seznam dokumentů byl aktualizován.");
         }
       } else {
-        alert(TRANSLATIONS[appLanguage].alertSaveConfigFailed);
+        alert("Selhalo ukládání konfigurace.");
       }
     } catch (err) {
       console.error(err);
-      alert(TRANSLATIONS[appLanguage].alertServerConnError);
+      alert("Chyba při připojování k serveru.");
     } finally {
       setSavingConfig(false);
     }
@@ -1418,10 +1239,10 @@ export default function Home() {
               ))}
               {(!config || config.categories.length === 0) && (
                 <>
-                  <option value="management">{TRANSLATIONS[appLanguage].roleVedení}</option>
-                  <option value="hr">{TRANSLATIONS[appLanguage].rolePersonální}</option>
-                  <option value="finance">{TRANSLATIONS[appLanguage].roleFinanční}</option>
-                  <option value="user">{TRANSLATIONS[appLanguage].roleZaměstnanec}</option>
+                  <option value="management">👑 Vedení (Management)</option>
+                  <option value="hr">💼 Personální (HR Specialist)</option>
+                  <option value="finance">📊 Finanční (Finance Auditor)</option>
+                  <option value="user">👤 Zaměstnanec (Standard User)</option>
                 </>
               )}
             </select>
@@ -1430,7 +1251,7 @@ export default function Home() {
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.05] text-xs">
             <span className={`pulse-dot ${apiOnline === false ? "bg-red-500 shadow-red-500/50" : ""}`} />
             <span className="text-zinc-300 font-medium font-mono">
-              {apiOnline === null ? TRANSLATIONS[appLanguage].apiConnecting : apiOnline ? "API: Online" : TRANSLATIONS[appLanguage].apiOffline}
+              {apiOnline === null ? (appLanguage === "cs" ? "Připojování..." : "Connecting...") : apiOnline ? "API: Online" : (appLanguage === "cs" ? "API: Odpojeno" : "API: Offline")}
             </span>
           </div>
         </div>
@@ -1443,25 +1264,25 @@ export default function Home() {
         <aside className="hidden lg:flex flex-col w-80 border-r border-white/[0.05] bg-[#070b13]/40 overflow-y-auto p-4 gap-4 shrink-0">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-              {TRANSLATIONS[appLanguage].accessibleFiles}
+              Přístupné soubory
             </h3>
             <button 
               onClick={fetchDocuments}
               className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold transition-colors flex items-center gap-1"
-              title={TRANSLATIONS[appLanguage].refreshTooltip}
+              title="Obnovit seznam souborů"
             >
-              🔄 {TRANSLATIONS[appLanguage].refreshBtn}
+              🔄 Obnovit
             </button>
           </div>
 
           {loadingDocs ? (
             <div className="flex flex-col gap-3 py-4 text-center text-xs text-zinc-500">
-              {TRANSLATIONS[appLanguage].loadingDb}
+              Načítám databázi...
             </div>
           ) : documents.length === 0 ? (
             <div className="flex flex-col gap-2 py-8 text-center text-xs text-zinc-500 border border-dashed border-white/5 rounded-xl">
-              {TRANSLATIONS[appLanguage].noFiles}
-              <span className="text-[10px] text-zinc-600">{TRANSLATIONS[appLanguage].noFilesSub}</span>
+              Žádné soubory v databázi.
+              <span className="text-[10px] text-zinc-600">Pro zvolenou roli nejsou dostupné žádné dokumenty.</span>
             </div>
           ) : (
             <div className="flex flex-col gap-2.5">
@@ -1482,7 +1303,7 @@ export default function Home() {
                 if (filteredDocs.length === 0) {
                   return (
                     <div className="text-center py-8 text-xs text-zinc-500 border border-dashed border-white/5 rounded-xl">
-                      {TRANSLATIONS[appLanguage].noFilesFilter}
+                      Žádné soubory neodpovídají filtru.
                     </div>
                   );
                 }
@@ -1497,7 +1318,7 @@ export default function Home() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs font-bold text-zinc-300 hover:text-indigo-400 hover:underline truncate block flex-1"
-                        title={TRANSLATIONS[appLanguage].clickToOpenPdfTitle.replace("{title}", doc.title)}
+                        title={`Kliknutím otevřete PDF: ${doc.title}`}
                       >
                         📄 {doc.title}
                       </a>
@@ -1539,7 +1360,7 @@ export default function Home() {
                     {/* Relationship Badges */}
                     {doc.metadata_json?.replaces_document_title && (
                       <div className="text-[9px] text-amber-500 font-medium flex items-center gap-1 mt-0.5">
-                        <span>🔄 {TRANSLATIONS[appLanguage].replaces}</span>
+                        <span>🔄 Nahrazuje:</span>
                         <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaces_document_title}>
                           {doc.metadata_json.replaces_document_title}
                         </span>
@@ -1547,7 +1368,7 @@ export default function Home() {
                     )}
                     {doc.metadata_json?.replaced_by_document_title && (
                       <div className="text-[9px] text-zinc-500 font-medium flex items-center gap-1 mt-0.5">
-                        <span>⬇️ {TRANSLATIONS[appLanguage].replacedBy}</span>
+                        <span>⬇️ Nahrazen:</span>
                         <span className="truncate block max-w-[170px]" title={doc.metadata_json.replaced_by_document_title}>
                           {doc.metadata_json.replaced_by_document_title}
                         </span>
@@ -1555,7 +1376,7 @@ export default function Home() {
                     )}
                     {doc.metadata_json?.modifies_document_title && (
                       <div className="text-[9px] text-cyan-500 font-medium flex items-center gap-1 mt-0.5">
-                        <span>✏️ {TRANSLATIONS[appLanguage].modifies}</span>
+                        <span>✏️ Upravuje:</span>
                         <span className="truncate block max-w-[170px]" title={doc.metadata_json.modifies_document_title}>
                           {doc.metadata_json.modifies_document_title}
                         </span>
@@ -1564,7 +1385,7 @@ export default function Home() {
 
                     <div className="flex flex-col gap-0.5 text-[9px] text-zinc-600 font-medium border-t border-white/[0.03] pt-1">
                       {doc.created_at && (
-                        <div>{TRANSLATIONS[appLanguage].releasedLabel} {formatReleaseDate(doc.created_at)}</div>
+                        <div>Vydáno: {formatReleaseDate(doc.created_at)}</div>
                       )}
                     </div>
 
@@ -1574,7 +1395,7 @@ export default function Home() {
                         onClick={() => handleStartEditDoc(doc)}
                         className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 mt-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-1 rounded-md self-start transition-all cursor-pointer"
                       >
-                        ✏️ {TRANSLATIONS[appLanguage].editMetadataBtn}
+                        ✏️ Upravit metadata
                       </button>
                     )}
                   </div>
@@ -1800,9 +1621,7 @@ export default function Home() {
                             <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
                             <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
                           </div>
-                          <span className="text-xs text-indigo-400 font-medium">
-                            {TRANSLATIONS[appLanguage].searching.replace("{userRole}", userRole).replace("{freshnessFilter}", freshnessFilter)}
-                          </span>
+                          <span className="text-xs text-indigo-400 font-medium">Vyhledávám v Azure PostgreSQL (filtry: {userRole}, {freshnessFilter}) a generuji odpověď...</span>
                         </div>
                       </div>
                     </div>
@@ -1819,7 +1638,7 @@ export default function Home() {
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={TRANSLATIONS[appLanguage].searchPlaceholder}
+                    placeholder="Zadejte dotaz (např. 'Jaká jsou pravidla pro whistleblowing?')..."
                     className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/[0.06] text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
                     disabled={loading}
                   />
@@ -1828,11 +1647,11 @@ export default function Home() {
                     disabled={loading || !query.trim()}
                     className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px]"
                   >
-                    {TRANSLATIONS[appLanguage].searchBtn}
+                    Vyhledat
                   </button>
                 </form>
                 <div className="text-[10px] text-center text-zinc-600 mt-2 font-medium">
-                  {TRANSLATIONS[appLanguage].poweredBy}
+                  Podporováno hybridním retrievrem RRF (pgvector + full-text search)
                 </div>
               </div>
 
@@ -1847,14 +1666,14 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <span className="text-lg">📁</span>
                   <div>
-                    <h3 className="text-sm font-bold text-white">{TRANSLATIONS[appLanguage].citationsTitle}</h3>
-                    <p className="text-[10px] text-zinc-500">{TRANSLATIONS[appLanguage].citationsSubtitle}</p>
+                    <h3 className="text-sm font-bold text-white">Pracovní prostor citací</h3>
+                    <p className="text-[10px] text-zinc-500">Ověření groundedness a audit přístupu</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setWorkspaceOpen(false)}
                   className="lg:hidden text-zinc-400 hover:text-white text-lg transition-colors p-1"
-                  title={TRANSLATIONS[appLanguage].closePanelTitle}
+                  title="Zavřít panel"
                 >
                   ✕
                 </button>
@@ -1867,7 +1686,7 @@ export default function Home() {
                     {/* Source Document Section */}
                     <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
                       <span className="text-[9px] font-bold text-indigo-400 tracking-wider uppercase block mb-1">
-                        {TRANSLATIONS[appLanguage].sourceDocHeader}
+                        Zdrojový dokument (Kliknutím otevřete)
                       </span>
                       <h4 className="text-sm font-bold text-white leading-snug">
                         <a
@@ -1875,20 +1694,20 @@ export default function Home() {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-white hover:text-indigo-400 hover:underline transition-colors block"
-                          title={activeSource.page_number ? TRANSLATIONS[appLanguage].clickToOpenPdf.replace("{page}", String(activeSource.page_number)) : TRANSLATIONS[appLanguage].clickToOpenEntire}
+                          title={activeSource.page_number ? `Kliknutím otevřete PDF na straně ${activeSource.page_number}` : "Kliknutím otevřete celý PDF dokument"}
                         >
-                          📄 {activeSource.title} {activeSource.page_number ? `(${TRANSLATIONS[appLanguage].pageLabel} ${activeSource.page_number})` : ""}
+                          📄 {activeSource.title} {activeSource.page_number ? `(strana ${activeSource.page_number})` : ""}
                         </a>
                       </h4>
                       <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
                         <div>
-                          <span className="text-zinc-500 block text-[10px]">{TRANSLATIONS[appLanguage].pageNumberLabel}</span>
-                          <span className="font-semibold text-zinc-300 font-mono">{TRANSLATIONS[appLanguage].pageLabelCapitalized} {activeSource.page_number || "N/A"}</span>
+                          <span className="text-zinc-500 block text-[10px]">Číslo strany</span>
+                          <span className="font-semibold text-zinc-300 font-mono">Strana {activeSource.page_number || "N/A"}</span>
                         </div>
                         <div>
-                          <span className="text-zinc-500 block text-[10px]">{TRANSLATIONS[appLanguage].chapterSectionLabel}</span>
-                          <span className="font-semibold text-zinc-300 truncate block" title={activeSource.section_title || TRANSLATIONS[appLanguage].multipleSections}>
-                            {activeSource.section_title || TRANSLATIONS[appLanguage].mainTextLabel}
+                          <span className="text-zinc-500 block text-[10px]">Kapitola / Sekce</span>
+                          <span className="font-semibold text-zinc-300 truncate block" title={activeSource.section_title || "Několik sekcí"}>
+                            {activeSource.section_title || "Hlavní text"}
                           </span>
                         </div>
                       </div>
@@ -1897,7 +1716,7 @@ export default function Home() {
                     {/* Cited Passage */}
                     <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/[0.04] space-y-2">
                       <span className="text-[9px] font-bold text-cyan-400 tracking-wider uppercase block">
-                        {TRANSLATIONS[appLanguage].citedPassageLabel}
+                        Citovaná pasáž
                       </span>
                       <div className="highlight-chunk">
                         <p className="text-xs text-zinc-300 leading-relaxed font-mono">
@@ -1909,30 +1728,30 @@ export default function Home() {
                     {/* Security Metrics */}
                     <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] space-y-3">
                       <span className="text-[9px] font-bold text-emerald-400 tracking-wider uppercase block">
-                        {TRANSLATIONS[appLanguage].securityAuditLabel}
+                        Bezpečnost a auditovatelnost
                       </span>
                       
                       <div className="space-y-2 text-xs">
                         <div className="flex items-center justify-between">
-                          <span className="text-zinc-500">{TRANSLATIONS[appLanguage].freshnessLabel}:</span>
+                          <span className="text-zinc-500">Stav platnosti:</span>
                           <span className={`px-2 py-0.5 rounded text-[10px] border font-bold uppercase tracking-wide ${
                             activeSource.freshness_status === "current"
                               ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                               : "bg-amber-500/10 text-amber-400 border-amber-500/20"
                           }`}>
-                            {activeSource.freshness_status === "current" ? TRANSLATIONS[appLanguage].valid : TRANSLATIONS[appLanguage].archived}
+                            {activeSource.freshness_status === "current" ? "Platný" : "Archivováno"}
                           </span>
                         </div>
 
                         <div className="flex items-center justify-between">
-                          <span className="text-zinc-500">{TRANSLATIONS[appLanguage].rrfScoreLabel}</span>
+                          <span className="text-zinc-500">RRF Shoda (Fused score):</span>
                           <span className="font-mono text-zinc-300 font-semibold">{activeSource.score.toFixed(6)}</span>
                         </div>
 
                         <div className="w-full h-px bg-white/5 my-2" />
 
                         <div>
-                          <span className="text-zinc-500 block mb-1">{TRANSLATIONS[appLanguage].securityAclLabel}</span>
+                          <span className="text-zinc-500 block mb-1">Povolené skupiny (Security ACL):</span>
                           <div className="flex flex-wrap gap-1.5">
                             {activeSource.allowed_groups && activeSource.allowed_groups.length > 0 ? (
                               activeSource.allowed_groups.map((group, idx) => (
@@ -1958,9 +1777,9 @@ export default function Home() {
                   <div className="flex flex-col items-center justify-center h-96 text-center text-zinc-600 gap-3 border border-dashed border-white/5 rounded-2xl p-6">
                     <span className="text-3xl">🗂️</span>
                     <div>
-                      <h4 className="text-xs font-bold text-zinc-500">{TRANSLATIONS[appLanguage].emptyWorkspaceTitle}</h4>
+                      <h4 className="text-xs font-bold text-zinc-500">Prázdný pracovní prostor</h4>
                       <p className="text-[10px] text-zinc-600 mt-1 max-w-[250px] mx-auto leading-relaxed">
-                        {TRANSLATIONS[appLanguage].emptyWorkspaceDesc}
+                        Klikněte na libovolnou citaci <span className="citation-badge">📄 Zdroj X</span> v odpovědi asistenta pro zobrazení podrobných informací a zobrazení celého dokumentu.
                       </p>
                     </div>
                   </div>
@@ -1977,12 +1796,12 @@ export default function Home() {
             <div className="glass-panel p-6 flex flex-col gap-6 w-full max-w-3xl self-start border-white/[0.04]">
               <div>
                 <h2 className="text-md font-bold text-white flex items-center gap-2">
-                  <span>{editingDocId ? "✏️" : "📤"}</span> {editingDocId ? TRANSLATIONS[appLanguage].editHeader : TRANSLATIONS[appLanguage].ingestHeader}
+                  <span>{editingDocId ? "✏️" : "📤"}</span> {editingDocId ? "Upravit metadata dokumentu" : "Nahrát a otagovat nový dokument"}
                 </h2>
                 <p className="text-xs text-zinc-500 mt-1">
                   {editingDocId 
-                    ? (appLanguage === "cs" ? "Upravte název, datum vydání, kategorii a stav platnosti pro vybraný dokument." : "Edit the title, release date, category, and validity status for the selected document.")
-                    : (appLanguage === "cs" ? "Vložte PDF/TXT soubor. Umělá inteligence navrhne datum vydání, kategorii a vazby na archivní verze." : "Insert a PDF/TXT file. AI will suggest release date, category, and relationships to archived versions.")}
+                    ? "Upravte název, datum vydání, kategorii a stav platnosti pro vybraný dokument."
+                    : "Vložte PDF/TXT soubor. Umělá inteligence navrhne datum vydání, kategorii a vazby na archivní verze."}
                 </p>
               </div>
 
@@ -2001,10 +1820,10 @@ export default function Home() {
                 >
                   <span className="text-3xl mb-3">📄</span>
                   <p className="text-sm font-semibold text-zinc-300">
-                    {TRANSLATIONS[appLanguage].dropzoneDragText}
+                    Sem přetáhněte soubor směrnice
                   </p>
                   <p className="text-[10px] text-zinc-500 mt-1">
-                    {TRANSLATIONS[appLanguage].dropzoneBrowseText}
+                    nebo klikněte pro vyhledání (PDF, TXT, max 20 MB)
                   </p>
                   <input
                     id="file-input-id"
@@ -2027,7 +1846,7 @@ export default function Home() {
                     <button
                       onClick={() => { setFileToUpload(null); setDraftResult(null); }}
                       className="text-zinc-500 hover:text-red-400 text-sm font-bold p-1"
-                      title={TRANSLATIONS[appLanguage].removeFileTitle}
+                      title="Odebrat soubor"
                     >
                       ✕
                     </button>
@@ -2038,15 +1857,15 @@ export default function Home() {
                   <div className="flex items-center gap-2.5 truncate">
                     <span className="text-2xl shrink-0">✏️</span>
                     <div className="truncate">
-                      <p className="text-xs font-bold text-indigo-300 truncate">{TRANSLATIONS[appLanguage].editModeBanner} {confirmedTitle}</p>
-                      <p className="text-[10px] text-indigo-400 font-medium">{TRANSLATIONS[appLanguage].editModeSub}</p>
+                      <p className="text-xs font-bold text-indigo-300 truncate">Režim úprav: {confirmedTitle}</p>
+                      <p className="text-[10px] text-indigo-400 font-medium">Upravujete metadata existujícího dokumentu</p>
                     </div>
                   </div>
                   <button
                     onClick={() => { setEditingDocId(null); setIngestStatus(null); }}
                     className="text-zinc-400 hover:text-red-400 text-xs font-bold bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer"
                   >
-                    {TRANSLATIONS[appLanguage].cancelEditBtn}
+                    Zrušit úpravy
                   </button>
                 </div>
               )}
@@ -2059,9 +1878,7 @@ export default function Home() {
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
-                  <span className="text-xs text-indigo-400 font-bold">
-                    {appLanguage === "cs" ? "LLM analyzuje dokument (kategorie, data, vazby)..." : "LLM is analyzing document (categories, dates, relationships)..."}
-                  </span>
+                  <span className="text-xs text-indigo-400 font-bold">LLM analyzuje dokument (kategorie, data, vazby)...</span>
                 </div>
               )}
 
@@ -2071,7 +1888,7 @@ export default function Home() {
                   <div className="h-px bg-white/5 my-2" />
                   
                   <div className="space-y-1">
-                    <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">{TRANSLATIONS[appLanguage].docNameLabel}</label>
+                    <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Název směrnice</label>
                     <input
                       type="text"
                       value={confirmedTitle}
@@ -2083,7 +1900,7 @@ export default function Home() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">{TRANSLATIONS[appLanguage].releaseDateLabel}</label>
+                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Datum vydání</label>
                       <input
                         type="date"
                         value={confirmedDate}
@@ -2094,14 +1911,14 @@ export default function Home() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">{TRANSLATIONS[appLanguage].categoryLabel}</label>
+                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Kategorie (Bezpečnostní ACL)</label>
                       <select
                         value={confirmedCategory}
                         onChange={(e) => setConfirmedCategory(e.target.value)}
                         className="w-full bg-black/60 border border-white/[0.08] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
                         required
                       >
-                        <option value="">{TRANSLATIONS[appLanguage].selectCategoryPlaceholder}</option>
+                        <option value="">-- Vyberte kategorii --</option>
                         {config?.categories.map((cat) => (
                           <option key={cat.key} value={cat.key}>
                             {cat.label}
@@ -2149,33 +1966,33 @@ export default function Home() {
                   {!editingDocId && (
                     <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] space-y-3">
                       <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                        {TRANSLATIONS[appLanguage].relationshipsLabel}
+                        Vztah k ostatním dokumentům
                       </span>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].relationshipType}</label>
+                          <label className="text-[10px] text-zinc-500 block">Typ vztahu</label>
                           <select
                             value={confirmedRelType}
                             onChange={(e) => setConfirmedRelType(e.target.value)}
                             className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
                           >
-                            <option value="none">{TRANSLATIONS[appLanguage].relationshipNoneOption}</option>
-                            <option value="replaces">{TRANSLATIONS[appLanguage].relationshipReplacesOption}</option>
-                            <option value="modifies">{TRANSLATIONS[appLanguage].relationshipModifiesOption}</option>
+                            <option value="none">Nemá vztah</option>
+                            <option value="replaces">🔄 Nahrazuje původní</option>
+                            <option value="modifies">✏️ Upravuje / Doplňuje</option>
                           </select>
                         </div>
 
                         {confirmedRelType !== "none" && (
                           <div className="space-y-1">
-                            <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].targetDocLabel}</label>
+                            <label className="text-[10px] text-zinc-500 block">Cílový dokument</label>
                             <select
                               value={confirmedRelTargetId}
                               onChange={(e) => setConfirmedRelTargetId(e.target.value)}
                               className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
                               required
                             >
-                              <option value="">{TRANSLATIONS[appLanguage].selectDocumentPlaceholder}</option>
+                              <option value="">-- Vyberte dokument --</option>
                               {documents.map((doc) => (
                                 <option key={doc.document_id} value={doc.document_id}>
                                   {doc.title}
@@ -2188,7 +2005,7 @@ export default function Home() {
                       
                       {confirmedRelType === "replaces" && (
                         <p className="text-[9px] text-amber-500 font-semibold leading-relaxed">
-                          {TRANSLATIONS[appLanguage].relationshipWarning}
+                          ⚠️ Upozornění: Po dokončení bude cílový dokument automaticky označen jako 'archivní' (včetně jeho vyhledávacích pasáží) a bude ve výchozím nastavení skryt z vyhledávání.
                         </p>
                       )}
                     </div>
@@ -2202,10 +2019,10 @@ export default function Home() {
                     {ingestingConfirmed ? (
                       <>
                         <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        {TRANSLATIONS[appLanguage].processingChangesText}
+                        Zpracovávám změny...
                       </>
                     ) : (
-                      editingDocId ? TRANSLATIONS[appLanguage].saveChangesBtn : TRANSLATIONS[appLanguage].confirmIngestBtn
+                      editingDocId ? "Uložit změny" : "Potvrdit metadata a naimportovat"
                     )}
                   </button>
                 </form>
@@ -2218,11 +2035,7 @@ export default function Home() {
                     ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
                     : "bg-red-500/10 text-red-400 border-red-500/20"
                 }`}>
-                  <p className="font-bold mb-1">
-                    {ingestStatus.type === "success" 
-                      ? (appLanguage === "cs" ? "✓ Úspěch:" : "✓ Success:") 
-                      : (appLanguage === "cs" ? "❌ Chyba:" : "❌ Error:")}
-                  </p>
+                  <p className="font-bold mb-1">{ingestStatus.type === "success" ? "✓ Úspěch:" : "❌ Chyba:"}</p>
                   <p>{ingestStatus.message}</p>
                 </div>
               )}
@@ -2236,10 +2049,10 @@ export default function Home() {
             <div className="glass-panel p-6 flex flex-col gap-6 w-full max-w-3xl self-start border-white/[0.04]">
               <div>
                 <h2 className="text-md font-bold text-white flex items-center gap-2">
-                  <span>⚙️</span> {TRANSLATIONS[appLanguage].configurationTitle}
+                  <span>⚙️</span> Konfigurace kategorií a AI pravidel
                 </h2>
                 <p className="text-xs text-zinc-500 mt-1">
-                  {TRANSLATIONS[appLanguage].configurationSubtitle}
+                  Měňte názvy kategorií, popisy pro LLM klasifikátor a bezpečnostní role. Změna se projeví v celé aplikaci.
                 </p>
               </div>
 
@@ -2247,7 +2060,7 @@ export default function Home() {
                 <div className="space-y-5">
                   <div className="space-y-3">
                     <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                      {TRANSLATIONS[appLanguage].categoriesListLabel}
+                      Seznam kategorií (Readjustuje celou aplikaci)
                     </span>
 
                     {editingConfig.categories.map((cat, idx) => (
@@ -2259,17 +2072,17 @@ export default function Home() {
                           type="button"
                           onClick={() => handleDeleteCategory(idx)}
                           className="absolute top-3 right-3 text-zinc-500 hover:text-red-400 text-[10px] font-bold transition-all p-1.5 px-2.5 rounded bg-red-500/0 hover:bg-red-500/10 border border-transparent hover:border-red-500/10 cursor-pointer flex items-center gap-1"
-                          title={appLanguage === "cs" ? "Odebrat kategorii" : "Remove category"}
+                          title="Odebrat kategorii"
                         >
-                          🗑️ {TRANSLATIONS[appLanguage].deleteBtn}
+                          🗑️ Odebrat
                         </button>
                         <div className="grid grid-cols-3 gap-3">
                           <div>
-                            <span className="text-[10px] text-zinc-600 block">{TRANSLATIONS[appLanguage].keyLabel}</span>
+                            <span className="text-[10px] text-zinc-600 block">Klíč (ID)</span>
                             <span className="text-xs font-mono font-bold text-zinc-500 block truncate" title={cat.key}>{cat.key}</span>
                           </div>
                           <div>
-                            <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].labelLabel}</label>
+                            <label className="text-[10px] text-zinc-500 block">Název (Štítek)</label>
                             <input
                               type="text"
                               value={cat.label}
@@ -2278,7 +2091,7 @@ export default function Home() {
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].roleNameLabel}</label>
+                            <label className="text-[10px] text-zinc-500 block">Skupina (role_name)</label>
                             <input
                               type="text"
                               value={cat.role_name || ""}
@@ -2290,7 +2103,7 @@ export default function Home() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].categoryDescriptionLabel}</label>
+                          <label className="text-[10px] text-zinc-500 block">Popis kategorie pro AI (Určuje chování LLM klasifikátoru)</label>
                           <textarea
                             value={cat.description}
                             onChange={(e) => handleCategoryFieldChange(idx, "description", e.target.value)}
@@ -2299,12 +2112,11 @@ export default function Home() {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].securityGroupsLabel}</label>
+                          <label className="text-[10px] text-zinc-500 block">Bezpečnostní skupiny (Pills pro ACL)</label>
                           <CategoryTagInput
                             allowedGroups={cat.allowed_groups}
                             onChange={(groups) => handleAllowedGroupsChange(idx, groups)}
                             suggestions={uniqueGroups}
-                            locale={appLanguage}
                           />
                         </div>
                       </div>
@@ -2318,14 +2130,14 @@ export default function Home() {
                       onClick={handleAddCategory}
                       className="px-4 py-2.5 rounded-xl border border-dashed border-zinc-800 hover:border-indigo-500 text-xs font-bold text-zinc-400 hover:text-indigo-400 bg-white/[0.01] hover:bg-indigo-500/5 transition-all flex items-center gap-1.5 cursor-pointer"
                     >
-                      {TRANSLATIONS[appLanguage].addCategoryBtn}
+                      ➕ Přidat novou kategorii
                     </button>
                   </div>
 
                   {/* General LLM Analysis Rules */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                      {TRANSLATIONS[appLanguage].generalRulesLabel}
+                      Obecná pravidla pro analýzu dokumentů
                     </label>
                     <textarea
                       value={editingConfig.analysis_rules}
@@ -2339,12 +2151,12 @@ export default function Home() {
                     disabled={savingConfig}
                     className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all shadow-lg shadow-cyan-600/10 disabled:opacity-50"
                   >
-                    {savingConfig ? TRANSLATIONS[appLanguage].savingConfigText : TRANSLATIONS[appLanguage].saveConfigBtn}
+                    {savingConfig ? "Ukládám a rekonfiguruji..." : "Uložit konfiguraci a pravidla"}
                   </button>
                 </div>
               ) : (
                 <div className="text-xs text-zinc-500 text-center py-6">
-                  {TRANSLATIONS[appLanguage].loadingConfigText}
+                  Načítám konfigurační soubory...
                 </div>
               )}
             </div>
@@ -2359,22 +2171,20 @@ export default function Home() {
           <div className="glass-panel max-w-md w-full p-6 space-y-4 border-white/[0.08] shadow-2xl bg-[#0c1222]">
             <div>
               <h3 className="text-md font-bold text-white flex items-center gap-2">
-                <span>⚠️</span> {TRANSLATIONS[appLanguage].migrationModalTitle}
+                <span>⚠️</span> Převod dokumentů před smazáním
               </h3>
               <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                {TRANSLATIONS[appLanguage].migrationModalDesc} <span className="font-bold text-indigo-400">"{editingConfig.categories[deletingCatIndex]?.label}"</span>.
-                {appLanguage === "cs" 
-                  ? " V databázi mohou existovat dokumenty spojené s touto kategorií." 
-                  : " There may be documents in the database associated with this category."}
+                Chystáte se smazat kategorii <span className="font-bold text-indigo-400">"{editingConfig.categories[deletingCatIndex]?.label}"</span>.
+                V databázi mohou existovat dokumenty spojené s touto kategorií. 
               </p>
               <p className="text-[11px] text-amber-500 font-semibold mt-2 leading-relaxed">
-                {TRANSLATIONS[appLanguage].migrationSafetyWarn}
+                Z bezpečnostních důvodů vyberte, do které zbývající kategorie se mají tyto dokumenty bezpečně převést, aby se zabránilo jejich zneveřejnění (úniku dat do veřejné zóny):
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                {TRANSLATIONS[appLanguage].migrationTargetLabel}
+                Cílová kategorie pro dokumenty
               </label>
               <select
                 value={migrationTargetKey}
@@ -2385,7 +2195,7 @@ export default function Home() {
                   .filter((_, idx) => idx !== deletingCatIndex)
                   .map((cat) => (
                     <option key={cat.key} value={cat.key}>
-                      {cat.label} ({cat.role_name || TRANSLATIONS[appLanguage].noRoleLabel})
+                      {cat.label} ({cat.role_name || "bez role"})
                     </option>
                   ))}
               </select>
@@ -2400,14 +2210,14 @@ export default function Home() {
                 }}
                 className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-zinc-400 hover:text-white hover:bg-white/5 text-xs font-bold transition-all cursor-pointer text-center"
               >
-                {TRANSLATIONS[appLanguage].cancelBtn}
+                Zrušit
               </button>
               <button
                 type="button"
                 onClick={handleConfirmCategoryDeletion}
                 className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all cursor-pointer text-center"
               >
-                {TRANSLATIONS[appLanguage].confirmAndTransferBtn}
+                Potvrdit a převést
               </button>
             </div>
           </div>
@@ -2434,12 +2244,12 @@ export default function Home() {
                 )}
               </div>
               <h3 className="text-md font-extrabold text-white tracking-wide">
-                {reindexProgress?.status === "running" && TRANSLATIONS[appLanguage].reindexProgressTitle}
-                {reindexProgress?.status === "completed" && TRANSLATIONS[appLanguage].reindexSuccessTitle}
-                {reindexProgress?.status === "failed" && TRANSLATIONS[appLanguage].reindexFailedTitle}
+                {reindexProgress?.status === "running" && "Probíhá reindexace dokumentů"}
+                {reindexProgress?.status === "completed" && "Reindexace úspěšně dokončena"}
+                {reindexProgress?.status === "failed" && "Reindexace selhala"}
               </h3>
               <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                {TRANSLATIONS[appLanguage].reindexProgressDesc}
+                Během reindexace dochází k pročištění databáze a novému spárování a ohodnocení všech dokumentů dle upravených pravidel.
               </p>
             </div>
 
@@ -2448,14 +2258,14 @@ export default function Home() {
               <div className="flex justify-between text-[11px] font-semibold">
                 <span className="text-indigo-400">
                   {reindexProgress?.status === "running" && (
-                    reindexProgress.phase === "clearing_db" ? TRANSLATIONS[appLanguage].reindexPhaseClearing :
-                    reindexProgress.phase === "scanning_files" ? TRANSLATIONS[appLanguage].reindexPhaseScanning :
-                    reindexProgress.phase === "analyzing" ? TRANSLATIONS[appLanguage].reindexPhaseAnalyzing :
-                    reindexProgress.phase === "ingesting" ? TRANSLATIONS[appLanguage].reindexPhaseIngesting :
-                    TRANSLATIONS[appLanguage].reindexPhaseWorking
+                    reindexProgress.phase === "clearing_db" ? "Pročišťování starých záznamů..." :
+                    reindexProgress.phase === "scanning_files" ? "Hledání souborů..." :
+                    reindexProgress.phase === "analyzing" ? "Fáze 1/2: Analýza metadat (AI)..." :
+                    reindexProgress.phase === "ingesting" ? "Fáze 2/2: Ingestování a tvorba embeddingů..." :
+                    "Pracuji..."
                   )}
-                  {reindexProgress?.status === "completed" && TRANSLATIONS[appLanguage].reindexSuccessMsg}
-                  {reindexProgress?.status === "failed" && TRANSLATIONS[appLanguage].reindexErrorMsg}
+                  {reindexProgress?.status === "completed" && "Všechny dokumenty byly úspěšně reindexovány."}
+                  {reindexProgress?.status === "failed" && "Během zpracování nastala chyba."}
                 </span>
                 <span className="text-indigo-300 font-bold">{getReindexPercentage()}%</span>
               </div>
@@ -2477,7 +2287,7 @@ export default function Home() {
               {reindexProgress?.status === "running" && reindexProgress.total_files > 0 && (
                 <div className="rounded-xl bg-black/40 border border-white/[0.05] p-3 text-[11px] font-semibold text-zinc-300 space-y-1 mt-2">
                   <div className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider">
-                    {reindexProgress.phase === "analyzing" ? TRANSLATIONS[appLanguage].reindexSubphaseAnalyzing : TRANSLATIONS[appLanguage].reindexSubphaseIngesting}
+                    {reindexProgress.phase === "analyzing" ? "Analýza metadat a vztahů" : "Indexace obsahu"}
                   </div>
                   {reindexProgress.current_file && (
                     <div className="truncate text-white text-[11px]">
@@ -2485,9 +2295,7 @@ export default function Home() {
                     </div>
                   )}
                   <div className="text-indigo-400 text-[10px]">
-                    {TRANSLATIONS[appLanguage].reindexProgressFile
-                      .replace("{current}", String(Math.min(reindexProgress.processed_files + 1, reindexProgress.total_files)))
-                      .replace("{total}", String(reindexProgress.total_files))}
+                    Soubor {Math.min(reindexProgress.processed_files + 1, reindexProgress.total_files)} z {reindexProgress.total_files}
                   </div>
                 </div>
               )}
@@ -2495,7 +2303,7 @@ export default function Home() {
               {reindexProgress?.status === "failed" && reindexProgress.error && (
                 <div className="rounded-xl bg-red-950/20 border border-red-500/20 p-3 text-[11px] text-red-400 font-semibold leading-relaxed mt-2">
                   <div className="text-[9px] font-extrabold uppercase tracking-wider text-red-500 mb-1">
-                    {TRANSLATIONS[appLanguage].errorMessageTitle}
+                    Chybová zpráva
                   </div>
                   {reindexProgress.error}
                 </div>
@@ -2517,7 +2325,7 @@ export default function Home() {
                       : "bg-indigo-600 hover:bg-indigo-500 text-white"
                   }`}
                 >
-                  {TRANSLATIONS[appLanguage].closeBtn}
+                  Zavřít
                 </button>
               </div>
             )}

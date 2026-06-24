@@ -149,9 +149,20 @@ class VectorRetriever(BaseRetriever):
             for k, v in context.filters.items():
                 if k == "freshness_filter":
                     continue
+                
+                # Check direct table columns (like language) as well as custom JSON metadata
+                doc_attr = getattr(doc, k, None)
+                chunk_attr = getattr(chunk, k, None)
                 doc_meta = doc.metadata_json or {}
                 chunk_meta = chunk.metadata_json or {}
-                if doc_meta.get(k) != v and chunk_meta.get(k) != v:
+                
+                matches = False
+                if doc_attr == v or chunk_attr == v:
+                    matches = True
+                elif doc_meta.get(k) == v or chunk_meta.get(k) == v:
+                    matches = True
+                    
+                if not matches:
                     is_filtered = True
                     break
             if is_filtered:

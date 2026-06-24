@@ -2,9 +2,10 @@ import os
 import asyncio
 import logging
 from app.storage.db import SessionLocal, init_db
-from app.ingestion.loaders.local.py import list_local_files  # Wait, wait, it is loaders/local.py, so it will be app.ingestion.loaders.local
 from app.ingestion.loaders.local import list_local_files
 from app.ingestion.pipeline import IngestionPipeline
+from app.ingestion.tagger import MetadataTagger
+
 
 # Setup basic logging
 logging.basicConfig(
@@ -103,11 +104,22 @@ async def main():
                     "year": 2026,
                 }
 
+            # Detect language dynamically using MetadataTagger
+            tagger = MetadataTagger(db_session=db)
+            detected_lang = "cs"
+            try:
+                pages = tagger.extractor.extract(file_path)
+                first_pages_text = "\n".join([p.text for p in pages[:2]]) if pages else ""
+                detected_lang = await tagger.detect_language(first_pages_text)
+            except Exception as lang_err:
+                logger.warning(f"Language detection failed for {file_name}, defaulting to 'cs': {lang_err}")
+
             await pipeline.ingest_file(
                 file_path=file_path,
                 document_type="policy" if "policy" in file_path.lower() else "document",
                 security_acl=security_acl,
                 metadata_json=metadata,
+                language=detected_lang,
             )
             success_count += 1
         except Exception as e:

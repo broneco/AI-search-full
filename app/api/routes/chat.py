@@ -113,15 +113,28 @@ async def chat_interaction(
             )
 
         context_str = "\n---\n".join(context_blocks)
-        system_message = (
-            "You are a helpful, enterprise AI Search Assistant.\n"
-            "Your task is to answer user queries using ONLY the retrieved corporate documents supplied below.\n"
-            "Groundedness constraints:\n"
-            "- Rely ONLY on the provided context evidence. Do not extrapolate.\n"
-            "- If the context does not contain enough information to formulate a complete answer, state that explicitly.\n"
-            "- Cite your sources using bracketed annotations, e.g. [Source 1], [Source 2] matching the numbers.\n\n"
-            f"=== RETRIEVED corporate documents ===\n{context_str}\n"
-        )
+        if request.locale == "cs":
+            system_message = (
+                "Jste užitečný firemní asistent pro vyhledávání (AI Search Assistant).\n"
+                "Vaším úkolem je odpovídat na dotazy uživatelů POUZE s využitím níže poskytnutých firemních dokumentů.\n"
+                "Pravidla pro odpověď:\n"
+                "- Odpovídejte VÝHRADNĚ v českém jazyce.\n"
+                "- Spoléhejte se POUZE na poskytnuté dokumenty. Nevymýšlejte si informace ani neextrapolujte mimo kontext.\n"
+                "- Pokud poskytnutý kontext neobsahuje dostatek informací pro úplnou odpověď, uveďte to výslovně.\n"
+                "- Citujte své zdroje pomocí čísel v hranatých závorkách, např. [Source 1], [Source 2] odpovídající číslům níže.\n\n"
+                f"=== ZÍSKANÉ firemní dokumenty ===\n{context_str}\n"
+            )
+        else:
+            system_message = (
+                "You are a helpful, enterprise AI Search Assistant.\n"
+                "Your task is to answer user queries using ONLY the retrieved corporate documents supplied below.\n"
+                "Groundedness constraints:\n"
+                "- Answer EXCLUSIVELY in the English language.\n"
+                "- Rely ONLY on the provided context evidence. Do not extrapolate.\n"
+                "- If the context does not contain enough information to formulate a complete answer, state that explicitly.\n"
+                "- Cite your sources using bracketed annotations, e.g. [Source 1], [Source 2] matching the numbers.\n\n"
+                f"=== RETRIEVED corporate documents ===\n{context_str}\n"
+            )
 
         messages = [
             ChatMessage(role="system", content=system_message),

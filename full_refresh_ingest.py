@@ -148,6 +148,7 @@ async def main():
                 document_type="policy" if "policy" in file_path.lower() else "document",
                 security_acl=security_acl,
                 metadata_json=metadata,
+                language=sug.get("suggested_language", "cs"),
             )
             doc.title = title
             doc.created_at = release_date

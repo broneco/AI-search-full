@@ -456,6 +456,7 @@ class DocumentUpdateMetadataRequest(BaseModel):
     date: str
     category: str
     freshness_status: str
+    language: str = "cs"
 
 
 @router.post("/update-metadata")
@@ -474,9 +475,10 @@ async def update_document_metadata(
         if not doc:
             raise HTTPException(status_code=404, detail="Dokument nenalezen.")
             
-        # 1. Update document title and freshness
+        # 1. Update document title, freshness and language
         doc.title = request.title
         doc.freshness_status = request.freshness_status
+        doc.language = request.language
         
         # Update metadata_json
         meta = dict(doc.metadata_json) if doc.metadata_json else {}
@@ -505,6 +507,7 @@ async def update_document_metadata(
             chunk.freshness_status = request.freshness_status
             chunk.security_acl = security_acl_val
             flag_modified(chunk, "security_acl")
+            chunk.language = request.language
             
             chunk_meta = dict(chunk.metadata_json) if chunk.metadata_json else {}
             chunk_meta["department"] = request.category
@@ -667,6 +670,7 @@ async def ingest_confirmed(
                 document_type="policy",
                 security_acl=security_acl,
                 metadata_json=metadata,
+                language=request.language,
             )
             
             # Update the title of the document in the DB to match confirmed title exactly
@@ -861,6 +865,7 @@ async def run_reindex_all_task():
                     document_type="policy" if "policy" in file_path.lower() else "document",
                     security_acl=security_acl,
                     metadata_json=metadata,
+                    language=sug.get("suggested_language", "cs"),
                 )
                 doc.title = title
                 doc.created_at = release_date

@@ -31,6 +31,7 @@ class IngestionPipeline:
         document_type: str = "document",
         security_acl: Optional[Dict[str, List[str]]] = None,
         metadata_json: Optional[Dict[str, Any]] = None,
+        language: str = "en",
     ) -> DBDocument:
         """Process a single file end-to-end and persist it to PostgreSQL."""
         file_name = os.path.basename(file_path)
@@ -52,7 +53,7 @@ class IngestionPipeline:
         existing_doc = self.db.execute(existing_doc_stmt).scalar_one_or_none()
 
         if existing_doc and existing_doc.checksum == checksum:
-            logger.info(f"│  ├── ℹ️ Document {file_name} already exists and is unchanged. Updating metadata and security ACL...")
+            logger.info(f"│  ├── ℹ️ Document {file_name} already exists and is unchanged. Updating metadata, security ACL, and language...")
             from sqlalchemy.orm.attributes import flag_modified
             if security_acl is not None:
                 existing_doc.security_acl = security_acl
@@ -62,11 +63,13 @@ class IngestionPipeline:
                 flag_modified(existing_doc, "metadata_json")
                 if "freshness_status" in metadata_json:
                     existing_doc.freshness_status = metadata_json["freshness_status"]
+            # Update language
+            existing_doc.language = language
             self.db.add(existing_doc)
             self.db.commit()
             
             # Update associated chunks as well
-            update_data = {}
+            update_data = {"language": language}
             if security_acl is not None:
                 update_data["security_acl"] = security_acl
             if metadata_json is not None:
@@ -148,7 +151,7 @@ class IngestionPipeline:
                 source_uri=source_uri,
                 title=os.path.splitext(file_name)[0],
                 document_type=document_type,
-                language="en",
+                language=language,
                 checksum=checksum,
                 security_acl=security_acl or {"allowed_groups": ["Public"]},
                 metadata_json=metadata,
@@ -170,7 +173,7 @@ class IngestionPipeline:
                         "chunk_index": chunk.index,
                         "content": chunk.content,
                         "embedding": embeddings[idx],
-                        "language": "en",
+                        "language": language,
                         "page_number": chunk.page_number,
                         "security_acl": security_acl or {"allowed_groups": ["Public"]},
                         "metadata_json": metadata,

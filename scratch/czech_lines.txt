@@ -1,0 +1,173 @@
+Line 141: placeholder={allowedGroups.length === 0 ? "Přidejte skupinu (stiskněte Enter)..." : ""}
+Line 157: ➕ Přidat {g}
+Line 168: ✨ Vytvořit "{inputValue.trim()}"
+Line 179: title: "Firemní AI Vyhledávač",
+Line 180: subtitle: "Inteligentní vyhledávání v dokumentech Dolphin Consulting s citacemi",
+Line 181: searchTab: "💬 Vyhledávání",
+Line 182: ingestTab: "📁 Správa souborů",
+Line 183: configTab: "⚙️ Nastavení",
+Line 184: userLabel: "Uživatel:",
+Line 187: databaseTitle: "Databáze směrnic",
+Line 188: databaseSubtitle: "Přehled nahraných firemních dokumentů",
+Line 189: loadingDb: "Načítám databázi...",
+Line 190: noFiles: "Žádné soubory v databázi.",
+Line 191: noFilesSub: "Pro zvolenou roli nejsou dostupné žádné dokumenty.",
+Line 192: noFilesFilter: "Žádné soubory neodpovídají filtru.",
+Line 193: passages: "pasáží",
+Line 194: valid: "Platný",
+Line 199: created: "Vytvořeno:",
+Line 200: ingested: "Načteno:",
+Line 201: reindexBtn: "🔄 Přestavět celou DB",
+Line 202: reindexing: "Přestavuji...",
+Line 203: searchPlaceholder: "Zadejte dotaz (např. 'Jaká jsou pravidla pro whistleblowing?')...",
+Line 205: searching: "Vyhledávám v Azure PostgreSQL (filtry: {userRole}, {freshnessFilter}) a generuji odpověď...",
+Line 206: poweredBy: "Podporováno hybridním retrievrem RRF (pgvector + full-text search)",
+Line 207: citationsTitle: "Pracovní prostor citací",
+Line 208: citationsSubtitle: "Ověření groundedness a audit přístupu",
+Line 209: activeSourceTitle: "Aktivní zdroj",
+Line 210: activeSourcePlaceholder: "Klikněte na jakékoli číslo citace v odpovědi výše pro zobrazení zdrojového textu a ověření jeho obsahu v pravém panelu.",
+Line 211: allowedGroups: "Povolené skupiny (ACL)",
+Line 213: checksum: "Kontrolní součet SHA-256",
+Line 218: validityRange: "Období platnosti",
+Line 221: ingestHeader: "Nahrát a otagovat nový dokument",
+Line 223: dropzoneText: "Přetáhněte sem PDF nebo DOCX dokument, nebo klikněte pro výběr",
+Line 225: selectedFile: "Vybraný soubor:",
+Line 226: cancelBtn: "Zrušit",
+Line 227: docNameLabel: "Název směrnice",
+Line 228: releaseDateLabel: "Datum vydání",
+Line 229: categoryLabel: "Kategorie (Bezpečnostní ACL)",
+Line 231: docLanguageCS: "🇨🇿 Čeština",
+Line 233: relationshipsLabel: "Vztah k ostatním dokumentům",
+Line 235: relNone: "Žádný - zcela nová směrnice",
+Line 236: relReplaces: "Nahrazuje starší směrnici (původní bude archivována)",
+Line 237: relModifies: "Upravuje/doplňuje stávající směrnici (obě zůstanou platné)",
+Line 238: targetDocLabel: "Cílový dokument z databáze",
+Line 239: confirmIngestBtn: "Potvrdit a uložit do databáze",
+Line 240: saveChangesBtn: "Uložit změny",
+Line 241: ingesting: "Ukládám do databáze a generuji embeddings...",
+Line 242: saving: "Ukládám změny...",
+Line 243: configurationTitle: "Nastavení AI vyhledávání",
+Line 244: configurationSubtitle: "Správa kategorií dokumentů a pravidel pro LLM tagování",
+Line 245: addCategoryBtn: "➕ Přidat kategorii",
+Line 246: saveConfigBtn: "Uložit konfiguraci",
+Line 247: savingConfig: "Ukládám...",
+Line 248: analysisRulesLabel: "Pravidla pro LLM analýzu a auto-tagování",
+Line 249: analysisRulesSub: "Tyto instrukce řídí chování AI při rozřazování nově nahraných dokumentů.",
+Line 250: activeFilters: "Aktivní filtry",
+Line 251: adjustFiltersBtn: "Nastavení hledání",
+Line 252: all: "Vše",
+Line 253: searchStrategyLabel: "Metoda hledání",
+Line 254: freshnessFilterLabel: "Časová platnost",
+Line 255: docLanguageFilterLabel: "Jazyk dokumentů",
+Line 256: strategyHybrid: "Hybridní (RRF)",
+Line 257: strategyVector: "Sémantická (Vector)",
+Line 258: strategyKeyword: "Lexikální (FTS)",
+Line 259: freshnessAll: "Všechny",
+Line 261: freshnessLatest: "Jen platné",
+Line 262: langFilterAll: "Všechny jazyky",
+Line 263: langFilterCS: "Čeština",
+Line 383: content: "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Dolphin Consulting. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům.",
+Line 505: if (!catKey || !config?.categories) return "Obecné";
+Line 507: return cat ? cat.label : "Obecné";
+Line 624: ? "Dobrý den! Jsem Váš firemní vyhledávací asistent. Zadejte libovolný dotaz a já vyhledám odpověď v nahraných směrnicích a dokumentech Dolphin Consulting. Odpověď bude podložená citacemi a přizpůsobí se Vašim přístupovým právům."
+Line 703: content: `Chyba při komunikaci se serverem: ${err.message || err}. Ujistěte se, že Váš FastAPI server běží na portu 8000.`,
+Line 729: alert("Podporovány jsou pouze soubory PDF a TXT.");
+Line 757: throw new Error(`Analýza konceptu selhala: ${res.status}`);
+Line 774: message: `Chyba při analýze dokumentu: ${err.message || err}`,
+Line 836: message: `Chyba při dokončení importu: ${err.message || err}`,
+Line 871: throw new Error(errData.detail || `Úprava selhala: ${res.status}`);
+Line 889: message: `Chyba při ukládání změn: ${err.message || err}`,
+Line 955: label: "Nová kategorie",
+Line 956: description: "Popis této kategorie pro LLM klasifikátor.",
+Line 970: alert("Musíte ponechat alespoň jednu kategorii.");
+Line 1009: ? "Kategorie byla úspěšně smazána a dokumenty byly bezpečně převedeny do náhradních kategorií.\n\n" +
+Line 1010: "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
+Line 1011: "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva."
+Line 1012: : "Konfigurace byla úspěšně uložena a existující dokumenty byly bezpečně rekonfigurovány.\n\n" +
+Line 1013: "Chcete nyní spustit celkovou reindexaci všech dokumentů na pozadí?\n\n" +
+Line 1014: "UPOZORNĚNÍ: Při reindexaci AI znovu klasifikuje všechny soubory na základě nově definovaných kategorií a jejich popisů, což může změnit jejich přístupová práva.";
+Line 1041: error: "Spuštění znovunačtení selhalo na serveru."
+Line 1052: error: "Chyba při komunikaci se serverem: " + (err instanceof Error ? err.message : String(err))
+Line 1056: alert("Změny byly uloženy. Seznam dokumentů byl aktualizován.");
+Line 1059: alert("Selhalo ukládání konfigurace.");
+Line 1063: alert("Chyba při připojování k serveru.");
+Line 1242: <option value="management">👑 Vedení (Management)</option>
+Line 1243: <option value="hr">💼 Personální (HR Specialist)</option>
+Line 1244: <option value="finance">📊 Finanční (Finance Auditor)</option>
+Line 1245: <option value="user">👤 Zaměstnanec (Standard User)</option>
+Line 1254: {apiOnline === null ? (appLanguage === "cs" ? "Připojování..." : "Connecting...") : apiOnline ? "API: Online" : (appLanguage === "cs" ? "API: Odpojeno" : "API: Offline")}
+Line 1267: Přístupné soubory
+Line 1272: title="Obnovit seznam souborů"
+Line 1280: Načítám databázi...
+Line 1284: Žádné soubory v databázi.
+Line 1285: <span className="text-[10px] text-zinc-600">Pro zvolenou roli nejsou dostupné žádné dokumenty.</span>
+Line 1306: Žádné soubory neodpovídají filtru.
+Line 1321: title={`Kliknutím otevřete PDF: ${doc.title}`}
+Line 1388: <div>Vydáno: {formatReleaseDate(doc.created_at)}</div>
+Line 1624: <span className="text-xs text-indigo-400 font-medium">Vyhledávám v Azure PostgreSQL (filtry: {userRole}, {freshnessFilter}) a generuji odpověď...</span>
+Line 1641: placeholder="Zadejte dotaz (např. 'Jaká jsou pravidla pro whistleblowing?')..."
+Line 1654: Podporováno hybridním retrievrem RRF (pgvector + full-text search)
+Line 1669: <h3 className="text-sm font-bold text-white">Pracovní prostor citací</h3>
+Line 1670: <p className="text-[10px] text-zinc-500">Ověření groundedness a audit přístupu</p>
+Line 1676: title="Zavřít panel"
+Line 1689: Zdrojový dokument (Kliknutím otevřete)
+Line 1697: title={activeSource.page_number ? `Kliknutím otevřete PDF na straně ${activeSource.page_number}` : "Kliknutím otevřete celý PDF dokument"}
+Line 1704: <span className="text-zinc-500 block text-[10px]">Číslo strany</span>
+Line 1709: <span className="font-semibold text-zinc-300 truncate block" title={activeSource.section_title || "Několik sekcí"}>
+Line 1710: {activeSource.section_title || "Hlavní text"}
+Line 1719: Citovaná pasáž
+Line 1731: Bezpečnost a auditovatelnost
+Line 1742: {activeSource.freshness_status === "current" ? "Platný" : "Archivováno"}
+Line 1754: <span className="text-zinc-500 block mb-1">Povolené skupiny (Security ACL):</span>
+Line 1780: <h4 className="text-xs font-bold text-zinc-500">Prázdný pracovní prostor</h4>
+Line 1782: Klikněte na libovolnou citaci <span className="citation-badge">📄 Zdroj X</span> v odpovědi asistenta pro zobrazení podrobných informací a zobrazení celého dokumentu.
+Line 1799: <span>{editingDocId ? "✏️" : "📤"}</span> {editingDocId ? "Upravit metadata dokumentu" : "Nahrát a otagovat nový dokument"}
+Line 1803: ? "Upravte název, datum vydání, kategorii a stav platnosti pro vybraný dokument."
+Line 1804: : "Vložte PDF/TXT soubor. Umělá inteligence navrhne datum vydání, kategorii a vazby na archivní verze."}
+Line 1823: Sem přetáhněte soubor směrnice
+Line 1826: nebo klikněte pro vyhledání (PDF, TXT, max 20 MB)
+Line 1860: <p className="text-xs font-bold text-indigo-300 truncate">Režim úprav: {confirmedTitle}</p>
+Line 1861: <p className="text-[10px] text-indigo-400 font-medium">Upravujete metadata existujícího dokumentu</p>
+Line 1868: Zrušit úpravy
+Line 1891: <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Název směrnice</label>
+Line 1903: <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Datum vydání</label>
+Line 1914: <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">Kategorie (Bezpečnostní ACL)</label>
+Line 1969: Vztah k ostatním dokumentům
+Line 1980: <option value="none">Nemá vztah</option>
+Line 1981: <option value="replaces">🔄 Nahrazuje původní</option>
+Line 1982: <option value="modifies">✏️ Upravuje / Doplňuje</option>
+Line 1988: <label className="text-[10px] text-zinc-500 block">Cílový dokument</label>
+Line 2008: ⚠️ Upozornění: Po dokončení bude cílový dokument automaticky označen jako 'archivní' (včetně jeho vyhledávacích pasáží) a bude ve výchozím nastavení skryt z vyhledávání.
+Line 2022: Zpracovávám změny...
+Line 2025: editingDocId ? "Uložit změny" : "Potvrdit metadata a naimportovat"
+Line 2038: <p className="font-bold mb-1">{ingestStatus.type === "success" ? "✓ Úspěch:" : "❌ Chyba:"}</p>
+Line 2052: <span>⚙️</span> Konfigurace kategorií a AI pravidel
+Line 2055: Měňte názvy kategorií, popisy pro LLM klasifikátor a bezpečnostní role. Změna se projeví v celé aplikaci.
+Line 2063: Seznam kategorií (Readjustuje celou aplikaci)
+Line 2081: <span className="text-[10px] text-zinc-600 block">Klíč (ID)</span>
+Line 2085: <label className="text-[10px] text-zinc-500 block">Název (Štítek)</label>
+Line 2106: <label className="text-[10px] text-zinc-500 block">Popis kategorie pro AI (Určuje chování LLM klasifikátoru)</label>
+Line 2115: <label className="text-[10px] text-zinc-500 block">Bezpečnostní skupiny (Pills pro ACL)</label>
+Line 2133: ➕ Přidat novou kategorii
+Line 2140: Obecná pravidla pro analýzu dokumentů
+Line 2154: {savingConfig ? "Ukládám a rekonfiguruji..." : "Uložit konfiguraci a pravidla"}
+Line 2159: Načítám konfigurační soubory...
+Line 2174: <span>⚠️</span> Převod dokumentů před smazáním
+Line 2177: Chystáte se smazat kategorii <span className="font-bold text-indigo-400">"{editingConfig.categories[deletingCatIndex]?.label}"</span>.
+Line 2178: V databázi mohou existovat dokumenty spojené s touto kategorií.
+Line 2181: Z bezpečnostních důvodů vyberte, do které zbývající kategorie se mají tyto dokumenty bezpečně převést, aby se zabránilo jejich zneveřejnění (úniku dat do veřejné zóny):
+Line 2187: Cílová kategorie pro dokumenty
+Line 2213: Zrušit
+Line 2220: Potvrdit a převést
+Line 2247: {reindexProgress?.status === "running" && "Probíhá reindexace dokumentů"}
+Line 2248: {reindexProgress?.status === "completed" && "Reindexace úspěšně dokončena"}
+Line 2252: Během reindexace dochází k pročištění databáze a novému spárování a ohodnocení všech dokumentů dle upravených pravidel.
+Line 2261: reindexProgress.phase === "clearing_db" ? "Pročišťování starých záznamů..." :
+Line 2262: reindexProgress.phase === "scanning_files" ? "Hledání souborů..." :
+Line 2263: reindexProgress.phase === "analyzing" ? "Fáze 1/2: Analýza metadat (AI)..." :
+Line 2264: reindexProgress.phase === "ingesting" ? "Fáze 2/2: Ingestování a tvorba embeddingů..." :
+Line 2267: {reindexProgress?.status === "completed" && "Všechny dokumenty byly úspěšně reindexovány."}
+Line 2268: {reindexProgress?.status === "failed" && "Během zpracování nastala chyba."}
+Line 2290: {reindexProgress.phase === "analyzing" ? "Analýza metadat a vztahů" : "Indexace obsahu"}
+Line 2306: Chybová zpráva
+Line 2328: Zavřít

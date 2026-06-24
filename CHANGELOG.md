@@ -7,6 +7,19 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ## [Unreleased]
 
 ### Added
+- **Complete UI Localization (Frontend)**: Replaced all remaining hardcoded Czech text strings in `frontend/app/page.tsx` with dynamic key lookups from the `TRANSLATIONS` dictionary. This includes localizing the Category Migration Modal, Re-indexing Progress Modal, the initial/greeting assistant message, document list tooltip texts, and the active source section titles when multiple sections are selected.
+- **Document Language Detection & Ingestion (Backend)**: Added automated language detection in `MetadataTagger.detect_language` using the Azure OpenAI `flash` profile. Return `"suggested_language"` (`"cs"` or `"en"`) in the metadata suggestion endpoint. Added a `language` parameter to `IngestionPipeline.ingest_file` to write the language to the `DBDocument` and `DBChunk` tables.
+- **Localized LLM Grounded Prompts (Backend)**: Added support for translating LLM system prompts and enforcing the correct response language in `/api/chat` based on the requested `locale` (supporting Czech and English).
+- **Application Localization Selector (Frontend)**: Implemented a language switcher toggle button (CZ/EN) in the navigation header. Added a `TRANSLATIONS` mapping dictionary to translate all UI labels, button states, placeholders, and sidebar tabs based on `appLanguage`.
+- **Document Language Filter & Previews (Frontend & Backend)**: Added a document language filter to restrict searches to Czech, English, or all documents. Extended `VectorRetriever._apply_filters` to check direct database columns (`doc.language`/`chunk.language`) in addition to JSON metadata. Added visual `CZ`/`EN` badges to document cards in the sidebar and filtered the sidebar list dynamically.
+
+### Changed
+- **Registry Name Documentation**: Updated the Azure Container Registry name from `dolphinacr` to `dolphinds` and documented the unique login server `dolphinds-b7asdeh8fyayaya2.azurecr.io` in `docs/deployments/cloud_deployment_guide.md` and `.agents/memory/implementation-notes.md` to align with the active cloud topology.
+- **Collapsible Search Settings Interface (Frontend)**: Refactored the top search filter bar into a clean, collapsible "Search Settings" drawer. Displays active filter parameters as compact glassmorphic pills with an "Adjust Filters" toggle button.
+- **Ingestion & Editing Language Dropdowns (Frontend)**: Integrated a "Document Language" dropdown selector into the confirmation and edit forms. Passes `confirmedLanguage` in confirmed ingestion and update metadata requests.
+- **Backward-Compatible API Schemas**: Made `language` in `DocumentUpdateMetadataRequest` default to `"cs"`, preventing validation errors (422 Unprocessable Entity) on existing API test payloads.
+
+### Added
 - **Real-Time Re-Indexing Progress Tracking (Backend)**: Added global `reindex_progress` tracking in `app/api/routes/documents.py` to monitor background re-indexing tasks (clearing DB, scanning, metadata analysis, and vector ingestion phases) and exposed it via a new `GET /api/documents/reindex-progress` endpoint.
 - **Docker Deployment Configuration**: Created a production `Dockerfile` (using Python 3.12-slim) and a `.dockerignore` file in the root of the project to enable building containerized images of the backend API.
 - **Dynamic Glassmorphic Re-Indexing Progress Modal (Frontend)**: Implemented a sleek centered modal in Next.js `page.tsx` that blocks user interaction during re-indexing. It polls the backend progress endpoint every 1 second, displaying Czech translation labels, real-time percentage progress (split 0%-50% for metadata analysis, 50%-100% for ingestion), file names, processing counts, and action buttons.

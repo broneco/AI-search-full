@@ -37,6 +37,7 @@ class DocumentConfirmedIngestRequest(BaseModel):
     relationship: RelationshipInfo = Field(default_factory=RelationshipInfo)
     temp_file_path: str = Field(..., description="Path to the temporary file on disk")
     original_filename: str = Field(..., description="Original filename")
+    language: str = Field("cs", description="Document language (cs or en)")
 
 
 class CategoryItem(BaseModel):
