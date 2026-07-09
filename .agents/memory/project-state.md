@@ -1,6 +1,6 @@
 # Project State Memory
 
-Last updated: 2026-06-18
+Last updated: 2026-07-09
 
 ## Product summary
 
@@ -33,6 +33,7 @@ Phase 2/3 Label consistency, manual ingestion updates, and strict viewport scrol
 Phase 2/3 Dynamic category tag suggestions, automatic deletion save and list refreshing - [x] Completed.
 Phase 2/3 Real-time re-indexing progress bar (backend global state tracking, progress polling endpoint, frontend glassmorphic progress modal with per-file updates) - [x] Completed.
 Phase 2/3 Multi-lingual Frontend & Document Language Filtering (automatic language detection in tagger, localized RAG prompts, CZ/EN toggle switcher, collapsible filter settings panel, visual badges) - [x] Completed.
+Phase 2/3 Subfolder Ingestion & Data Source UI Filtering ("Zdroj dat" metadata tagging, relative source_uri computation to prevent file conflicts, dynamic folder selector dropdown, local sidebar filtering) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 

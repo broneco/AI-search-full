@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 // Interface definitions matching the backend schemas
 interface ChatSource {
@@ -264,6 +264,8 @@ const TRANSLATIONS = {
     langFilterAll: "Všechny jazyky",
     langFilterCS: "Čeština",
     langFilterEN: "English",
+    sourceFilterLabel: "Zdroj dat",
+    sourceFilterAll: "Všechny zdroje",
 
     // New keys
     accessibleFiles: "Přístupné soubory",
@@ -443,6 +445,8 @@ const TRANSLATIONS = {
     langFilterAll: "All languages",
     langFilterCS: "Czech",
     langFilterEN: "English",
+    sourceFilterLabel: "Data Source",
+    sourceFilterAll: "All sources",
 
     // New keys
     accessibleFiles: "Accessible Files",
@@ -606,6 +610,20 @@ export default function Home() {
   // Multi-lingual & Language Filter States
   const [appLanguage, setAppLanguage] = useState<"cs" | "en">("cs");
   const [documentLanguageFilter, setDocumentLanguageFilter] = useState<"all" | "cs" | "en">("all");
+  const [sourceFolderFilter, setSourceFolderFilter] = useState<string>("all");
+  
+  // Dynamically compute the set of unique source folders from loaded documents
+  const uniqueSourceFolders = useMemo(() => {
+    const folders = new Set<string>();
+    documents.forEach((doc) => {
+      const folder = doc.metadata_json?.source_folder || doc.metadata_json?.["Zdroj dat"];
+      if (folder) {
+        folders.add(folder);
+      }
+    });
+    return Array.from(folders).sort();
+  }, [documents]);
+
   const [confirmedLanguage, setConfirmedLanguage] = useState<string>("cs");
   const [searchSettingsOpen, setSearchSettingsOpen] = useState<boolean>(false);
 
@@ -855,7 +873,10 @@ export default function Home() {
           locale: appLanguage,
           search_strategy: searchStrategy,
           freshness_filter: freshnessFilter,
-          filters: documentLanguageFilter !== "all" ? { language: documentLanguageFilter } : {},
+          filters: {
+            ...(documentLanguageFilter !== "all" ? { language: documentLanguageFilter } : {}),
+            ...(sourceFolderFilter !== "all" ? { source_folder: sourceFolderFilter } : {}),
+          },
           include_sources: true,
         }),
       });
@@ -1470,6 +1491,12 @@ export default function Home() {
                   if (documentLanguageFilter !== "all" && doc.language !== documentLanguageFilter) {
                     return false;
                   }
+                  if (sourceFolderFilter !== "all") {
+                    const docFolder = doc.metadata_json?.source_folder || doc.metadata_json?.["Zdroj dat"];
+                    if (docFolder !== sourceFolderFilter) {
+                      return false;
+                    }
+                  }
                   if (freshnessFilter === "latest") {
                     return doc.freshness_status === "current";
                   }
@@ -1508,6 +1535,13 @@ export default function Home() {
                       <span>📁</span>
                       <span>{getCategoryLabel(doc.metadata_json?.department)}</span>
                     </div>
+
+                    {(doc.metadata_json?.source_folder || doc.metadata_json?.["Zdroj dat"]) && (
+                      <div className="text-[9px] text-cyan-400 font-semibold uppercase flex items-center gap-1">
+                        <span>📦</span>
+                        <span>{TRANSLATIONS[appLanguage].sourceFilterLabel}: {doc.metadata_json.source_folder || doc.metadata_json["Zdroj dat"]}</span>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between text-[10px] text-zinc-500">
                       <span className="font-medium font-mono">{doc.chunk_count} {TRANSLATIONS[appLanguage].passages}</span>
@@ -1604,6 +1638,11 @@ export default function Home() {
                     <span className="px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
                       🌐 {documentLanguageFilter === "all" ? TRANSLATIONS[appLanguage].langFilterAll : documentLanguageFilter === "cs" ? TRANSLATIONS[appLanguage].langFilterCS : TRANSLATIONS[appLanguage].langFilterEN}
                     </span>
+                    {sourceFolderFilter !== "all" && (
+                      <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                        📦 {sourceFolderFilter}
+                      </span>
+                    )}
                   </div>
 
                   <button
@@ -1623,7 +1662,7 @@ export default function Home() {
 
                 {/* Collapsible Search Settings Panel */}
                 {searchSettingsOpen && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-5 border-t border-white/[0.03] bg-black/30 backdrop-blur-md animate-fadeIn">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 p-5 border-t border-white/[0.03] bg-black/30 backdrop-blur-md animate-fadeIn">
                     
                     {/* Strategy Column */}
                     <div className="space-y-2">
@@ -1742,6 +1781,29 @@ export default function Home() {
                         >
                           🇬🇧 {TRANSLATIONS[appLanguage].langFilterEN}
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Data Source Column */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-extrabold uppercase text-amber-400 tracking-wider block">
+                        {TRANSLATIONS[appLanguage].sourceFilterLabel}
+                      </label>
+                      <div className="flex flex-col gap-1.5">
+                        <select
+                          value={sourceFolderFilter}
+                          onChange={(e) => setSourceFolderFilter(e.target.value)}
+                          className="w-full bg-black/60 border border-white/[0.08] text-xs text-zinc-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer"
+                        >
+                          <option value="all" className="bg-[#0f172a] text-zinc-300">
+                            📦 {TRANSLATIONS[appLanguage].sourceFilterAll}
+                          </option>
+                          {uniqueSourceFolders.map((folder) => (
+                            <option key={folder} value={folder} className="bg-[#0f172a] text-zinc-300">
+                              📁 {folder}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 

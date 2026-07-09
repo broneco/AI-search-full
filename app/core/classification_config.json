@@ -32,7 +32,7 @@
     {
       "key": "User",
       "label": "User",
-      "description": "Dokumenty nemající žádné omezení. Dostanou se k nim všichni zaměstnanci společnosti.",
+      "description": "Dokumenty nemající žádné omezení. A především dokumenty o whistleblowingu. Dostanou se k nim všichni zaměstnanci společnosti.",
       "allowed_groups": [
         "Management",
         "HR",

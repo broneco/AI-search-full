@@ -130,3 +130,24 @@ The standard ingestion flow maps text coordinates line-by-line to enable exact c
 - The temporary file uploaded for `/analyze-draft` is not chunked. Only text extraction is run for LLM analysis.
 - Once confirmed, the file is passed into `IngestionPipeline.ingest_file`, which preserves the original character-mapping and PDF page-by-page ingestion code verbatim.
 - The coordinates and original text structure remain unmodified in the `chunks` database table, ensuring that the PyMuPDF highlighting endpoint (`/api/documents/view/{document_id}?highlight_chunk_id=...`) works perfectly.
+
+---
+
+## 5. Subfolder Ingestion & Data Source UI Filtering
+
+### A. Subfolder Path Extraction
+During folder scanning (via `os.walk` in `list_local_files`), documents are retrieved from arbitrary subdirectories under `data/`. For each file, the system computes the directory path relative to the root `data/` folder:
+* **Calculation**: `rel_dir = os.path.relpath(os.path.dirname(file_path), data_dir)`
+* **Ignored Root**: If the document resides directly in the root `data/` folder, `rel_dir` evaluates to `"."` and no data source metadata is written.
+* **Tag Injection**: For files inside subdirectories, the relative path (with unified forward-slashes `/`) is written under keys `"source_folder"` and `"Zdroj dat"` inside the `metadata_json` dictionary.
+
+### B. Prevention of Namespace Collisions
+To allow files with identical names to exist across different subfolders without overwriting each other or throwing database uniqueness errors:
+* **source_uri resolution**: The `source_uri` column is saved using the relative path rather than just the basename: `file://{relative_path}` (e.g. `file://1. ŘÍDÍCÍ DOKUMENT 0 + TP/Traumaplán.pdf`).
+* **Azure Blob Key**: Uploaded blobs preserve this directory structure as a virtual path within the blob container (e.g. `1. ŘÍDÍCÍ DOKUMENT 0 + TP/Traumaplán.pdf`), isolating the assets cleanly.
+
+### C. Frontend Filtering Logic
+* **Dynamic Options**: The frontend scans loaded documents and extracts the list of unique folder strings using `useMemo`.
+* **Search Context**: Selecting a source folder filters the visible file list locally and attaches `source_folder: selectedFolder` to the `filters` block of chat requests.
+* **Backend Retrieval**: The hybrid retriever `_apply_filters` checks the incoming dictionary keys against the JSONB `metadata` column, scoping vector and FTS retrieval to that folder.
+

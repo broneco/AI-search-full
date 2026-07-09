@@ -178,14 +178,22 @@ async def view_document(
         else:
             # Serve from local file
             local_path = doc.source_uri.replace("file://", "")
+            if not os.path.isabs(local_path):
+                data_dir = os.path.abspath("data")
+                local_path = os.path.join(data_dir, local_path)
+            
             if not os.path.exists(local_path):
                 data_dir = os.path.abspath("data")
                 filename = os.path.basename(local_path)
-                fallback_path = os.path.join(data_dir, filename)
-                if os.path.exists(fallback_path):
-                    local_path = fallback_path
-                else:
-                    raise HTTPException(status_code=404, detail=f"Local PDF file not found at path: {local_path}")
+                # Recursive fallback search inside the data folder
+                found = False
+                for root, _, files in os.walk(data_dir):
+                    if filename in files:
+                        local_path = os.path.join(root, filename)
+                        found = True
+                        break
+                if not found:
+                    raise HTTPException(status_code=404, detail=f"Local PDF file not found: {filename}")
             
             with open(local_path, "rb") as f:
                 data = f.read()
@@ -830,6 +838,12 @@ async def run_reindex_all_task():
                 "freshness_status": "current",
                 "relationship_type": rel.get("relationship_type", "none"),
             }
+
+            # Calculate source folder relative to data_dir
+            rel_dir = os.path.relpath(os.path.dirname(file_path), data_dir).replace("\\", "/")
+            if rel_dir and rel_dir != ".":
+                metadata["source_folder"] = rel_dir
+                metadata["Zdroj dat"] = rel_dir
 
             # Check if replaces target
             rel_type = rel.get("relationship_type", "none")

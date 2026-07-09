@@ -104,6 +104,12 @@ async def main():
                     "year": 2026,
                 }
 
+            # Calculate source folder relative to data_dir
+            rel_dir = os.path.relpath(os.path.dirname(file_path), data_dir).replace("\\", "/")
+            if rel_dir and rel_dir != ".":
+                metadata["source_folder"] = rel_dir
+                metadata["Zdroj dat"] = rel_dir
+
             # Detect language dynamically using MetadataTagger
             tagger = MetadataTagger(db_session=db)
             detected_lang = "cs"

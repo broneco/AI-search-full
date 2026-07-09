@@ -66,6 +66,25 @@ Pro její spuštění v režimu vývoje:
 
 ---
 
+### 5. Automatizované nasazení backendu do Azure (Cloud Deployment)
+Pro rychlé sestavení a nasazení změn v kódu backendu do Azure Container Apps slouží automatizovaný PowerShell skript `deploy_backend.ps1`. Skript využívá cloudový build (`az acr build`), takže **nemusíte mít na počítači spuštěný lokální Docker**.
+
+* **Standardní nasazení (s výchozími hodnotami):**
+  Spusťte PowerShell s dočasným povolením spouštění lokálních skriptů:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\deploy_backend.ps1
+  ```
+  *(Skript automaticky zkontroluje vaše přihlášení do Azure CLI, sestaví image v cloudu s unikátním časovým razítkem, provede rolling update Container App `dolphin-ai-search-backend` a aktualizuje CORS pravidla).*
+
+* **Konfigurace a změna parametrů:**
+  Výchozí hodnoty (Resource Group, Registry Name, Container App Name, Region) jsou definovány na začátku skriptu v sekci `param(...)` a můžete je tam trvale přepsat.
+  Případně je můžete jednorázově přepsat přímo z příkazové řádky:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\deploy_backend.ps1 -ResourceGroup "Můj_RG" -ContainerAppName "moje-container-app"
+  ```
+
+---
+
 ## 🧪 Jak dashboard testovat a ověřovat funkčnost
 
 Po otevření adresy `http://localhost:3000` můžete testovat následující scénáře:

@@ -116,6 +116,12 @@ async def main():
                 "relationship_type": rel.get("relationship_type", "none"),
             }
 
+            # Calculate source folder relative to data_dir
+            rel_dir = os.path.relpath(os.path.dirname(file_path), data_dir).replace("\\", "/")
+            if rel_dir and rel_dir != ".":
+                metadata["source_folder"] = rel_dir
+                metadata["Zdroj dat"] = rel_dir
+
             # Check if replaces target
             rel_type = rel.get("relationship_type", "none")
             target_doc = None

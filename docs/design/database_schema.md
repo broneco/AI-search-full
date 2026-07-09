@@ -143,9 +143,11 @@ The dynamic JSONB columns store variable key-value tags used to refine vector se
 ```json
 {
   "department": "HR",
-  "year": "2026",
+  "year": 2026,
   "author": "Vedení Dolphin Consulting",
-  "original_filename": "S-10.150.v100-Organizační_řád.pdf"
+  "original_filename": "S-10.150.v100-Organizační_řád.pdf",
+  "source_folder": "1. ŘÍDÍCÍ DOKUMENT 0 + TP",
+  "Zdroj dat": "1. ŘÍDÍCÍ DOKUMENT 0 + TP"
 }
 ```
-* **Dynamic Query Filters**: If a search request specifies a metadata filter (e.g. `{"department": "HR"}`), SQL statements query the column directly via `metadata ->> 'department' = :val` to prune irrelevant chunks before running semantic comparisons.
+* **Dynamic Query Filters**: If a search request specifies a metadata filter (e.g. `{"department": "HR"}` or `{"source_folder": "1. ŘÍDÍCÍ DOKUMENT 0 + TP"}`), SQL statements query the column directly via `metadata ->> 'source_folder' = :val` to prune irrelevant chunks before running semantic comparisons.

@@ -7,6 +7,18 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ## [Unreleased]
 
 ### Added
+- **Subfolder Data Source Ingestion ("Zdroj dat")**: Modified the local ingestion scripts (`ingest.py`, `full_refresh_ingest.py`) and background reindexing endpoint (`/reindex` in `app/api/routes/documents.py`) to recursively scan subdirectories of the `data/` folder and tag all documents and chunks with `source_folder` and `Zdroj dat` metadata properties containing the relative subfolder path.
+- **Data Source Filtering (Frontend)**: Added a "Zdroj dat" dropdown selector to the Collapsible Search Settings Panel on the frontend. The dropdown dynamically lists all unique folder paths extracted from the ingested documents list.
+- **Active Filters Badge & Local Sidebar Filtering (Frontend)**: Rendered a styled folder badge on each document card in the sidebar showing its directory, and implemented local document filtering by data source. Added an active filter pill at the top of the chat interface showing the active data source constraint.
+- **Data Source RAG Filtering (Backend/Frontend)**: Propagated the selected data source filter in search requests to `/api/chat` under the `filters` body payload, which is automatically evaluated by the backend hybrid retriever.
+- **Automated Backend Deployment Script**: Created `deploy_backend.ps1` in the workspace root to automate Docker builds via Azure ACR Tasks and rolling-deploy to Azure Container Apps. Documented usage instructions in `README.md`.
+
+### Changed
+- **Relative Path source_uri Resolution**: Updated the ingestion pipeline (`IngestionPipeline.ingest_file`) to construct `source_uri` (and Azure Blob storage upload paths) using the document's relative path from the `data/` folder rather than its basename. This avoids namespace conflicts and overwrites for documents of the same name stored in different folders.
+- **Robust Local PDF Fallback Search**: Enhanced the PDF viewing route `/view/{document_id}` to recursively search for the file under the `data/` folder if its stored absolute path does not exist, preventing 404 errors when serving files.
+
+### Added
+- **Azure Static Web Apps Workflow**: Added `.github/workflows/azure-static-web-apps.yml` to automatically build and deploy the Next.js frontend to Azure Static Web Apps.
 - **Complete UI Localization (Frontend)**: Replaced all remaining hardcoded Czech text strings in `frontend/app/page.tsx` with dynamic key lookups from the `TRANSLATIONS` dictionary. This includes localizing the Category Migration Modal, Re-indexing Progress Modal, the initial/greeting assistant message, document list tooltip texts, and the active source section titles when multiple sections are selected.
 - **Document Language Detection & Ingestion (Backend)**: Added automated language detection in `MetadataTagger.detect_language` using the Azure OpenAI `flash` profile. Return `"suggested_language"` (`"cs"` or `"en"`) in the metadata suggestion endpoint. Added a `language` parameter to `IngestionPipeline.ingest_file` to write the language to the `DBDocument` and `DBChunk` tables.
 - **Localized LLM Grounded Prompts (Backend)**: Added support for translating LLM system prompts and enforcing the correct response language in `/api/chat` based on the requested `locale` (supporting Czech and English).
@@ -15,6 +27,8 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ### Changed
 - **Registry Name Documentation**: Updated the Azure Container Registry name from `dolphinacr` to `dolphinds` and documented the unique login server `dolphinds-b7asdeh8fyayaya2.azurecr.io` in `docs/deployments/cloud_deployment_guide.md` and `.agents/memory/implementation-notes.md` to align with the active cloud topology.
+- **App Tab Title Styling**: Renamed the HTML title of the application from the placeholder/default to `"Dolphin AI Search"` to reflect corporate branding.
+- **SWA API Endpoint Injection**: Configured SWA build pipelines to inject `NEXT_PUBLIC_API_URL` during the static export compile step, enabling the client to query backend REST endpoints dynamically.
 - **Collapsible Search Settings Interface (Frontend)**: Refactored the top search filter bar into a clean, collapsible "Search Settings" drawer. Displays active filter parameters as compact glassmorphic pills with an "Adjust Filters" toggle button.
 - **Ingestion & Editing Language Dropdowns (Frontend)**: Integrated a "Document Language" dropdown selector into the confirmation and edit forms. Passes `confirmedLanguage` in confirmed ingestion and update metadata requests.
 - **Backward-Compatible API Schemas**: Made `language` in `DocumentUpdateMetadataRequest` default to `"cs"`, preventing validation errors (422 Unprocessable Entity) on existing API test payloads.

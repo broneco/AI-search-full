@@ -35,7 +35,14 @@ class IngestionPipeline:
     ) -> DBDocument:
         """Process a single file end-to-end and persist it to PostgreSQL."""
         file_name = os.path.basename(file_path)
-        logger.info(f"┌─ 🚀 Ingestion pipeline started for file: {file_name}")
+        # Determine the relative file path from data/ if applicable, to prevent folder conflicts
+        parts = file_path.replace("\\", "/").split("/data/")
+        if len(parts) > 1:
+            relative_path = parts[-1]
+        else:
+            relative_path = file_name
+
+        logger.info(f"┌─ 🚀 Ingestion pipeline started for file: {relative_path}")
 
         # 1. Generate checksum to track file changes
         logger.info(f"│  ├── [Step 1/5] Calculating file checksum & checking database status...")
@@ -47,8 +54,8 @@ class IngestionPipeline:
         from sqlalchemy import select
         container_name = settings.AZURE_BLOB_CONTAINER_ORIGINALS or "originals"
         existing_doc_stmt = select(DBDocument).where(
-            (DBDocument.source_uri == f"file://{file_name}") |
-            (DBDocument.source_uri == f"azure://{container_name}/{file_name}")
+            (DBDocument.source_uri == f"file://{relative_path}") |
+            (DBDocument.source_uri == f"azure://{container_name}/{relative_path}")
         )
         existing_doc = self.db.execute(existing_doc_stmt).scalar_one_or_none()
 
@@ -133,15 +140,15 @@ class IngestionPipeline:
                     metadata["created_at"] = created_at_val.isoformat()
 
             source_type = "local"
-            source_uri = f"file://{file_name}"
+            source_uri = f"file://{relative_path}"
 
             if self.blob_provider.is_configured():
                 container_name = settings.AZURE_BLOB_CONTAINER_ORIGINALS or "originals"
-                logger.info(f"│  ├── [Blob Storage] Uploading {file_name} to Azure container '{container_name}'...")
+                logger.info(f"│  ├── [Blob Storage] Uploading {relative_path} to Azure container '{container_name}'...")
                 try:
-                    await self.blob_provider.upload_blob(container_name, file_name, file_bytes)
+                    await self.blob_provider.upload_blob(container_name, relative_path, file_bytes)
                     source_type = "azure_blob"
-                    source_uri = f"azure://{container_name}/{file_name}"
+                    source_uri = f"azure://{container_name}/{relative_path}"
                     logger.info(f"│  │   └── Cloud upload complete. URI: {source_uri}")
                 except Exception as e:
                     logger.warning(f"│  │   ⚠️ Azure Blob upload failed: {e}. Falling back to local storage path.")
