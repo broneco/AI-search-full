@@ -7,6 +7,39 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ## [Unreleased]
 
 ### Added
+- **Advanced Chunking Strategy & Splitter Type Configuration**: Added controls to select between `"recursive"` (separators list) and `"character"` (fixed size) splitters. Added support for `"chunk_cross_page"` enabling continuous text chunks to cross page transitions while maintaining offset-based page citation mapping.
+- **Visual Overlap Highlights**: Built client-side character overlap suffix-to-prefix matching in the Next.js interactive preview tab, rendering overlapping text chunks with an amber-dotted border and hover tooltip description.
+- **Visual Raw PDF Formatting Warning**: Rendered a card banner explaining why PDF styling (fonts, alignments, columns) is stripped during raw plain-text parsing.
+- **Original Document Page Viewer Links**: Added target-blank anchor links to chunk cards in the interactive simulation and static DB chunk modal, opening streamed PDFs positioned precisely at the specific page (`#page=N`).
+- **Interactive Chunking Preview**: Added a `POST /api/documents/preview-chunks` simulation endpoint on the backend and integrated a side-by-side Live Preview panel in the Next.js frontend. Admins can select any document from a dropdown list, adjust sliders/inputs, and instantly audit how the text splits into color-coded segments in real time.
+- **Dedicated Chunking Page & Tab switcher**: Segmented document chunking parameters (chunk size, overlap) from the Search Settings tab into a dedicated "🧩 Chunkování" (Czech) / "🧩 Chunking" (English) tab panel.
+- **Fast Chunk-level Re-indexing**: Added a fast background re-indexing endpoint (`POST /api/documents/reindex-all` running `run_reindex_all_task`) which regenerates chunks and vector embeddings using PyPDF and Azure OpenAI without modifying LLM metadata tags.
+- **Full Metadata-tagging Re-indexing**: Renamed the slow re-indexing task to `run_reindex_full_task` (exposed under `POST /api/documents/reindex-full`) to allow full metadata classification and relationship mapping.
+- **Dynamic Re-indexing Progress Modal**: Localized progress states using "Reindexace" (Re-indexing) / "Reindexovat" (Re-index) instead of "Přechunkování" (Re-chunking) in Czech. Customized the progress descriptions dynamically based on whether the fast or full re-indexing was triggered.
+- **Reindexing Test Coverage**: Created `tests/test_rechunk.py` and explanation document `docs/tests_explained/test_rechunk.md` verifying chunk size adjustments, database commits, Azure OpenAI vector updates, and simulated text-splitting API previews.
+- **Visual Document Chunking Preview Modal**: Added `GET /api/documents/{document_id}/chunks` on the backend and integrated a dynamic, pastel-colored chunking preview modal in the Documents tab on the Next.js frontend, letting admins inspect exact text segmentations.
+- **SQL Pre-filtering for ACL & Freshness**: Shifted security ACL group checks and time validity filters from post-retrieval Python loops directly into database queries using PostgreSQL JSONB query operators (`?|`) and datetime extracts. This resolves potential recall leaks and optimizes performance.
+- **Outward Token-Budget Context Expansion**: Implemented a dynamic context expansion algorithm that alternates left-and-right sibling additions from the matched chunk up to a user-defined token limit.
+- **Dual Slider and Number Input Controls**: Added manual numeric input boxes alongside all sliders on the search configuration page for precise tuning, and expanded the context token limit range up to 30,000.
+- **Recursive character chunking**: Updated `app/ingestion/chunking.py` and `app/ingestion/pipeline.py` to use `RecursiveCharacterTextSplitter` configured dynamically from active search settings.
+- **Security Prefilter Test Suite**: Created `tests/test_security_prefilter.py` and explanation document `docs/tests_explained/test_security_prefilter.md` verifying SQL filters and token budget limits.
+
+### Added
+- **Customizable Search Config REST API**: Exposed `GET /api/chat/config` and `POST /api/chat/config` endpoints to read and write Pydantic-validated search parameters.
+- **Dynamic Retrieval Config Manager (`SearchConfigManager`)**: Replicated `search_config.json` locally and synced it to Azure Blob Storage container (`originals`) under key `config/search_config.json` for persistent, zero-downtime search configuration tuning.
+- **Flexible Hybrid Fusion Strategies**: Extended `VectorRetriever` to support three fusion strategies:
+  * **Weighted RRF (Reciprocal Rank Fusion)**: Rank-position based merging.
+  * **Weighted Score Addition**: Normalized FTS rank scores combined with cosine similarity values, allowing score thresholding.
+  * **Union**: Concatenated exact slices of top vector and FTS results with deduplication.
+- **Parent-Child & Context Window Expansion**: Added dynamic context window expansions at retrieval time:
+  * **Siblings**: Loads preceding/succeeding chunks based on `chunk_index`.
+  * **Page-level**: Loads all chunks belonging to the same `page_number`.
+  * **Section-level**: Loads all chunks belonging to the same `section_title`.
+- **Admin Search Configuration Panel (Frontend)**: Added a dynamic, grid-based search configuration form inside the **Nastavení (Config)** tab next to dynamic categories. Localized form inputs in Czech and English.
+- **Search Config Test Suite**: Created `tests/test_search_config.py` verifying validation rules, score addition normalization, union combining, and context window expansions. Added documentation in `docs/tests_explained/test_search_config.md`.
+- **Architectural Decision Records (ADRs)**: Created `ADR-0012` (Dynamic Search Config), `ADR-0013` (Hybrid Fusion Strategies), and `ADR-0014` (Context Expansion Strategies) to document design decisions.
+
+### Added
 - **Subfolder Data Source Ingestion ("Zdroj dat")**: Modified the local ingestion scripts (`ingest.py`, `full_refresh_ingest.py`) and background reindexing endpoint (`/reindex` in `app/api/routes/documents.py`) to recursively scan subdirectories of the `data/` folder and tag all documents and chunks with `source_folder` and `Zdroj dat` metadata properties containing the relative subfolder path.
 - **Data Source Filtering (Frontend)**: Added a "Zdroj dat" dropdown selector to the Collapsible Search Settings Panel on the frontend. The dropdown dynamically lists all unique folder paths extracted from the ingested documents list.
 - **Active Filters Badge & Local Sidebar Filtering (Frontend)**: Rendered a styled folder badge on each document card in the sidebar showing its directory, and implemented local document filtering by data source. Added an active filter pill at the top of the chat interface showing the active data source constraint.

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
+from app.core.search_config import SearchConfigManager, SearchConfigSchema
 from app.providers.azure_openai import AzureOpenAIProvider, AzureOpenAIEmbeddingProvider
 from app.providers.llm import ChatMessage
 from app.retrieval.vector import VectorRetriever
@@ -17,6 +18,22 @@ logger = logging.getLogger(__name__)
 # Initialize providers
 llm_provider = AzureOpenAIProvider()
 embedding_provider = AzureOpenAIEmbeddingProvider()
+
+
+@router.get("/config", response_model=SearchConfigSchema)
+async def get_search_config():
+    """Read the dynamic search retrieval configuration from Blob Storage or disk."""
+    manager = SearchConfigManager()
+    config = await manager.load_config()
+    return config
+
+
+@router.post("/config")
+async def update_search_config(config_request: SearchConfigSchema):
+    """Save the updated search retrieval configuration to Blob Storage and disk."""
+    manager = SearchConfigManager()
+    await manager.save_config(config_request.model_dump())
+    return {"status": "saved", "config": config_request}
 
 
 @router.post("", response_model=ChatResponse)
@@ -69,12 +86,17 @@ async def chat_interaction(
             acl_groups=acl_groups,
         )
 
+        # Load dynamic search settings
+        config_manager = SearchConfigManager()
+        search_config = await config_manager.load_config()
+
         logger.info(f"Executing hybrid retrieval with strategy: {request.search_strategy}")
         retrieved_items = await retriever.retrieve(
             context,
-            limit=5,
+            limit=search_config.get("final_limit", 5),
             query_embedding=query_embedding,
             search_strategy=request.search_strategy,
+            search_config=search_config,
         )
     except Exception as e:
         logger.error(f"Database vector retrieval failed: {e}")
@@ -93,10 +115,11 @@ async def chat_interaction(
         context_blocks = []
         sources = []
         for idx, item in enumerate(retrieved_items):
+            clean_content = item.content.replace("[[MATCH_START]]", "").replace("[[MATCH_END]]", "")
             context_blocks.append(
                 f"[Source {idx+1}] - Title: {item.title}\n"
                 f"Section: {item.section_title or 'N/A'}\n"
-                f"Content: {item.content}\n"
+                f"Content: {clean_content}\n"
             )
             sources.append(
                 ChatSource(

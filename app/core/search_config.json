@@ -1,0 +1,21 @@
+{
+  "search_strategy": "hybrid",
+  "hybrid_strategy": "rrf",
+  "vector_weight": 0.6,
+  "keyword_weight": 0.4,
+  "rrf_k": 60,
+  "vector_limit": 50,
+  "keyword_limit": 50,
+  "final_limit": 20,
+  "vector_final_limit": 5,
+  "keyword_final_limit": 5,
+  "score_threshold": 0.0,
+  "freshness_boost": 0.0,
+  "context_expansion": "page",
+  "context_expansion_size": 2,
+  "chunk_size": 2000,
+  "chunk_overlap": 250,
+  "chunk_cross_page": false,
+  "chunk_splitter_type": "recursive",
+  "context_max_tokens": 4000
+}

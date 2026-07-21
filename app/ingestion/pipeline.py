@@ -9,7 +9,7 @@ from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
 from app.providers.blob_storage import BlobStorageProvider
 from app.core.config import settings
 from app.ingestion.extraction import DocumentExtractor
-from app.ingestion.chunking import CharacterTextSplitter
+from app.ingestion.chunking import RecursiveCharacterTextSplitter
 from app.storage.models import DBDocument, DBChunk
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,17 @@ class IngestionPipeline:
     def __init__(self, db_session: Session) -> None:
         self.db = db_session
         self.extractor = DocumentExtractor()
-        self.splitter = CharacterTextSplitter()
+        
+        # Load active chunking configuration dynamically
+        from app.core.search_config import SearchConfigManager
+        manager = SearchConfigManager()
+        config = manager.load_config_sync()
+        self.splitter = RecursiveCharacterTextSplitter(
+            chunk_size=config.get("chunk_size", 1500),
+            chunk_overlap=config.get("chunk_overlap", 250),
+            chunk_cross_page=config.get("chunk_cross_page", False),
+            chunk_splitter_type=config.get("chunk_splitter_type", "recursive")
+        )
         self.embedding_provider = AzureOpenAIEmbeddingProvider()
         self.blob_provider = BlobStorageProvider()
 

@@ -49,95 +49,72 @@ To solve this, our system runs two distinct search strategies in parallel and me
 
 ---
 
-## 2. Reciprocal Rank Fusion (RRF)
+## 2. Configurable Hybrid Fusion Strategies
 
-Because Keyword Search and Semantic Search produce entirely different scoring metrics (keyword density rank vs. concept distance scores), their scores cannot be compared directly. It is impossible to say whether a keyword score of `5.4` is better than a semantic similarity score of `0.82`.
+Because Keyword Search and Semantic Search produce entirely different scoring metrics (keyword density rank vs. concept distance scores), their scores cannot be compared directly. It is impossible to say whether a keyword FTS score of `5.4` is better than a semantic similarity score of `0.82`.
 
-To merge them fairly, we use **Reciprocal Rank Fusion (RRF)**.
+To handle this, our system supports three distinct fusion strategies:
 
-### The Concept of RRF
-Instead of looking at raw scores, RRF looks only at the **rank (position)** of a document in each search result. 
-* A document ranked #1 is considered highly relevant.
-* A document ranked #10 is less relevant.
-* A document ranked #100 is very low relevance.
+### A. Reciprocal Rank Fusion (RRF)
+RRF looks only at the **rank (position)** of a document in each search result. It rewards documents that appear near the top of either list, and heavily rewards documents that appear in **both** lists.
 
-RRF rewards documents that appear near the top of either list, and heavily rewards documents that appear in **both** lists.
+$$\text{RRF Score}(d) = W_{\text{vector}} \times \left( \frac{1}{k + \text{Rank}_{\text{vector}}(d)} \right) + W_{\text{keyword}} \times \left( \frac{1}{k + \text{Rank}_{\text{keyword}}(d)} \right)$$
 
-### The Scoring Formula
-Each document's final RRF score is calculated as follows:
+* **$k$ (Smoothing Constant)**: Set to `60` by default. This prevents early ranks (like #1 vs #2) from completely dominating the scores, allowing runner-ups to still be considered.
+* **$W_{\text{vector}}$ / $W_{\text{keyword}}$**: Weights (default: `0.6` / `0.4`) representing the relative priority of semantic meaning versus exact word matching.
 
-$$\text{RRF Score} = W_{\text{vector}} \times \left( \frac{1}{k + \text{Rank}_{\text{vector}}} \right) + W_{\text{keyword}} \times \left( \frac{1}{k + \text{Rank}_{\text{keyword}}} \right)$$
+### B. Weighted Score Addition (Score-Based Fusion)
+Instead of discarding raw scores, this strategy sums the exact cosine similarity (vector) score with the normalized FTS score. FTS rank values (`ts_rank_cd`) are unbounded, so they are normalized by dividing by the highest FTS score found in the query's candidate set:
 
-* **$\text{Rank}$**: The 1-based index of the document in the list (1 for #1, 2 for #2, etc.). If a document did not qualify for a list, its rank contribution is $0$.
-* **$k$ (Smoothing Constant)**: Set to `60`. This prevents early ranks (like #1 vs #2) from completely dominating the scores, allowing high-quality runner-up documents to still be considered.
-* **$W_{\text{vector}}$ (Semantic Weight)**: Set to `0.6` (60%). This represents the preference given to conceptual meaning.
-* **$W_{\text{keyword}}$ (Keyword Weight)**: Set to `0.4` (40%). This represents the preference given to exact keyword hits.
+$$\text{Score}_{\text{normalized}}(d) = \frac{\text{FTS Rank}(d)}{\max(\text{FTS Ranks in query batch})}$$
+$$\text{Combined Score}(d) = W_{\text{vector}} \times \text{CosineSimilarity}(d) + W_{\text{keyword}} \times \text{Score}_{\text{normalized}}(d)$$
 
-By adjusting the weights ($0.6$ vs $0.4$), we ensure that the semantic concept is given a slightly higher priority, while exact keyword hits still act as a strong boost.
+This produces a bounded combined score (typically between `0.0` and `1.0`), allowing the application of a **Score Threshold** to filter out low-relevance results.
 
----
-
-## 3. Concrete Search Example
-
-To see RRF in action, let us walk through a small example using Czech corporate guidelines.
-
-### Sample Document Passages
-* **Passage A**: *"Evidence pracovní doby na vedení společnosti Dolphin Consulting podléhá kontrole a zapisuje se do interního ERP systému."*
-* **Passage B**: *"Pravidla pro evidenci smluv v naší společnosti vyžadují zveřejňování každé písemné objednávky v registru smluv."*
-* **Passage C**: *"Zpracování osobních údajů a ochrana soukromí zaměstnanců se řídí směrnicí GDPR."*
-
-### The User Query
-> **"Jaká jsou pravidla pro registr smluv?"**
+### C. Union (Sjednocení TOP výsledků)
+This strategy performs independent retrieval. It takes the top $N$ vector results and the top $M$ keyword results, merges them, and removes duplicates based on `chunk_id`. This is highly useful for scenarios where you want a guaranteed mixture of exact-word matches and semantic matches (e.g. exactly 5 of each).
 
 ---
 
-### Step 1: Keyword Search Runs
-The system cleans the query and looks for exact matches for the words **"pravidla"**, **"registr"**, and **"smluv"**.
+## 3. Parent-Child & Context Window Expansion
 
-1. **Passage B** contains "Pravidla", "registr", and "smluv". It is a perfect keyword match.
-   * **Rank in Keyword Search**: **#1**
-2. **Passage A** and **Passage C** contain none of these search words.
-   * **Rank in Keyword Search**: **Unranked (Not found)**
+To solve the RAG trade-off between **precise search vectors** (which work best on small sentences/paragraphs) and **rich context** (needed by the LLM to write complete answers), we implement a dynamic context expansion step:
 
----
+```
+    Database Search                    Context Expansion Step              Sent to LLM
+ ┌───────────────────┐                 ┌────────────────────┐          ┌───────────────────┐
+ │   Match Chunk i   │  ─────────────> │ Load Sibling Chunks│  ──────> │ Complete Paragraph│
+ │ (Sentence level)  │                 │  [i - N, ..., i+N] │          │   or Page / Section│
+ └───────────────────┘                 └────────────────────┘          └───────────────────┘
+```
 
-### Step 2: Semantic Search Runs
-The system translates the query "Jaká jsou pravidla pro registr smluv?" into its conceptual meaning (legal obligations, administrative procedures, and agreements tracking).
+1. **Sousední chunky (Siblings)**:
+   Fetches neighboring chunks in the range $[i - N, i + N]$ using the sequential `chunk_index`. This expands a single sentence into a full paragraph or surrounding context block.
+2. **Celostránkový kontext (Page-level)**:
+   Loads all chunks belonging to the same page (`page_number`).
+3. **Sekční kontext (Section-level)**:
+   Loads all chunks belonging to the same document section (`section_title`).
 
-1. **Passage B** is highly relevant conceptually (explains the rules for contracts registry).
-   * **Rank in Semantic Search**: **#1**
-2. **Passage A** is somewhat relevant (discusses company administration rules, recording working hours, and the internal database ERP system).
-   * **Rank in Semantic Search**: **#2**
-3. **Passage C** is not relevant (deals with privacy and GDPR, not contracts).
-   * **Rank in Semantic Search**: **Unranked**
-
----
-
-### Step 3: Reciprocal Rank Fusion (RRF) Calculation
-Now, we compute the fused RRF scores for each passage.
-
-#### Calculating Passage B:
-* **Semantic Rank**: #1 $\rightarrow$ Score Contribution: $0.6 \times \frac{1}{60 + 1} = 0.6 \times 0.01639 = 0.00983$
-* **Keyword Rank**: #1 $\rightarrow$ Score Contribution: $0.4 \times \frac{1}{60 + 1} = 0.4 \times 0.01639 = 0.00656$
-* **Total RRF Score**: $0.00983 + 0.00656 = \mathbf{0.01639}$
-
-#### Calculating Passage A:
-* **Semantic Rank**: #2 $\rightarrow$ Score Contribution: $0.6 \times \frac{1}{60 + 2} = 0.6 \times 0.01613 = 0.00968$
-* **Keyword Rank**: Unranked $\rightarrow$ Score Contribution: $0$
-* **Total RRF Score**: $0.00968 + 0 = \mathbf{0.00968}$
-
-#### Calculating Passage C:
-* Unranked in both lists.
-* **Total RRF Score**: $\mathbf{0.00000}$
+These expansions are evaluated in real time at retrieval, meaning no data re-indexing is required.
 
 ---
 
-### Final Ranked Results Sent to LLM
-The search system sorts the fused scores in descending order and returns the top matches:
+## 4. Administrative Configuration Schema
 
-| Position | Passage | RRF Score | Why it succeeded |
+All settings are stored in `search_config.json`, replicated in Azure Blob Storage for resilience, and managed in the admin UI:
+
+| Parameter | Type / Range | Default | Description |
 | :--- | :--- | :--- | :--- |
-| **#1** | **Passage B** (Registr smluv) | **0.01639** | Ranked #1 in both semantic and keyword searches (Highest relevance). |
-| **#2** | **Passage A** (Evidence pracovní doby) | **0.00968** | Ranked #2 in semantic search, despite having zero keyword overlaps. |
+| `search_strategy` | `"hybrid" \| "vector" \| "keyword"` | `"hybrid"` | Primary query route. |
+| `hybrid_strategy` | `"rrf" \| "score_addition" \| "union"` | `"rrf"` | Fusion algorithm. |
+| `vector_weight` | `0.0` - `1.0` | `0.6` | Semantic retrieval weight. |
+| `keyword_weight` | `0.0` - `1.0` | `0.4` | Lexical matching weight. |
+| `rrf_k` | `10` - `100` | `60` | Smoothing constant for RRF. |
+| `vector_limit` / `keyword_limit` | `5` - `200` | `50` | Row candidates fetched from DB. |
+| `final_limit` | `1` - `20` | `5` | Final chunk count sent to LLM. |
+| `vector_final_limit` / `keyword_final_limit` | `1` - `20` | `5` | Slice sizes for `Union` strategy. |
+| `score_threshold` | `0.0` - `1.0` | `0.0` | Minimum score required (0 = disabled). |
+| `freshness_boost` | `0.0` - `0.5` | `0.0` | Score bonus for current year (2026). |
+| `context_expansion` | `"none" \| "siblings" \| "page" \| "section"` | `"none"` | Parent-child context mode. |
+| `context_expansion_size` | `1` - `3` | `1` | Sibling window size. |
 
-This combined list guarantees that the system returns Passage B as the absolute primary source of truth, while still providing Passage A as useful context, and completely discarding Passage C as irrelevant. The generative AI model then uses this filtered context to write its detailed answer.

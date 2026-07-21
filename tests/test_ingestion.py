@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.storage.db import engine, init_db, SessionLocal
 from app.ingestion.loaders.local import list_local_files
 from app.ingestion.extraction import DocumentExtractor
-from app.ingestion.chunking import CharacterTextSplitter
+from app.ingestion.chunking import RecursiveCharacterTextSplitter
 from app.ingestion.pipeline import IngestionPipeline
 
 
@@ -51,7 +51,7 @@ def test_pdf_extraction_and_chunking(tmp_path):
     assert "paragraph two" in extracted_pages[0].text
 
     # 4. Test splitter chunker
-    splitter = CharacterTextSplitter(chunk_size=100, chunk_overlap=20)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
     chunks = splitter.split_pages(extracted_pages)
     assert len(chunks) >= 2
     assert chunks[0].page_number == 1

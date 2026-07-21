@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -18,6 +18,7 @@ embedding_provider = AzureOpenAIEmbeddingProvider()
 # Global state for re-indexing progress tracking
 reindex_progress = {
     "status": "idle",       # "idle" | "running" | "completed" | "failed"
+    "type": None,           # "reindex_full" | "reindex_fast"
     "total_files": 0,
     "processed_files": 0,
     "current_file": None,
@@ -713,8 +714,8 @@ async def ingest_confirmed(
             os.remove(request.temp_file_path)
 
 
-async def run_reindex_all_task():
-    logger.info("Starting background re-indexing of all documents...")
+async def run_reindex_full_task():
+    logger.info("Starting background full re-indexing of all documents...")
     import os
     import datetime
     from app.storage.db import SessionLocal, init_db, clear_db
@@ -726,6 +727,7 @@ async def run_reindex_all_task():
 
     # Reset progress state
     reindex_progress["status"] = "running"
+    reindex_progress["type"] = "reindex_full"
     reindex_progress["phase"] = "clearing_db"
     reindex_progress["total_files"] = 0
     reindex_progress["processed_files"] = 0
@@ -915,13 +917,250 @@ async def get_reindex_progress():
     return reindex_progress
 
 
+@router.post("/reindex-full")
+async def reindex_full_endpoint(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db_session)
+):
+    """Trigger background full re-indexing of all local documents in the data folder (with LLM metadata analysis)."""
+    background_tasks.add_task(run_reindex_full_task)
+    return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů (s analýzou metadat) byla spuštěna na pozadí."}
+
+
+async def run_reindex_all_task():
+    logger.info("Starting background fast re-indexing (re-chunking) of all documents...")
+    import os
+    from app.storage.db import SessionLocal
+    from app.storage.models import DBDocument, DBChunk
+    from app.ingestion.pipeline import IngestionPipeline
+
+    # Reset progress state
+    reindex_progress["status"] = "running"
+    reindex_progress["type"] = "reindex_fast"
+    reindex_progress["phase"] = "scanning"
+    reindex_progress["total_files"] = 0
+    reindex_progress["processed_files"] = 0
+    reindex_progress["current_file"] = None
+    reindex_progress["error"] = None
+
+    db = SessionLocal()
+    try:
+        from sqlalchemy import select
+        docs = db.execute(select(DBDocument)).scalars().all()
+        
+        if not docs:
+            logger.info("No documents found in database for fast re-indexing.")
+            reindex_progress["status"] = "completed"
+            reindex_progress["phase"] = None
+            return
+
+        reindex_progress["total_files"] = len(docs)
+        reindex_progress["phase"] = "ingesting"
+
+        pipeline = IngestionPipeline(db)
+
+        for idx, doc in enumerate(docs):
+            reindex_progress["current_file"] = doc.title
+            reindex_progress["processed_files"] = idx
+            
+            uri = doc.source_uri
+            relative_path = uri
+            if uri.startswith("file://"):
+                relative_path = uri[7:]
+            elif uri.startswith("azure://"):
+                parts = uri.split("/", 3)
+                if len(parts) > 3:
+                    relative_path = parts[3]
+            
+            file_path = os.path.abspath(os.path.join("data", relative_path))
+            if not os.path.exists(file_path):
+                found_path = None
+                data_dir = os.path.abspath("data")
+                if os.path.exists(data_dir):
+                    basename = os.path.basename(relative_path)
+                    for root, dirs, files in os.walk(data_dir):
+                        if basename in files:
+                            found_path = os.path.join(root, basename)
+                            break
+                if found_path:
+                    file_path = found_path
+                else:
+                    logger.warning(f"File not found for document {doc.title} at {file_path}. Skipping.")
+                    continue
+
+            logger.info(f"Fast re-indexing document: {doc.title} from {file_path}")
+            try:
+                extracted_pages = pipeline.extractor.extract(file_path)
+                chunks = pipeline.splitter.split_pages(extracted_pages)
+                if not chunks:
+                    logger.warning(f"No text split from document: {doc.title}. Skipping.")
+                    continue
+                
+                chunk_texts = [chunk.content for chunk in chunks]
+                embeddings = await pipeline.embedding_provider.embed_documents(chunk_texts)
+                
+                db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).delete()
+                
+                for chunk_idx, chunk in enumerate(chunks):
+                    db_chunk = DBChunk(
+                        document_id=doc.document_id,
+                        chunk_index=chunk_idx,
+                        content=chunk.content,
+                        embedding=embeddings[chunk_idx],
+                        language=doc.language,
+                        section_title=chunk.section_title,
+                        page_number=chunk.page_number,
+                        security_acl=doc.security_acl,
+                        metadata_json=doc.metadata_json,
+                        freshness_status=doc.freshness_status
+                    )
+                    db.add(db_chunk)
+                
+                db.commit()
+                logger.info(f"Successfully fast-reindexed document: {doc.title}")
+            except Exception as inner_e:
+                db.rollback()
+                logger.error(f"Failed to fast-reindex document {doc.title}: {inner_e}")
+                reindex_progress["error"] = f"Failed for {doc.title}: {inner_e}"
+
+        reindex_progress["status"] = "completed"
+        reindex_progress["processed_files"] = len(docs)
+        reindex_progress["current_file"] = None
+        reindex_progress["phase"] = None
+
+    except Exception as e:
+        logger.error(f"Fast re-indexing failed: {e}")
+        reindex_progress["status"] = "failed"
+        reindex_progress["error"] = str(e)
+    finally:
+        db.close()
+        logger.info("Background fast re-indexing finished.")
+
+
 @router.post("/reindex-all")
 async def reindex_all_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db_session)
 ):
-    """Trigger background re-indexing of all local documents in the data folder."""
+    """Trigger background fast re-indexing (re-chunking and embedding only) of all active documents."""
     background_tasks.add_task(run_reindex_all_task)
-    return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů byla spuštěna na pozadí."}
+    return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů (chunky a embeddingy) byla spuštěna na pozadí."}
+
+
+@router.get("/{document_id}/chunks")
+async def get_document_chunks(
+    document_id: str,
+    db: Session = Depends(get_db_session)
+):
+    """Retrieve all chunks belonging to a document, ordered by chunk_index, to show a chunking preview in the frontend."""
+    import uuid
+    from app.storage.models import DBChunk, DBDocument
+    
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document UUID format.")
+        
+    doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+        
+    chunks = (
+        db.query(DBChunk)
+        .filter(DBChunk.document_id == doc_uuid)
+        .order_by(DBChunk.chunk_index.asc())
+        .all()
+    )
+    
+    return [
+        {
+            "chunk_id": str(c.chunk_id),
+            "chunk_index": c.chunk_index,
+            "content": c.content,
+            "page_number": c.page_number,
+            "section_title": c.section_title,
+        }
+        for c in chunks
+    ]
+
+
+@router.post("/preview-chunks")
+async def preview_document_chunks(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session)
+):
+    """Simulate and preview text segmentation into chunks using custom chunk_size and chunk_overlap without writing to DB."""
+    import uuid
+    import os
+    from app.storage.models import DBDocument
+    from app.ingestion.extraction import DocumentExtractor
+    from app.ingestion.chunking import RecursiveCharacterTextSplitter
+    
+    document_id = payload.get("document_id")
+    chunk_size = payload.get("chunk_size", 1500)
+    chunk_overlap = payload.get("chunk_overlap", 250)
+    chunk_cross_page = payload.get("chunk_cross_page", False)
+    chunk_splitter_type = payload.get("chunk_splitter_type", "recursive")
+    
+    if not document_id:
+        raise HTTPException(status_code=400, detail="Missing document_id")
+        
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document UUID format.")
+        
+    doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+        
+    # Resolve file path
+    uri = doc.source_uri
+    relative_path = uri
+    if uri.startswith("file://"):
+        relative_path = uri[7:]
+    elif uri.startswith("azure://"):
+        parts = uri.split("/", 3)
+        if len(parts) > 3:
+            relative_path = parts[3]
+            
+    file_path = os.path.abspath(os.path.join("data", relative_path))
+    if not os.path.exists(file_path):
+        # Fallback search
+        found_path = None
+        data_dir = os.path.abspath("data")
+        if os.path.exists(data_dir):
+            basename = os.path.basename(relative_path)
+            for root, dirs, files in os.walk(data_dir):
+                if basename in files:
+                    found_path = os.path.join(root, basename)
+                    break
+        if found_path:
+            file_path = found_path
+        else:
+            raise HTTPException(status_code=404, detail=f"File not found on server.")
+            
+    # Extract pages and run custom splitter
+    extractor = DocumentExtractor()
+    pages = extractor.extract(file_path)
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        chunk_cross_page=chunk_cross_page,
+        chunk_splitter_type=chunk_splitter_type
+    )
+    chunks = splitter.split_pages(pages)
+    
+    return [
+        {
+            "chunk_index": c.index,
+            "content": c.content,
+            "page_number": c.page_number,
+            "section_title": c.section_title
+        }
+        for c in chunks
+    ]
+
 
 

@@ -46,6 +46,28 @@ interface IngestedDocument {
   };
 }
 
+interface SearchConfig {
+  search_strategy: "hybrid" | "vector" | "keyword";
+  hybrid_strategy: "rrf" | "score_addition" | "union";
+  vector_weight: number;
+  keyword_weight: number;
+  rrf_k: number;
+  vector_limit: number;
+  keyword_limit: number;
+  final_limit: number;
+  vector_final_limit: number;
+  keyword_final_limit: number;
+  score_threshold: number;
+  freshness_boost: number;
+  context_expansion: "none" | "siblings" | "page" | "section";
+  context_expansion_size: number;
+  context_max_tokens: number;
+  chunk_size: number;
+  chunk_overlap: number;
+  chunk_cross_page: boolean;
+  chunk_splitter_type: "recursive" | "character";
+}
+
 interface Category {
   key: string;
   label: string;
@@ -182,7 +204,9 @@ const TRANSLATIONS = {
     subtitle: "Inteligentní vyhledávání v dokumentech Dolphin Consulting s citacemi",
     searchTab: "💬 Vyhledávání",
     ingestTab: "📁 Správa souborů",
-    configTab: "⚙️ Nastavení",
+    categoriesTab: "📂 Kategorie",
+    configTab: "⚙️ Konfigurace vyhledávání",
+    chunkingTab: "🧩 Chunkování",
     userLabel: "Uživatel:",
     apiOnline: "API ONLINE",
     apiOffline: "API OFFLINE",
@@ -244,6 +268,23 @@ const TRANSLATIONS = {
     saving: "Ukládám změny...",
     configurationTitle: "Konfigurace kategorií a AI pravidel",
     configurationSubtitle: "Měňte názvy kategorií, popisy pro LLM klasifikátor a bezpečnostní role. Změna se projeví v celé aplikaci.",
+    searchConfigTitle: "Konfigurace vyhledávání a RAG",
+    searchConfigSubtitle: "Upravujte chování hybridního vyhledávače, váhy, RRF konstanty, thresholdy a rozšiřování kontextu.",
+    searchStrategyLabel: "Výchozí strategie vyhledávání",
+    hybridStrategyLabel: "Metoda hybridního slučování",
+    vectorWeightLabel: "Váha sémantického vyhledávání (Vektor)",
+    keywordWeightLabel: "Váha textového vyhledávání (FTS)",
+    vectorLimitLabel: "Limit kandidátů z DB (Vektor)",
+    keywordLimitLabel: "Limit kandidátů z DB (FTS)",
+    finalLimitLabel: "Finální počet výsledků k LLM",
+    thresholdLabel: "Práh shody (Score Threshold)",
+    boostLabel: "Zvýhodnění čerstvosti (Freshness Boost)",
+    expansionLabel: "Rozšíření kontextu (Parent-Child)",
+    expansionNone: "Žádné (Vypnuto)",
+    expansionSiblings: "Sousední pasáže (Siblings)",
+    expansionPage: "Celá stránka (Page)",
+    expansionSection: "Celá sekce (Section)",
+    expansionSizeLabel: "Počet sousedních chunků (N)",
     addCategoryBtn: "➕ Přidat novou kategorii",
     saveConfigBtn: "Uložit konfiguraci a pravidla",
     savingConfig: "Ukládám...",
@@ -252,7 +293,7 @@ const TRANSLATIONS = {
     activeFilters: "Aktivní filtry",
     adjustFiltersBtn: "Nastavení hledání",
     all: "Vše",
-    searchStrategyLabel: "Metoda hledání",
+    searchMethodLabel: "Metoda hledání",
     freshnessFilterLabel: "Časová platnost",
     docLanguageFilterLabel: "Jazyk dokumentů",
     strategyHybrid: "Hybridní (RRF)",
@@ -321,10 +362,12 @@ const TRANSLATIONS = {
     reindexSuccessTitle: "Reindexace úspěšně dokončena",
     reindexFailedTitle: "Reindexace selhala",
     reindexProgressDesc: "Během reindexace dochází k pročištění databáze a novému spárování a ohodnocení všech dokumentů dle upravených pravidel.",
+    reindexProgressDescFast: "Chunky všech dokumentů jsou přerozdělovány a přeceňovány podle nových parametrů bez změny metadat.",
     reindexPhaseClearing: "Pročišťování starých záznamů...",
     reindexPhaseScanning: "Hledání souborů...",
     reindexPhaseAnalyzing: "Fáze 1/2: Analýza metadat (AI)...",
     reindexPhaseIngesting: "Fáze 2/2: Ingestování a tvorba embeddingů...",
+    reindexPhaseIngestingFast: "Přepočítávání chunků a embeddingů...",
     reindexPhaseWorking: "Pracuji...",
     reindexSuccessMsg: "Všechny dokumenty byly úspěšně reindexovány.",
     reindexErrorMsg: "Během zpracování nastala chyba.",
@@ -363,7 +406,9 @@ const TRANSLATIONS = {
     subtitle: "Intelligent search in Dolphin Consulting documents with citations",
     searchTab: "💬 Search",
     ingestTab: "📁 File Management",
-    configTab: "⚙️ Settings",
+    categoriesTab: "📂 Categories",
+    configTab: "⚙️ Search Settings",
+    chunkingTab: "🧩 Chunking",
     userLabel: "User:",
     apiOnline: "API ONLINE",
     apiOffline: "API OFFLINE",
@@ -425,6 +470,23 @@ const TRANSLATIONS = {
     saving: "Saving changes...",
     configurationTitle: "AI Search Settings",
     configurationSubtitle: "Manage categories and configuration rules for LLM metadata tagging",
+    searchConfigTitle: "Search & RAG Configuration",
+    searchConfigSubtitle: "Tune hybrid search strategies, weights, RRF constants, thresholds, and context expansions.",
+    searchStrategyLabel: "Default Search Strategy",
+    hybridStrategyLabel: "Hybrid Fusion Strategy",
+    vectorWeightLabel: "Semantic Search Weight (Vector)",
+    keywordWeightLabel: "Lexical Search Weight (FTS)",
+    vectorLimitLabel: "DB Candidate Limit (Vector)",
+    keywordLimitLabel: "DB Candidate Limit (FTS)",
+    finalLimitLabel: "Final Results to LLM",
+    thresholdLabel: "Score Threshold",
+    boostLabel: "Freshness Boost",
+    expansionLabel: "Context Expansion (Parent-Child)",
+    expansionNone: "None (Disabled)",
+    expansionSiblings: "Sibling Chunks",
+    expansionPage: "Entire Page",
+    expansionSection: "Entire Section",
+    expansionSizeLabel: "Sibling Window Size (N)",
     addCategoryBtn: "➕ Add Category",
     saveConfigBtn: "Save Configuration",
     savingConfig: "Saving...",
@@ -433,7 +495,7 @@ const TRANSLATIONS = {
     activeFilters: "Active Filters",
     adjustFiltersBtn: "Search Settings",
     all: "All",
-    searchStrategyLabel: "Search Method",
+    searchMethodLabel: "Search Method",
     freshnessFilterLabel: "Time Validity",
     docLanguageFilterLabel: "Doc Language",
     strategyHybrid: "Hybrid (RRF)",
@@ -502,10 +564,12 @@ const TRANSLATIONS = {
     reindexSuccessTitle: "Re-indexing Completed Successfully",
     reindexFailedTitle: "Re-indexing Failed",
     reindexProgressDesc: "During re-indexing, the database is cleared, and all documents are re-paired and scored according to the updated rules.",
+    reindexProgressDescFast: "All document chunks are being re-segmented and re-embedded according to new parameters without metadata changes.",
     reindexPhaseClearing: "Clearing old records...",
     reindexPhaseScanning: "Scanning files...",
     reindexPhaseAnalyzing: "Phase 1/2: Metadata analysis (AI)...",
     reindexPhaseIngesting: "Phase 2/2: Ingesting and embedding...",
+    reindexPhaseIngestingFast: "Re-chunking and generating embeddings...",
     reindexPhaseWorking: "Working...",
     reindexSuccessMsg: "All documents were successfully re-indexed.",
     reindexErrorMsg: "An error occurred during processing.",
@@ -539,22 +603,66 @@ const TRANSLATIONS = {
     clickToOpenPdfTitle: "Click to open PDF: {title}",
     multipleSections: "Multiple sections",
   }
-};;
+};
+
+// Helper to find the longest overlapping text suffix of the previous chunk matching the prefix of the current chunk
+const findOverlapText = (prevText: string, currentText: string, maxOverlap: number = 1000): string => {
+  if (!prevText || !currentText) return "";
+  const limit = Math.min(prevText.length, currentText.length, maxOverlap);
+  for (let len = limit; len > 0; len--) {
+    const suffix = prevText.slice(-len);
+    if (currentText.startsWith(suffix)) {
+      return suffix;
+    }
+  }
+  return "";
+};
 
 export default function Home() {
   // Application Navigation
-  const [activeTab, setActiveTab] = useState<"chat" | "ingest" | "config">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "ingest" | "categories" | "config" | "chunking">("chat");
 
   // Dynamic Categories and Config
   const [config, setConfig] = useState<Config | null>(null);
   const [editingConfig, setEditingConfig] = useState<Config | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
 
+  // Dynamic Search Configuration
+  const [searchConfig, setSearchConfig] = useState<SearchConfig | null>(null);
+  const [editingSearchConfig, setEditingSearchConfig] = useState<SearchConfig | null>(null);
+  const [savingSearchConfig, setSavingSearchConfig] = useState(false);
+
   // Category migrations state (keeps track of where to migrate documents of deleted categories)
   const [categoryMigrations, setCategoryMigrations] = useState<Record<string, string>>({});
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [deletingCatIndex, setDeletingCatIndex] = useState<number | null>(null);
   const [migrationTargetKey, setMigrationTargetKey] = useState<string>("");
+
+  // Document Chunks Preview Modal State
+  const [chunkPreviewDocTitle, setChunkPreviewDocTitle] = useState<string | null>(null);
+  const [chunkPreviewDocId, setChunkPreviewDocId] = useState<string | null>(null);
+  const [chunkPreviewList, setChunkPreviewList] = useState<any[] | null>(null);
+  const [loadingChunks, setLoadingChunks] = useState<boolean>(false);
+
+  const fetchAndShowChunks = async (docId: string, title: string) => {
+    setChunkPreviewDocTitle(title);
+    setChunkPreviewDocId(docId);
+    setLoadingChunks(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/${docId}/chunks`);
+      if (res.ok) {
+        const data = await res.json();
+        setChunkPreviewList(data);
+      } else {
+        alert(appLanguage === "cs" ? "Nepodařilo se načíst chunky dokumentu." : "Failed to load document chunks.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(appLanguage === "cs" ? "Chyba při komunikaci se serverem." : "Error communicating with server.");
+    } finally {
+      setLoadingChunks(false);
+    }
+  };
 
   // Application State
   const [query, setQuery] = useState("");
@@ -633,14 +741,76 @@ export default function Home() {
   // Backend API URL Base
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+  // Live Chunking Preview State
+  const [selectedPreviewDocId, setSelectedPreviewDocId] = useState<string>("");
+  const [previewChunks, setPreviewChunks] = useState<any[]>([]);
+  const [loadingPreviewChunks, setLoadingPreviewChunks] = useState<boolean>(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab === "chunking" && documents.length > 0 && !selectedPreviewDocId) {
+      setSelectedPreviewDocId(documents[0].document_id);
+    }
+  }, [activeTab, documents, selectedPreviewDocId]);
+
+  useEffect(() => {
+    if (!selectedPreviewDocId || !editingSearchConfig) {
+      setPreviewChunks([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setLoadingPreviewChunks(true);
+      setPreviewError(null);
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/documents/preview-chunks`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            document_id: selectedPreviewDocId,
+            chunk_size: editingSearchConfig.chunk_size,
+            chunk_overlap: editingSearchConfig.chunk_overlap,
+            chunk_cross_page: editingSearchConfig.chunk_cross_page,
+            chunk_splitter_type: editingSearchConfig.chunk_splitter_type,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setPreviewChunks(data);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setPreviewError(errData.detail || "Failed to load preview chunks.");
+        }
+      } catch (err) {
+        console.error(err);
+        setPreviewError("Network error loading preview chunks.");
+      } finally {
+        setLoadingPreviewChunks(false);
+      }
+    }, 450);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [
+    selectedPreviewDocId,
+    editingSearchConfig?.chunk_size,
+    editingSearchConfig?.chunk_overlap,
+    editingSearchConfig?.chunk_cross_page,
+    editingSearchConfig?.chunk_splitter_type,
+    activeTab
+  ]);
+
   // Re-indexing progress state
   const [showReindexModal, setShowReindexModal] = useState(false);
   const [reindexProgress, setReindexProgress] = useState<{
     status: "idle" | "running" | "completed" | "failed";
+    type?: "reindex_fast" | "reindex_full";
     total_files: number;
     processed_files: number;
     current_file: string | null;
-    phase: "clearing_db" | "scanning_files" | "analyzing" | "ingesting" | null;
+    phase: "clearing_db" | "scanning_files" | "scanning" | "analyzing" | "ingesting" | null;
     error: string | null;
   } | null>(null);
 
@@ -740,6 +910,129 @@ export default function Home() {
     }
   };
 
+  // Fetch dynamic search retrieval configuration
+  const fetchSearchConfig = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/chat/config`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchConfig(data);
+        setEditingSearchConfig(data);
+        if (data.search_strategy) {
+          setSearchStrategy(data.search_strategy);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch search config", err);
+    }
+  };
+
+  const saveSearchConfigToServer = async (updatedSearchConfig: SearchConfig) => {
+    setSavingSearchConfig(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/chat/config`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updatedSearchConfig),
+      });
+
+      if (res.ok) {
+        setSearchConfig(updatedSearchConfig);
+        setEditingSearchConfig(updatedSearchConfig);
+        if (updatedSearchConfig.search_strategy) {
+          setSearchStrategy(updatedSearchConfig.search_strategy);
+        }
+        alert(appLanguage === "cs" ? "Konfigurace vyhledávání byla úspěšně uložena." : "Search configuration saved successfully.");
+      } else {
+        alert(appLanguage === "cs" ? "Chyba při ukládání konfigurace vyhledávání." : "Failed to save search configuration.");
+      }
+    } catch (err) {
+      console.error("Error saving search config", err);
+      alert(appLanguage === "cs" ? "Chyba připojení k serveru." : "Error connecting to the server.");
+    } finally {
+      setSavingSearchConfig(false);
+    }
+  };
+
+  const startReindexing = async (
+    endpoint: "reindex-all" | "reindex-full",
+    initialPhase: "clearing_db" | "scanning_files" | "scanning" | "analyzing" | "ingesting" | null
+  ) => {
+    try {
+      setReindexProgress({
+        status: "running",
+        type: endpoint === "reindex-all" ? "reindex_fast" : "reindex_full",
+        total_files: 0,
+        processed_files: 0,
+        current_file: null,
+        phase: initialPhase,
+        error: null
+      });
+      setShowReindexModal(true);
+
+      const res = await fetch(`${BACKEND_URL}/api/documents/${endpoint}`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        startPollingProgress();
+      } else {
+        setReindexProgress({
+          status: "failed",
+          type: endpoint === "reindex-all" ? "reindex_fast" : "reindex_full",
+          total_files: 0,
+          processed_files: 0,
+          current_file: null,
+          phase: null,
+          error: TRANSLATIONS[appLanguage].errorReindexingTrigger
+        });
+      }
+    } catch (err) {
+      console.error(`Failed to trigger re-indexing on ${endpoint}`, err);
+      setReindexProgress({
+        status: "failed",
+        type: endpoint === "reindex-all" ? "reindex_fast" : "reindex_full",
+        total_files: 0,
+        processed_files: 0,
+        current_file: null,
+        phase: null,
+        error: TRANSLATIONS[appLanguage].errorReindexingComm.replace("{error}", String(err instanceof Error ? err.message : err))
+      });
+    }
+  };
+
+  const renderContentWithHighlights = (text?: string) => {
+    if (!text) return null;
+    if (!text.includes("\[\[MATCH_START\]\]")) {
+      return <span>{text}</span>;
+    }
+    const parts = text.split(/(\[\[MATCH_START\]\]|\[\[MATCH_END\]\])/g);
+    let isMatch = false;
+    return parts.map((part, i) => {
+      if (part === "[[MATCH_START]]") {
+        isMatch = true;
+        return null;
+      }
+      if (part === "[[MATCH_END]]") {
+        isMatch = false;
+        return null;
+      }
+      if (isMatch) {
+        return (
+          <span key={i} className="text-zinc-200 bg-indigo-500/10 border-l-2 border-indigo-500 pl-3.5 py-2 my-2.5 block rounded-r leading-relaxed font-mono font-bold">
+            {part}
+          </span>
+        );
+      }
+      return (
+        <span key={i} className="text-zinc-500 opacity-60 block leading-relaxed font-mono my-1 font-normal">
+          {part}
+        </span>
+      );
+    });
+  };
+
   // Map visual roles to dynamic Entra ID headers based on dynamic config
   const getHeaders = () => {
     const headers: Record<string, string> = {};
@@ -801,6 +1094,7 @@ export default function Home() {
 
     checkHealth();
     fetchConfig();
+    fetchSearchConfig();
     
     // Periodically check API health
     const interval = setInterval(checkHealth, 15000);
@@ -1215,43 +1509,7 @@ export default function Home() {
 
         const runReindex = confirm(promptMsg);
         if (runReindex) {
-          try {
-            setReindexProgress({
-              status: "running",
-              total_files: 0,
-              processed_files: 0,
-              current_file: null,
-              phase: "clearing_db",
-              error: null
-            });
-            setShowReindexModal(true);
-
-            const reindexRes = await fetch(`${BACKEND_URL}/api/documents/reindex-all`, {
-              method: "POST"
-            });
-            if (reindexRes.ok) {
-              startPollingProgress();
-            } else {
-              setReindexProgress({
-                status: "failed",
-                total_files: 0,
-                processed_files: 0,
-                current_file: null,
-                phase: null,
-                error: TRANSLATIONS[appLanguage].errorReindexingTrigger
-              });
-            }
-          } catch (err) {
-            console.error("Failed to trigger re-indexing", err);
-            setReindexProgress({
-              status: "failed",
-              total_files: 0,
-              processed_files: 0,
-              current_file: null,
-              phase: null,
-              error: TRANSLATIONS[appLanguage].errorReindexingComm.replace("{error}", String(err instanceof Error ? err.message : err))
-            });
-          }
+          startReindexing("reindex-full", "clearing_db");
         } else {
           alert(TRANSLATIONS[appLanguage].alertChangesSaved);
         }
@@ -1387,6 +1645,17 @@ export default function Home() {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("categories")}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              activeTab === "categories"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            {TRANSLATIONS[appLanguage].categoriesTab}
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("config")}
             className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
               activeTab === "config"
@@ -1395,6 +1664,17 @@ export default function Home() {
             }`}
           >
             {TRANSLATIONS[appLanguage].configTab}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("chunking")}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              activeTab === "chunking"
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            {TRANSLATIONS[appLanguage].chunkingTab}
           </button>
         </div>
 
@@ -1603,13 +1883,22 @@ export default function Home() {
                     </div>
 
                     {activeTab === "ingest" && (
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditDoc(doc)}
-                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 mt-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-1 rounded-md self-start transition-all cursor-pointer"
-                      >
-                        ✏️ {TRANSLATIONS[appLanguage].editMetadataBtn}
-                      </button>
+                      <div className="flex gap-2 mt-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditDoc(doc)}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-1 rounded-md transition-all cursor-pointer"
+                        >
+                          ✏️ {TRANSLATIONS[appLanguage].editMetadataBtn}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fetchAndShowChunks(doc.document_id, doc.title)}
+                          className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-1 rounded-md transition-all cursor-pointer"
+                        >
+                          🔍 {appLanguage === "cs" ? "Náhled chunků" : "Preview Chunks"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 ));
@@ -1664,42 +1953,26 @@ export default function Home() {
                 {searchSettingsOpen && (
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6 p-5 border-t border-white/[0.03] bg-black/30 backdrop-blur-md animate-fadeIn">
                     
-                    {/* Strategy Column */}
+                    {/* Strategy Column Info & Link */}
                     <div className="space-y-2">
-                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">{TRANSLATIONS[appLanguage].searchStrategyLabel}</label>
-                      <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                        {TRANSLATIONS[appLanguage].searchMethodLabel}
+                      </label>
+                      <div className="p-3 rounded-2xl bg-white/[0.01] border border-white/[0.04] space-y-2 flex flex-col justify-between min-h-[106px]">
+                        <div className="text-[11px] text-zinc-300 font-semibold flex items-start gap-1.5 leading-relaxed">
+                          <span className="text-sm">🧠</span>
+                          <span>
+                            {searchStrategy === "hybrid" && (searchConfig?.hybrid_strategy === "rrf" ? "Hybrid (RRF)" : searchConfig?.hybrid_strategy === "score_addition" ? "Hybrid (Score Addition)" : "Hybrid (Union)")}
+                            {searchStrategy === "vector" && "Semantic (Vector)"}
+                            {searchStrategy === "keyword" && "Lexical (FTS)"}
+                          </span>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setSearchStrategy("hybrid")}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
-                            searchStrategy === "hybrid"
-                              ? "bg-indigo-600/15 border-indigo-500/40 text-indigo-300"
-                              : "bg-black/30 border-white/[0.04] text-zinc-400 hover:bg-white/[0.01]"
-                          }`}
+                          onClick={() => setActiveTab("config")}
+                          className="w-full text-center py-2 px-3 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/20 text-[10px] text-indigo-300 font-bold transition-all cursor-pointer"
                         >
-                          🧠 {TRANSLATIONS[appLanguage].strategyHybrid}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSearchStrategy("vector")}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
-                            searchStrategy === "vector"
-                              ? "bg-indigo-600/15 border-indigo-500/40 text-indigo-300"
-                              : "bg-black/30 border-white/[0.04] text-zinc-400 hover:bg-white/[0.01]"
-                          }`}
-                        >
-                          👁️ {TRANSLATIONS[appLanguage].strategyVector}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSearchStrategy("keyword")}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
-                            searchStrategy === "keyword"
-                              ? "bg-indigo-600/15 border-indigo-500/40 text-indigo-300"
-                              : "bg-black/30 border-white/[0.04] text-zinc-400 hover:bg-white/[0.01]"
-                          }`}
-                        >
-                          📝 {TRANSLATIONS[appLanguage].strategyKeyword}
+                          ⚙️ {appLanguage === "cs" ? "Upravit v Nastavení" : "Configure in Settings"}
                         </button>
                       </div>
                     </div>
@@ -1962,9 +2235,9 @@ export default function Home() {
                         {TRANSLATIONS[appLanguage].citedPassageLabel}
                       </span>
                       <div className="highlight-chunk">
-                        <p className="text-xs text-zinc-300 leading-relaxed font-mono">
-                          {activeSource.content}
-                        </p>
+                        <div className="text-xs text-zinc-300 leading-relaxed font-mono">
+                          {renderContentWithHighlights(activeSource.content)}
+                        </div>
                       </div>
                     </div>
 
@@ -2292,123 +2565,804 @@ export default function Home() {
           </div>
         )}
 
+        {activeTab === "categories" && (
+          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
+            <div className="flex flex-col gap-6 w-full max-w-4xl items-start">
+              {/* Left Column: Dynamic categories configuration manager */}
+              <div className="glass-panel p-6 flex flex-col gap-6 w-full border-white/[0.04] self-start">
+                <div>
+                  <h2 className="text-md font-bold text-white flex items-center gap-2">
+                    <span>📁</span> {TRANSLATIONS[appLanguage].configurationTitle}
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {TRANSLATIONS[appLanguage].configurationSubtitle}
+                  </p>
+                </div>
+
+                {editingConfig ? (
+                  <div className="space-y-5">
+                    <div className="space-y-3">
+                      <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                        {TRANSLATIONS[appLanguage].categoriesListLabel}
+                      </span>
+
+                      {editingConfig.categories.map((cat, idx) => (
+                        <div 
+                          key={cat.key}
+                          className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.04] space-y-3 relative"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(idx)}
+                            className="absolute top-3 right-3 text-zinc-500 hover:text-red-400 text-[10px] font-bold transition-all p-1.5 px-2.5 rounded bg-red-500/0 hover:bg-red-500/10 border border-transparent hover:border-red-500/10 cursor-pointer flex items-center gap-1"
+                            title={appLanguage === "cs" ? "Odebrat kategorii" : "Remove category"}
+                          >
+                            🗑️ {TRANSLATIONS[appLanguage].deleteBtn}
+                          </button>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <span className="text-[10px] text-zinc-600 block">{TRANSLATIONS[appLanguage].keyLabel}</span>
+                              <span className="text-xs font-mono font-bold text-zinc-500 block truncate" title={cat.key}>{cat.key}</span>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].labelLabel}</label>
+                              <input
+                                type="text"
+                                value={cat.label}
+                                onChange={(e) => handleCategoryFieldChange(idx, "label", e.target.value)}
+                                className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].roleNameLabel}</label>
+                              <input
+                                type="text"
+                                value={cat.role_name || ""}
+                                onChange={(e) => handleCategoryFieldChange(idx, "role_name", e.target.value)}
+                                placeholder="e.g. HR"
+                                className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].categoryDescriptionLabel}</label>
+                            <textarea
+                              value={cat.description}
+                              onChange={(e) => handleCategoryFieldChange(idx, "description", e.target.value)}
+                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 h-14 resize-none focus:outline-none focus:border-indigo-500 leading-normal"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].securityGroupsLabel}</label>
+                            <CategoryTagInput
+                              allowedGroups={cat.allowed_groups}
+                              onChange={(groups) => handleAllowedGroupsChange(idx, groups)}
+                              suggestions={uniqueGroups}
+                              locale={appLanguage}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Add Category Button */}
+                    <div className="flex justify-start">
+                      <button
+                        type="button"
+                        onClick={handleAddCategory}
+                        className="px-4 py-2.5 rounded-xl border border-dashed border-zinc-800 hover:border-indigo-500 text-xs font-bold text-zinc-400 hover:text-indigo-400 bg-white/[0.01] hover:bg-indigo-500/5 transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {TRANSLATIONS[appLanguage].addCategoryBtn}
+                      </button>
+                    </div>
+
+                    {/* General LLM Analysis Rules */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
+                        {TRANSLATIONS[appLanguage].generalRulesLabel}
+                      </label>
+                      <textarea
+                        value={editingConfig.analysis_rules}
+                        onChange={(e) => handleRulesChange(e.target.value)}
+                        className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-300 rounded px-3 py-2.5 h-20 resize-none focus:outline-none focus:border-indigo-500 leading-normal"
+                      />
+                    </div>
+
+                    <button
+                      onClick={handleSaveConfig}
+                      disabled={savingConfig}
+                      className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all shadow-lg shadow-cyan-600/10 disabled:opacity-50 cursor-pointer"
+                    >
+                      {savingConfig ? TRANSLATIONS[appLanguage].savingConfigText : TRANSLATIONS[appLanguage].saveConfigBtn}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-xs text-zinc-500 text-center py-6">
+                    {TRANSLATIONS[appLanguage].loadingConfigText}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === "config" && (
           <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
-            {/* Right Box: Dynamic categories configuration manager */}
-            <div className="glass-panel p-6 flex flex-col gap-6 w-full max-w-3xl self-start border-white/[0.04]">
-              <div>
-                <h2 className="text-md font-bold text-white flex items-center gap-2">
-                  <span>⚙️</span> {TRANSLATIONS[appLanguage].configurationTitle}
-                </h2>
-                <p className="text-xs text-zinc-500 mt-1">
-                  {TRANSLATIONS[appLanguage].configurationSubtitle}
-                </p>
-              </div>
+            <div className="flex flex-col gap-6 w-full max-w-4xl items-start">
+              {/* Right Column: Search & Retrieval Config */}
+              <div className="glass-panel p-6 flex flex-col gap-6 w-full border-white/[0.04] bg-[#0c1222] self-start">
+                <div>
+                  <h2 className="text-md font-bold text-white flex items-center gap-2">
+                    <span>⚙️</span> {TRANSLATIONS[appLanguage].searchConfigTitle}
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {TRANSLATIONS[appLanguage].searchConfigSubtitle}
+                  </p>
+                </div>
 
-              {editingConfig ? (
-                <div className="space-y-5">
-                  <div className="space-y-3">
-                    <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                      {TRANSLATIONS[appLanguage].categoriesListLabel}
-                    </span>
+                {editingSearchConfig ? (
+                  <div className="space-y-6">
+                    
+                    {/* Section 1: Search Strategy */}
+                    <div className="space-y-4 border-b border-white/5 pb-4">
+                      <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wide">
+                        {appLanguage === "cs" ? "1. Strategie vyhledávání" : "1. Search Strategy"}
+                      </h3>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                            {TRANSLATIONS[appLanguage].searchStrategyLabel}
+                          </label>
+                          <select
+                            value={editingSearchConfig.search_strategy}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, search_strategy: e.target.value as any })}
+                            className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer font-semibold"
+                          >
+                            <option value="hybrid">{TRANSLATIONS[appLanguage].strategyHybrid}</option>
+                            <option value="vector">{TRANSLATIONS[appLanguage].strategyVector}</option>
+                            <option value="keyword">{TRANSLATIONS[appLanguage].strategyKeyword}</option>
+                          </select>
+                        </div>
 
-                    {editingConfig.categories.map((cat, idx) => (
-                      <div 
-                        key={cat.key}
-                        className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.04] space-y-3 relative"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCategory(idx)}
-                          className="absolute top-3 right-3 text-zinc-500 hover:text-red-400 text-[10px] font-bold transition-all p-1.5 px-2.5 rounded bg-red-500/0 hover:bg-red-500/10 border border-transparent hover:border-red-500/10 cursor-pointer flex items-center gap-1"
-                          title={appLanguage === "cs" ? "Odebrat kategorii" : "Remove category"}
-                        >
-                          🗑️ {TRANSLATIONS[appLanguage].deleteBtn}
-                        </button>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <span className="text-[10px] text-zinc-600 block">{TRANSLATIONS[appLanguage].keyLabel}</span>
-                            <span className="text-xs font-mono font-bold text-zinc-500 block truncate" title={cat.key}>{cat.key}</span>
+                        {editingSearchConfig.search_strategy === "hybrid" && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {TRANSLATIONS[appLanguage].hybridStrategyLabel}
+                            </label>
+                            <select
+                              value={editingSearchConfig.hybrid_strategy}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, hybrid_strategy: e.target.value as any })}
+                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer font-semibold"
+                            >
+                              <option value="rrf">Weighted RRF (Reciprocal Rank Fusion)</option>
+                              <option value="score_addition">Weighted Score Addition (Vážený součet skóre)</option>
+                              <option value="union">Union (Sjednocení TOP výsledků)</option>
+                            </select>
                           </div>
-                          <div>
-                            <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].labelLabel}</label>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Section 2: Fusion Settings (Dual Controls) */}
+                    {editingSearchConfig.search_strategy === "hybrid" && editingSearchConfig.hybrid_strategy !== "union" && (
+                      <div className="space-y-4 border-b border-white/5 pb-4">
+                        <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wide">
+                          {appLanguage === "cs" ? "2. Váhy a parametry hybridního sloučení" : "2. Hybrid Fusion Parameters"}
+                        </h3>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Vector Weight */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {TRANSLATIONS[appLanguage].vectorWeightLabel}
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={editingSearchConfig.vector_weight}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, vector_weight: parseFloat(e.target.value) })}
+                                className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={editingSearchConfig.vector_weight}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, vector_weight: parseFloat(e.target.value) || 0.0 })}
+                                className="w-16 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Keyword Weight */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {TRANSLATIONS[appLanguage].keywordWeightLabel}
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={editingSearchConfig.keyword_weight}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, keyword_weight: parseFloat(e.target.value) })}
+                                className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={editingSearchConfig.keyword_weight}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, keyword_weight: parseFloat(e.target.value) || 0.0 })}
+                                className="w-16 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* RRF smoothing k */}
+                        {editingSearchConfig.hybrid_strategy === "rrf" && (
+                          <div className="space-y-1.5 max-w-xs">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              RRF Konstanta (k)
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min="10"
+                                max="100"
+                                step="1"
+                                value={editingSearchConfig.rrf_k}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, rrf_k: parseInt(e.target.value) })}
+                                className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                              <input
+                                type="number"
+                                min="10"
+                                max="100"
+                                step="1"
+                                value={editingSearchConfig.rrf_k}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, rrf_k: parseInt(e.target.value) || 60 })}
+                                className="w-16 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Section 3: Limits & Thresholds */}
+                    <div className="space-y-4 border-b border-white/5 pb-4">
+                      <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wide">
+                        {appLanguage === "cs" ? "3. Limity a prahy relevance" : "3. Limits & Relevance Thresholds"}
+                      </h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                            {TRANSLATIONS[appLanguage].thresholdLabel}
+                          </label>
+                          <div className="flex items-center gap-3">
                             <input
-                              type="text"
-                              value={cat.label}
-                              onChange={(e) => handleCategoryFieldChange(idx, "label", e.target.value)}
-                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                              type="range"
+                              min="0"
+                              max="0.95"
+                              step="0.05"
+                              value={editingSearchConfig.score_threshold}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, score_threshold: parseFloat(e.target.value) })}
+                              className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                             />
-                          </div>
-                          <div>
-                            <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].roleNameLabel}</label>
                             <input
-                              type="text"
-                              value={cat.role_name || ""}
-                              onChange={(e) => handleCategoryFieldChange(idx, "role_name", e.target.value)}
-                              placeholder="e.g. HR"
-                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                              type="number"
+                              min="0"
+                              max="0.95"
+                              step="0.05"
+                              value={editingSearchConfig.score_threshold}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, score_threshold: parseFloat(e.target.value) || 0.0 })}
+                              className="w-16 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
                             />
                           </div>
                         </div>
 
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                            {TRANSLATIONS[appLanguage].boostLabel}
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="0"
+                              max="0.5"
+                              step="0.05"
+                              value={editingSearchConfig.freshness_boost}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, freshness_boost: parseFloat(e.target.value) })}
+                              className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="0.5"
+                              step="0.05"
+                              value={editingSearchConfig.freshness_boost}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, freshness_boost: parseFloat(e.target.value) || 0.0 })}
+                              className="w-16 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Candidate Pool Limits */}
+                      <div className="grid grid-cols-2 gap-3 max-w-md">
                         <div className="space-y-1">
-                          <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].categoryDescriptionLabel}</label>
-                          <textarea
-                            value={cat.description}
-                            onChange={(e) => handleCategoryFieldChange(idx, "description", e.target.value)}
-                            className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-300 rounded px-2.5 py-1.5 h-14 resize-none focus:outline-none focus:border-indigo-500 leading-normal"
+                          <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                            {TRANSLATIONS[appLanguage].vectorLimitLabel}
+                          </label>
+                          <input
+                            type="number"
+                            min="5"
+                            max="200"
+                            value={editingSearchConfig.vector_limit}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, vector_limit: parseInt(e.target.value) || 50 })}
+                            className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500"
                           />
                         </div>
-
                         <div className="space-y-1">
-                          <label className="text-[10px] text-zinc-500 block">{TRANSLATIONS[appLanguage].securityGroupsLabel}</label>
-                          <CategoryTagInput
-                            allowedGroups={cat.allowed_groups}
-                            onChange={(groups) => handleAllowedGroupsChange(idx, groups)}
-                            suggestions={uniqueGroups}
-                            locale={appLanguage}
+                          <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                            {TRANSLATIONS[appLanguage].keywordLimitLabel}
+                          </label>
+                          <input
+                            type="number"
+                            min="5"
+                            max="200"
+                            value={editingSearchConfig.keyword_limit}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, keyword_limit: parseInt(e.target.value) || 50 })}
+                            className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500"
                           />
                         </div>
                       </div>
-                    ))}
-                  </div>
 
-                  {/* Add Category Button */}
-                  <div className="flex justify-start">
+                      {/* Final limitations */}
+                      {editingSearchConfig.search_strategy === "hybrid" && editingSearchConfig.hybrid_strategy === "union" ? (
+                        <div className="grid grid-cols-2 gap-3 max-w-md">
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              Union Vector Limit
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="20"
+                              value={editingSearchConfig.vector_final_limit}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, vector_final_limit: parseInt(e.target.value) || 5 })}
+                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              Union Keyword Limit
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="20"
+                              value={editingSearchConfig.keyword_final_limit}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, keyword_final_limit: parseInt(e.target.value) || 5 })}
+                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1 max-w-[216px]">
+                          <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                            {TRANSLATIONS[appLanguage].finalLimitLabel}
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={editingSearchConfig.final_limit}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, final_limit: parseInt(e.target.value) || 5 })}
+                            className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section 4: Context Expansion & Tokens */}
+                    <div className="space-y-4 border-b border-white/5 pb-4">
+                      <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wide">
+                        {appLanguage === "cs" ? "4. Rozšiřování kontextu a tokenové limity" : "4. Context Expansion & Token Limits"}
+                      </h3>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                            {TRANSLATIONS[appLanguage].expansionLabel}
+                          </label>
+                          <select
+                            value={editingSearchConfig.context_expansion}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, context_expansion: e.target.value as any })}
+                            className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer font-semibold"
+                          >
+                            <option value="none">{TRANSLATIONS[appLanguage].expansionNone}</option>
+                            <option value="siblings">{TRANSLATIONS[appLanguage].expansionSiblings}</option>
+                            <option value="page">{TRANSLATIONS[appLanguage].expansionPage}</option>
+                            <option value="section">{TRANSLATIONS[appLanguage].expansionSection}</option>
+                          </select>
+                        </div>
+                        {editingSearchConfig.context_expansion === "siblings" && (
+                          <div className="space-y-1 max-w-xs">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {TRANSLATIONS[appLanguage].expansionSizeLabel}
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="3"
+                              value={editingSearchConfig.context_expansion_size}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, context_expansion_size: parseInt(e.target.value) || 1 })}
+                              className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Token limit budget */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                          {appLanguage === "cs" ? "Max. celková délka LLM kontextu (tokens)" : "Max. Total LLM Context Size (tokens)"}
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="1000"
+                            max="30000"
+                            step="500"
+                            value={editingSearchConfig.context_max_tokens}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, context_max_tokens: parseInt(e.target.value) })}
+                            className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                          />
+                          <input
+                            type="number"
+                            min="1000"
+                            max="30000"
+                            step="500"
+                            value={editingSearchConfig.context_max_tokens}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, context_max_tokens: parseInt(e.target.value) || 4000 })}
+                            className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                          />
+                        </div>
+                      </div>
+                    </div>
                     <button
-                      type="button"
-                      onClick={handleAddCategory}
-                      className="px-4 py-2.5 rounded-xl border border-dashed border-zinc-800 hover:border-indigo-500 text-xs font-bold text-zinc-400 hover:text-indigo-400 bg-white/[0.01] hover:bg-indigo-500/5 transition-all flex items-center gap-1.5 cursor-pointer"
+                      onClick={() => saveSearchConfigToServer(editingSearchConfig)}
+                      disabled={savingSearchConfig}
+                      className="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-lg shadow-indigo-600/10 disabled:opacity-50 cursor-pointer"
                     >
-                      {TRANSLATIONS[appLanguage].addCategoryBtn}
+                      {savingSearchConfig ? TRANSLATIONS[appLanguage].savingConfigText : TRANSLATIONS[appLanguage].saveConfigBtn}
                     </button>
                   </div>
+                ) : (
+                  <div className="text-xs text-zinc-500 text-center py-6">
+                    {TRANSLATIONS[appLanguage].loadingConfigText}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
-                  {/* General LLM Analysis Rules */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                      {TRANSLATIONS[appLanguage].generalRulesLabel}
-                    </label>
-                    <textarea
-                      value={editingConfig.analysis_rules}
-                      onChange={(e) => handleRulesChange(e.target.value)}
-                      className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-300 rounded px-3 py-2.5 h-20 resize-none focus:outline-none focus:border-indigo-500 leading-normal"
-                    />
+        {activeTab === "chunking" && (
+          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
+            <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl items-start">
+              
+              {/* Left Column: Settings & Triggers */}
+              <div className="glass-panel p-6 flex flex-col gap-6 w-full lg:w-[380px] border-white/[0.04] bg-[#0c1222] self-start">
+                <div>
+                  <h2 className="text-md font-bold text-white flex items-center gap-2">
+                    <span>🧩</span> {TRANSLATIONS[appLanguage].chunkingTab}
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {appLanguage === "cs" 
+                      ? "Nastavte parametry segmentace a rozdělování textu dokumentů." 
+                      : "Configure document text segmentation and chunking parameters."}
+                  </p>
+                </div>
+
+                {editingSearchConfig ? (
+                  <div className="space-y-6">
+                    {/* Chunking Settings */}
+                    <div className="space-y-4 pb-2">
+                      {/* Chunk Size */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                          {appLanguage === "cs" ? "Velikost chunku (znaky)" : "Chunk Size (characters)"}
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="200"
+                            max="5000"
+                            step="100"
+                            value={editingSearchConfig.chunk_size}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) })}
+                            className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                          />
+                          <input
+                            type="number"
+                            min="200"
+                            max="5000"
+                            step="100"
+                            value={editingSearchConfig.chunk_size}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) || 1500 })}
+                            className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Chunk Overlap */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                          {appLanguage === "cs" ? "Překryv chunku (znaky)" : "Chunk Overlap (characters)"}
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="0"
+                            max="1000"
+                            step="50"
+                            value={editingSearchConfig.chunk_overlap}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) })}
+                            className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000"
+                            step="50"
+                            value={editingSearchConfig.chunk_overlap}
+                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) || 250 })}
+                            className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Splitter Type */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                          {appLanguage === "cs" ? "Typ splitteru" : "Splitter Type"}
+                        </label>
+                        <select
+                          value={editingSearchConfig.chunk_splitter_type || "recursive"}
+                          onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_splitter_type: e.target.value as any })}
+                          className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                        >
+                          <option value="recursive">
+                            {appLanguage === "cs" ? "Rekurzivní podle oddělovačů (Recursive)" : "Recursive character splitter"}
+                          </option>
+                          <option value="character">
+                            {appLanguage === "cs" ? "Pevná velikost znaků (Character)" : "Fixed character splitter"}
+                          </option>
+                        </select>
+                      </div>
+
+                      {/* Allow page crossing */}
+                      <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-xl border border-white/[0.04]">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[11px] text-zinc-200 font-semibold">
+                            {appLanguage === "cs" ? "Povolit překryv stránek" : "Allow page boundaries crossing"}
+                          </span>
+                          <span className="text-[9px] text-zinc-500 max-w-[200px] leading-tight">
+                            {appLanguage === "cs"
+                              ? "Spojí stránky a vytvoří souvislé chunky i přes konec strany."
+                              : "Merges page texts to split continuously without page limits."}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={editingSearchConfig.chunk_cross_page || false}
+                          onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_cross_page: e.target.checked })}
+                          className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
+                        />
+                      </div>
+
+                      <p className="text-[10px] text-zinc-500 leading-normal italic mt-1 bg-white/[0.01] p-3 rounded-xl border border-white/[0.03]">
+                        {appLanguage === "cs"
+                          ? "💡 Poznámka: Změna se projeví na reálném vyhledávání až po spuštění reindexace."
+                          : "💡 Note: Changing settings will only apply to active search index after running re-indexing."}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => saveSearchConfigToServer(editingSearchConfig)}
+                      disabled={savingSearchConfig}
+                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-lg shadow-indigo-600/10 disabled:opacity-50 cursor-pointer"
+                    >
+                      {savingSearchConfig ? TRANSLATIONS[appLanguage].savingConfigText : TRANSLATIONS[appLanguage].saveConfigBtn}
+                    </button>
+
+                    <div className="border-t border-white/5 pt-6 space-y-4">
+                      <div>
+                        <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wide">
+                          {TRANSLATIONS[appLanguage].reindexBtn}
+                        </h3>
+                        <p className="text-[11px] text-zinc-500 mt-1 leading-normal">
+                          {appLanguage === "cs"
+                            ? "Spustí proces na pozadí, který přegeneruje chunky pro všechny nahrané dokumenty podle aktuálních parametrů."
+                            : "Triggers a background process that re-splits and re-embeds all uploaded documents based on active settings."}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          const conf = confirm(
+                            appLanguage === "cs"
+                              ? "Opravdu chcete spustit celkovou reindexaci (přerozdělení chunků) všech dokumentů na pozadí?\n\nTato operace může trvat několik minut."
+                              : "Do you really want to trigger a background re-indexing of all documents?\n\nThis operation may take several minutes."
+                          );
+                          if (conf) {
+                            // Automatically save first to ensure background task gets current sliders configuration
+                            await saveSearchConfigToServer(editingSearchConfig);
+                            startReindexing("reindex-all", "scanning");
+                          }
+                        }}
+                        className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-all shadow-lg shadow-amber-600/10 cursor-pointer"
+                      >
+                        {TRANSLATIONS[appLanguage].reindexBtn}
+                      </button>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="text-xs text-zinc-500 text-center py-6">
+                    {TRANSLATIONS[appLanguage].loadingConfigText}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Live Chunking Preview */}
+              <div className="glass-panel p-6 flex flex-col gap-6 flex-1 w-full border-white/[0.04] bg-[#0c1222] self-stretch min-h-[500px]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-4">
+                  <div>
+                    <h2 className="text-md font-bold text-white flex items-center gap-2">
+                      <span>👁️</span> {appLanguage === "cs" ? "Interaktivní náhled chunkování" : "Interactive Chunking Preview"}
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {appLanguage === "cs"
+                        ? "Změna sliderů vlevo okamžitě simuluje rozdělení vybraného dokumentu v paměti backendu."
+                        : "Adjusting sliders on the left immediately simulates text splitting in backend memory."}
+                    </p>
                   </div>
 
-                  <button
-                    onClick={handleSaveConfig}
-                    disabled={savingConfig}
-                    className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all shadow-lg shadow-cyan-600/10 disabled:opacity-50"
-                  >
-                    {savingConfig ? TRANSLATIONS[appLanguage].savingConfigText : TRANSLATIONS[appLanguage].saveConfigBtn}
-                  </button>
+                  <div className="w-full sm:w-[250px]">
+                    <select
+                      value={selectedPreviewDocId}
+                      onChange={(e) => setSelectedPreviewDocId(e.target.value)}
+                      className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                    >
+                      <option value="" disabled>
+                        {appLanguage === "cs" ? "-- Vyberte dokument --" : "-- Select a document --"}
+                      </option>
+                      {documents.map((doc) => (
+                        <option key={doc.document_id} value={doc.document_id}>
+                          {doc.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              ) : (
-                <div className="text-xs text-zinc-500 text-center py-6">
-                  {TRANSLATIONS[appLanguage].loadingConfigText}
-                </div>
-              )}
+
+                {loadingPreviewChunks ? (
+                  <div className="flex-1 flex flex-col items-center justify-center py-12 text-zinc-500 gap-3">
+                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-xs">{appLanguage === "cs" ? "Simuluji rozdělení a načítám chunky..." : "Simulating segmentation and loading chunks..."}</p>
+                  </div>
+                ) : previewError ? (
+                  <div className="flex-1 flex items-center justify-center p-6 bg-red-950/20 border border-red-500/20 rounded-2xl text-xs text-red-400">
+                    ⚠️ {previewError}
+                  </div>
+                ) : previewChunks.length > 0 ? (
+                  <div className="flex-1 flex flex-col gap-4">
+                    <div className="flex justify-between items-center text-xs bg-indigo-500/5 border border-indigo-500/10 rounded-xl px-4 py-2.5 text-zinc-300 font-medium">
+                      <span>
+                        {appLanguage === "cs" ? "Celkem vygenerováno chunků:" : "Total chunks generated:"}
+                        <strong className="text-indigo-400 ml-1.5 text-sm">{previewChunks.length}</strong>
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        {appLanguage === "cs" ? "Zobrazeno v pořadí indexu" : "Shown in index order"}
+                      </span>
+                    </div>
+
+                    {/* PDF Formatting Explanation Banner */}
+                    <div className="text-[10px] text-zinc-400 bg-white/[0.02] p-3.5 rounded-xl border border-white/[0.04] leading-normal flex gap-2">
+                      <span className="text-sm">💡</span>
+                      <span>
+                        {appLanguage === "cs"
+                          ? "Poznámka k formátování: Extrakce textu z PDF odstraňuje vizuální styly (písma, tabulky, sloupce, zarovnání). Zde vidíte surový text (raw text), který se indexuje pro AI model. Dotted amber zvýraznění indikuje textový překryv (overlap) s předchozím chunkem."
+                          : "Formatting note: Text extraction from PDF strips visual styles (fonts, grids, tables, alignment). Here you inspect the raw plain text indexable by the search models. Dotted amber highlights show the character overlap with the preceding chunk."}
+                      </span>
+                    </div>
+
+                    <div className="max-h-[500px] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                      {previewChunks.map((chunk, i) => {
+                        // Alternate background and border colors for distinct segments
+                        const bgColors = [
+                          "bg-indigo-500/[0.03] border-indigo-500/10 hover:bg-indigo-500/[0.06] hover:border-indigo-500/20",
+                          "bg-purple-500/[0.03] border-purple-500/10 hover:bg-purple-500/[0.06] hover:border-purple-500/20",
+                          "bg-pink-500/[0.03] border-pink-500/10 hover:bg-pink-500/[0.06] hover:border-pink-500/20",
+                          "bg-teal-500/[0.03] border-teal-500/10 hover:bg-teal-500/[0.06] hover:border-teal-500/20"
+                        ];
+                        const textColors = ["text-indigo-400", "text-purple-400", "text-pink-400", "text-teal-400"];
+                        const colorIdx = i % bgColors.length;
+
+                        // Compute overlap highlight with the previous chunk
+                        const prevChunk = i > 0 ? previewChunks[i - 1] : null;
+                        const overlapText = prevChunk ? findOverlapText(prevChunk.content, chunk.content, editingSearchConfig?.chunk_overlap || 1000) : "";
+                        const remainingText = overlapText ? chunk.content.slice(overlapText.length) : chunk.content;
+
+                        return (
+                          <div
+                            key={chunk.chunk_index}
+                            className={`p-4 rounded-xl border transition-all ${bgColors[colorIdx]}`}
+                          >
+                            <div className="flex justify-between items-center mb-2 text-[10px] font-bold tracking-wide uppercase">
+                              <span className={textColors[colorIdx]}>
+                                Chunk #{chunk.chunk_index + 1}
+                              </span>
+                              <div className="flex gap-2 items-center">
+                                {chunk.section_title && (
+                                  <span className="bg-white/5 px-2 py-0.5 rounded text-zinc-400 max-w-[150px] truncate" title={chunk.section_title}>
+                                    📂 {chunk.section_title}
+                                  </span>
+                                )}
+                                <a
+                                  href={`${BACKEND_URL}/api/documents/view/${selectedPreviewDocId}#page=${chunk.page_number}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 px-2 py-0.5 rounded text-indigo-300 transition-all font-semibold flex items-center gap-1 cursor-pointer normal-case text-[9px]"
+                                  title={appLanguage === "cs" ? "Otevřít tuto stránku v originálním dokumentu" : "Open this page in the original document"}
+                                >
+                                  📄 {appLanguage === "cs" ? `Otevřít stranu ${chunk.page_number}` : `Open page ${chunk.page_number}`}
+                                </a>
+                              </div>
+                            </div>
+                            <p className="text-xs text-zinc-300 leading-relaxed font-mono whitespace-pre-wrap select-all">
+                              {overlapText && (
+                                <span
+                                  className="border-b border-dashed border-amber-500/50 bg-amber-500/10 text-amber-300 font-semibold px-0.5 rounded cursor-help"
+                                  title={appLanguage === "cs" ? "Překryv z předchozího chunku (overlap)" : "Overlap from previous chunk"}
+                                >
+                                  {overlapText}
+                                </span>
+                              )}
+                              {remainingText}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center py-12 text-zinc-500 border-2 border-dashed border-white/5 rounded-2xl">
+                    <span className="text-2xl mb-2">👁️</span>
+                    <p className="text-xs">
+                      {appLanguage === "cs"
+                        ? "Vyberte dokument z dropdownu pro zobrazení simulace rozdělení."
+                        : "Select a document from the dropdown to see the splitting simulation."}
+                    </p>
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         )}
@@ -2501,7 +3455,9 @@ export default function Home() {
                 {reindexProgress?.status === "failed" && TRANSLATIONS[appLanguage].reindexFailedTitle}
               </h3>
               <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                {TRANSLATIONS[appLanguage].reindexProgressDesc}
+                {reindexProgress?.type === "reindex_fast"
+                  ? TRANSLATIONS[appLanguage].reindexProgressDescFast
+                  : TRANSLATIONS[appLanguage].reindexProgressDesc}
               </p>
             </div>
 
@@ -2511,9 +3467,11 @@ export default function Home() {
                 <span className="text-indigo-400">
                   {reindexProgress?.status === "running" && (
                     reindexProgress.phase === "clearing_db" ? TRANSLATIONS[appLanguage].reindexPhaseClearing :
-                    reindexProgress.phase === "scanning_files" ? TRANSLATIONS[appLanguage].reindexPhaseScanning :
+                    reindexProgress.phase === "scanning_files" || reindexProgress.phase === "scanning" ? TRANSLATIONS[appLanguage].reindexPhaseScanning :
                     reindexProgress.phase === "analyzing" ? TRANSLATIONS[appLanguage].reindexPhaseAnalyzing :
-                    reindexProgress.phase === "ingesting" ? TRANSLATIONS[appLanguage].reindexPhaseIngesting :
+                    reindexProgress.phase === "ingesting" ? (
+                      reindexProgress.type === "reindex_fast" ? TRANSLATIONS[appLanguage].reindexPhaseIngestingFast : TRANSLATIONS[appLanguage].reindexPhaseIngesting
+                    ) :
                     TRANSLATIONS[appLanguage].reindexPhaseWorking
                   )}
                   {reindexProgress?.status === "completed" && TRANSLATIONS[appLanguage].reindexSuccessMsg}
@@ -2539,7 +3497,11 @@ export default function Home() {
               {reindexProgress?.status === "running" && reindexProgress.total_files > 0 && (
                 <div className="rounded-xl bg-black/40 border border-white/[0.05] p-3 text-[11px] font-semibold text-zinc-300 space-y-1 mt-2">
                   <div className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider">
-                    {reindexProgress.phase === "analyzing" ? TRANSLATIONS[appLanguage].reindexSubphaseAnalyzing : TRANSLATIONS[appLanguage].reindexSubphaseIngesting}
+                    {reindexProgress.phase === "analyzing"
+                      ? TRANSLATIONS[appLanguage].reindexSubphaseAnalyzing
+                      : (reindexProgress.type === "reindex_fast"
+                         ? (appLanguage === "cs" ? "Rozdělování & přeceňování chunků" : "Re-chunking & re-embedding content")
+                         : TRANSLATIONS[appLanguage].reindexSubphaseIngesting)}
                   </div>
                   {reindexProgress.current_file && (
                     <div className="truncate text-white text-[11px]">
@@ -2583,6 +3545,103 @@ export default function Home() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Chunking Preview Modal */}
+      {chunkPreviewDocTitle && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="glass-panel max-w-4xl w-full p-6 space-y-4 border-white/[0.08] shadow-2xl bg-[#0c1222] max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <div>
+                <h3 className="text-md font-bold text-white flex items-center gap-2">
+                  <span>📄</span> {appLanguage === "cs" ? "Náhled chunkování dokumentu" : "Document Chunking Preview"}
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-2xl" title={chunkPreviewDocTitle}>
+                  {chunkPreviewDocTitle}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setChunkPreviewDocTitle(null);
+                  setChunkPreviewDocId(null);
+                  setChunkPreviewList(null);
+                }}
+                className="text-zinc-500 hover:text-zinc-300 text-sm cursor-pointer p-1"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-4 py-2">
+              {loadingChunks ? (
+                <div className="text-center py-12 text-zinc-500 text-xs animate-pulse">
+                  {appLanguage === "cs" ? "Načítám chunky z databáze..." : "Loading chunks from database..."}
+                </div>
+              ) : chunkPreviewList && chunkPreviewList.length === 0 ? (
+                <div className="text-center py-12 text-zinc-500 text-xs">
+                  {appLanguage === "cs" ? "Dokument nemá žádné chunky." : "This document has no chunks."}
+                </div>
+              ) : chunkPreviewList ? (
+                <div className="space-y-4">
+                  {chunkPreviewList.map((chunk, index) => {
+                    // Soft pastel color styles
+                    const colorStyles = [
+                      "bg-emerald-500/10 text-emerald-200 border-emerald-500/25",
+                      "bg-sky-500/10 text-sky-200 border-sky-500/25",
+                      "bg-purple-500/10 text-purple-200 border-purple-500/25",
+                      "bg-amber-500/10 text-amber-200 border-amber-500/25",
+                      "bg-rose-500/10 text-rose-200 border-rose-500/25",
+                      "bg-indigo-500/10 text-indigo-200 border-indigo-500/25",
+                    ];
+                    const style = colorStyles[index % colorStyles.length];
+                    
+                    return (
+                      <div key={chunk.chunk_id} className={`p-4 rounded-xl border ${style} space-y-2`}>
+                        <div className="flex items-center justify-between text-[10px] font-bold tracking-wide uppercase opacity-75">
+                          <span>Chunk #{chunk.chunk_index}</span>
+                          <div className="flex items-center gap-2">
+                            {chunk.page_number && (
+                              <a
+                                href={`${BACKEND_URL}/api/documents/view/${chunkPreviewDocId}?highlight_chunk_id=${chunk.chunk_id}#page=${chunk.page_number}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 px-2 py-0.5 rounded text-indigo-300 transition-all font-semibold flex items-center gap-1 cursor-pointer normal-case text-[9px]"
+                                title={appLanguage === "cs" ? "Otevřít tuto stránku v originálním dokumentu" : "Open this page in the original document"}
+                              >
+                                📄 {appLanguage === "cs" ? `Otevřít stranu ${chunk.page_number}` : `Open page ${chunk.page_number}`}
+                              </a>
+                            )}
+                            {chunk.section_title && (
+                              <span className="truncate max-w-[200px]" title={chunk.section_title}>
+                                Section: {chunk.section_title}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs leading-relaxed font-mono font-medium whitespace-pre-wrap">
+                          {chunk.content}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex justify-end border-t border-white/5 pt-3">
+              <button
+                onClick={() => {
+                  setChunkPreviewDocTitle(null);
+                  setChunkPreviewDocId(null);
+                  setChunkPreviewList(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 font-bold transition-all cursor-pointer"
+              >
+                {appLanguage === "cs" ? "Zavřít" : "Close"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -34,6 +34,11 @@ Phase 2/3 Dynamic category tag suggestions, automatic deletion save and list ref
 Phase 2/3 Real-time re-indexing progress bar (backend global state tracking, progress polling endpoint, frontend glassmorphic progress modal with per-file updates) - [x] Completed.
 Phase 2/3 Multi-lingual Frontend & Document Language Filtering (automatic language detection in tagger, localized RAG prompts, CZ/EN toggle switcher, collapsible filter settings panel, visual badges) - [x] Completed.
 Phase 2/3 Subfolder Ingestion & Data Source UI Filtering ("Zdroj dat" metadata tagging, relative source_uri computation to prevent file conflicts, dynamic folder selector dropdown, local sidebar filtering) - [x] Completed.
+Phase 2/3 Customizable Search Settings & Context Expansion (RRF/Score Addition/Union strategies, Azure Blob replicated JSON config, siblings/page/section context window expansion, admin UI settings manager, test suite) - [x] Completed.
+Phase 2/3 SQL Pre-filtering, Token-budget Expansion & Visual Chunking Preview (PostgreSQL JSONB operators, outward token-budget sibling expansion, epsilon divisor calibration, dual settings sliders/inputs, Next.js chunk preview modal, test suite) - [x] Completed.
+Phase 2/3 Separation of Ingestion Chunking Settings Page & Fast database re-indexing task (Dedicated Chunking tab, fast background re-chunking/re-embedding without LLM tagging, full metadata-analysis reindexing fallback, custom progress modal styling, pytest test coverage) - [x] Completed.
+Phase 2/3 Interactive Live Chunking Preview (POST /preview-chunks simulator, dropdown document selector, debounced UI, color-coded segment indicators, and TestClient API test cases) - [x] Completed.
+Phase 2/3 Dynamic Chunking strategies, Overlap Visualizations, and PDF page viewer links (Recursive vs Character splitter settings, chunk_cross_page continuous boundary combination with offset-based page mapping, visual overlap dotted highlighter, raw PDF format description card, and original streamed PDF anchor links) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 
