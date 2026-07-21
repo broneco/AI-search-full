@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
 from app.ingestion.extraction import ExtractedPage
 
 logger = logging.getLogger(__name__)
@@ -22,13 +22,211 @@ class RecursiveCharacterTextSplitter:
         chunk_size: int = 1500,
         chunk_overlap: int = 250,
         chunk_cross_page: bool = False,
-        chunk_splitter_type: str = "recursive"
+        chunk_splitter_type: str = "recursive",
+        chunking_strategy: str = "standard",
+        semantic_params: Optional[dict] = None,
+        structure_params: Optional[dict] = None,
+        token_params: Optional[dict] = None,
+        agentic_params: Optional[dict] = None,
+        embedding_provider: Optional[Any] = None,
     ) -> None:
+        from typing import Any
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.chunk_cross_page = chunk_cross_page
         self.chunk_splitter_type = chunk_splitter_type
+        self.chunking_strategy = chunking_strategy
+        self.semantic_params = semantic_params or {}
+        self.structure_params = structure_params or {}
+        self.token_params = token_params or {}
+        self.agentic_params = agentic_params or {}
+        self.embedding_provider = embedding_provider
         self.separators = ["\n\n", "\n", " ", ""]
+
+    def _split_character_only_with_params(self, text: str, size: int, overlap: int) -> List[str]:
+        chunks = []
+        start = 0
+        if size <= 0:
+            return [text]
+        step = size - overlap
+        if step <= 0:
+            step = 1
+        while start < len(text):
+            end = start + size
+            chunks.append(text[start:end])
+            start += step
+        return chunks
+
+    def _split_by_tokens(self, text: str, size: int, overlap: int, tokenizer_type: str) -> List[str]:
+        try:
+            import tiktoken
+            encoding = tiktoken.get_encoding(tokenizer_type)
+            tokens = encoding.encode(text)
+            chunks = []
+            start = 0
+            step = size - overlap
+            if step <= 0:
+                step = 1
+            while start < len(tokens):
+                end = start + size
+                chunk_tokens = tokens[start:end]
+                chunks.append(encoding.decode(chunk_tokens))
+                start += step
+            return chunks
+        except Exception as e:
+            logger.warning(f"Failed to use tiktoken for token splitting: {e}. Falling back to character estimation.")
+            return self._split_character_only_with_params(text, size * 4, overlap * 4)
+
+    def _split_sentences(self, text: str, method: str) -> List[str]:
+        if method == "nltk":
+            try:
+                import nltk
+                return nltk.sent_tokenize(text)
+            except Exception:
+                pass
+        elif method == "spacy":
+            try:
+                import spacy
+                nlp = spacy.blank("en")
+                nlp.add_pipe("sentencizer")
+                doc = nlp(text)
+                return [sent.text for sent in doc.sents]
+            except Exception:
+                pass
+                
+        import re
+        sentence_end = re.compile(r'(?<=[.!?])\s+')
+        splits = sentence_end.split(text)
+        return [s.strip() for s in splits if s.strip()]
+
+    def _split_semantic(self, text: str) -> List[str]:
+        import math
+        threshold_type = self.semantic_params.get("threshold_type", "percentile")
+        threshold_value = self.semantic_params.get("threshold_value", 95.0)
+        sentence_splitter = self.semantic_params.get("sentence_splitter", "nltk")
+        buffer_size = self.semantic_params.get("buffer_size", 1)
+        max_size = self.semantic_params.get("max_size", 3000)
+
+        sentences = self._split_sentences(text, sentence_splitter)
+        if not sentences:
+            return [text]
+
+        combined_sentences = []
+        for i in range(len(sentences)):
+            end_idx = min(i + buffer_size, len(sentences))
+            combined_sentences.append(" ".join(sentences[i:end_idx]))
+
+        embeddings = None
+        if self.embedding_provider and hasattr(self.embedding_provider, "embed_documents"):
+            try:
+                embeddings = self.embedding_provider.embed_documents(combined_sentences)
+            except Exception as e:
+                logger.error(f"Semantic splitter failed to compute embeddings: {e}")
+
+        if not embeddings or len(embeddings) != len(combined_sentences):
+            chunks = []
+            curr = []
+            curr_len = 0
+            for s in sentences:
+                if curr_len + len(s) > max_size and curr:
+                    chunks.append(" ".join(curr))
+                    curr = [s]
+                    curr_len = len(s)
+                else:
+                    curr.append(s)
+                    curr_len += len(s) + 1
+            if curr:
+                chunks.append(" ".join(curr))
+            return chunks
+
+        distances = []
+        for i in range(len(embeddings) - 1):
+            v1 = embeddings[i]
+            v2 = embeddings[i+1]
+            dot = sum(a*b for a, b in zip(v1, v2))
+            norm1 = math.sqrt(sum(a*a for a in v1))
+            norm2 = math.sqrt(sum(a*a for a in v2))
+            similarity = dot / (norm1 * norm2) if (norm1 > 0 and norm2 > 0) else 1.0
+            distances.append(1.0 - similarity)
+
+        if not distances:
+            return [text]
+
+        try:
+            sorted_dists = sorted(distances)
+            mean_dist = sum(distances) / len(distances)
+            variance = sum((x - mean_dist) ** 2 for x in distances) / len(distances)
+            std_dist = math.sqrt(variance)
+
+            if threshold_type == "percentile":
+                idx = int(len(sorted_dists) * (threshold_value / 100.0))
+                idx = min(max(0, idx), len(sorted_dists) - 1)
+                limit = sorted_dists[idx]
+            elif threshold_type == "standard_deviation":
+                limit = mean_dist + threshold_value * std_dist
+            else:
+                limit = threshold_value
+        except Exception:
+            limit = 0.5
+
+        chunks = []
+        current_chunk = [sentences[0]]
+        current_chunk_len = len(sentences[0])
+
+        for i, dist in enumerate(distances):
+            next_sentence = sentences[i+1]
+            if dist > limit or (current_chunk_len + len(next_sentence) > max_size):
+                chunks.append(" ".join(current_chunk))
+                current_chunk = [next_sentence]
+                current_chunk_len = len(next_sentence)
+            else:
+                current_chunk.append(next_sentence)
+                current_chunk_len += len(next_sentence) + 1
+
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+
+        return chunks
+
+    def _split_structural(self, text: str, preserve_tables: bool, preserve_lists: bool, max_size: int) -> List[str]:
+        import re
+        blocks = re.split(r'(^(?:#|\s*##|\s*###|\s*####)\s+.*$)', text, flags=re.MULTILINE)
+        chunks = []
+        current_block = ""
+
+        for block in blocks:
+            if not block.strip():
+                continue
+            if block.strip().startswith("#") or (len(current_block) + len(block) > max_size):
+                if current_block.strip():
+                    chunks.append(current_block.strip())
+                current_block = block
+            else:
+                current_block += "\n" + block
+
+        if current_block.strip():
+            chunks.append(current_block.strip())
+
+        final_chunks = []
+        for chunk in chunks:
+            if len(chunk) > max_size:
+                final_chunks.extend(self._split_text(chunk, self.separators))
+            else:
+                final_chunks.append(chunk)
+        return final_chunks
+
+    def _split_agentic(self, text: str) -> List[str]:
+        generate_summaries = self.agentic_params.get("generate_summaries", False)
+        splits = self._split_text(text, self.separators)
+        if generate_summaries:
+            final_splits = []
+            for chunk in splits:
+                words = chunk.split()[:8]
+                summary = " ".join(words) + "..."
+                summary_prefix = f"[AI Shrnutí: Zpracování pasáže týkající se: {summary}]\n\n"
+                final_splits.append(summary_prefix + chunk)
+            return final_splits
+        return splits
 
     def _split_character_only(self, text: str) -> List[str]:
         """Split text strictly by character count with overlap, ignoring paragraph/newline hierarchy."""
@@ -110,6 +308,27 @@ class RecursiveCharacterTextSplitter:
             
         return final_chunks
 
+    def _run_split_strategy(self, text: str) -> List[str]:
+        if self.chunking_strategy == "semantic":
+            return self._split_semantic(text)
+        elif self.chunking_strategy == "structure":
+            preserve_tables = self.structure_params.get("preserve_tables", True)
+            preserve_lists = self.structure_params.get("preserve_lists", True)
+            max_size = self.structure_params.get("max_size", 4000)
+            return self._split_structural(text, preserve_tables, preserve_lists, max_size)
+        elif self.chunking_strategy == "token":
+            size = self.token_params.get("size_tokens", 512)
+            overlap = self.token_params.get("overlap_tokens", 64)
+            tokenizer_type = self.token_params.get("tokenizer_type", "cl100k_base")
+            return self._split_by_tokens(text, size, overlap, tokenizer_type)
+        elif self.chunking_strategy == "agentic":
+            return self._split_agentic(text)
+        else:
+            if self.chunk_splitter_type == "character":
+                return self._split_character_only(text)
+            else:
+                return self._split_text(text, self.separators)
+
     def split_pages(self, pages: List[ExtractedPage]) -> List[DocumentChunk]:
         """Process page-by-page text blocks and return recursive overlapping chunks with section titles.
 
@@ -141,10 +360,7 @@ class RecursiveCharacterTextSplitter:
                 page_boundaries.append((start, end, page.page_number, headers))
 
             # 2. Split the concatenated continuous text string
-            if self.chunk_splitter_type == "character":
-                splits = self._split_character_only(concat_text)
-            else:
-                splits = self._split_text(concat_text, self.separators)
+            splits = self._run_split_strategy(concat_text)
 
             # 3. Resolve page number, section title, and offsets sequentially
             current_offset = 0
@@ -206,11 +422,8 @@ class RecursiveCharacterTextSplitter:
                 for match in SECTION_REGEX.finditer(text):
                     headers.append((match.start(), match.group(1).strip()))
 
-                # Split text on this page
-                if self.chunk_splitter_type == "character":
-                    page_splits = self._split_character_only(text)
-                else:
-                    page_splits = self._split_text(text, self.separators)
+                # Split text on this page using strategy
+                page_splits = self._run_split_strategy(text)
 
                 # Reconstruct character start offsets to resolve sections
                 current_offset = 0
@@ -246,5 +459,5 @@ class RecursiveCharacterTextSplitter:
                     )
                     chunk_counter += 1
 
-        logger.info(f"Split {len(pages)} pages using strategy (cross_page={self.chunk_cross_page}, type={self.chunk_splitter_type}) into {len(chunks)} chunks.")
+        logger.info(f"Split {len(pages)} pages using strategy ({self.chunking_strategy}) into {len(chunks)} chunks.")
         return chunks

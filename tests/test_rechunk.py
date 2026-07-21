@@ -220,3 +220,60 @@ def test_recursive_character_splitter_strategies():
         assert len(c.content) <= 20
 
 
+def test_advanced_chunking_strategies():
+    from app.ingestion.chunking import RecursiveCharacterTextSplitter, ExtractedPage
+    
+    pages = [
+        ExtractedPage(page_number=1, text="This is first page sentence one. This is first page sentence two."),
+        ExtractedPage(page_number=2, text="This is second page sentence three. This is second page sentence four.")
+    ]
+    
+    # 1. Token-based Strategy
+    splitter_token = RecursiveCharacterTextSplitter(
+        chunking_strategy="token",
+        token_params={"size_tokens": 10, "overlap_tokens": 2, "tokenizer_type": "cl100k_base"}
+    )
+    chunks_token = splitter_token.split_pages(pages)
+    assert len(chunks_token) > 0
+    
+    # 2. Structure-based Strategy
+    structure_text = "# Heading 1\nThis is paragraph one.\n## Heading 2\nThis is paragraph two."
+    splitter_struct = RecursiveCharacterTextSplitter(
+        chunking_strategy="structure",
+        structure_params={"preserve_tables": True, "preserve_lists": True, "max_size": 100}
+    )
+    chunks_struct = splitter_struct.split_pages([ExtractedPage(page_number=1, text=structure_text)])
+    assert len(chunks_struct) >= 2
+    assert chunks_struct[0].content.startswith("# Heading 1")
+    assert chunks_struct[1].content.startswith("## Heading 2")
+
+    # 3. Agentic Strategy (with summaries)
+    splitter_agentic = RecursiveCharacterTextSplitter(
+        chunking_strategy="agentic",
+        agentic_params={"generate_summaries": True, "model_name": "gpt-4o-mini"}
+    )
+    chunks_agentic = splitter_agentic.split_pages(pages)
+    assert len(chunks_agentic) > 0
+    assert "[AI Shrnutí:" in chunks_agentic[0].content
+
+    # 4. Semantic Strategy (with mock embedding provider)
+    class MockEmbeddingProvider:
+        def embed_documents(self, texts):
+            return [[0.1] * 1536 for _ in texts]
+            
+    splitter_semantic = RecursiveCharacterTextSplitter(
+        chunking_strategy="semantic",
+        semantic_params={
+            "threshold_type": "percentile",
+            "threshold_value": 90.0,
+            "sentence_splitter": "simple_regex",
+            "buffer_size": 1,
+            "max_size": 1000
+        },
+        embedding_provider=MockEmbeddingProvider()
+    )
+    chunks_semantic = splitter_semantic.split_pages(pages)
+    assert len(chunks_semantic) > 0
+
+
+

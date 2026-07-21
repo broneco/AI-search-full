@@ -44,3 +44,28 @@ This test suite verifies the background re-indexing and document re-segmentation
   * Validates that the database chunks table was *not* altered by this simulation, leaving the document without actual DB updates until re-indexing is explicitly triggered.
   * Cleans up the temporary text file.
 
+---
+
+### Test 3: `test_recursive_character_splitter_strategies`
+
+* **High-Level Purpose:**
+  Verifies that different structural strategies (page-isolated, cross-page crossing, and character-only steps shifting) perform text segmentation correctly according to their mathematical models and boundary limits.
+* **Low-Level Technical Details:**
+  * Runs assertions directly on the `RecursiveCharacterTextSplitter` instance.
+  * Passes two `ExtractedPage` page models with mock text.
+  * **Page-isolated strategy check:** Verifies that page boundary isolates text: no chunk on page 1 contains characters from page 2.
+  * **Cross-page strategy check:** Verifies continuous string slicing is triggered, and checks that chunks cross page limits seamlessly.
+  * **Character-only strategy check:** Verifies standard non-hierarchical splitting by character limit (no separator checks).
+
+---
+
+### Test 4: `test_advanced_chunking_strategies`
+
+* **High-Level Purpose:**
+  Verifies that all four newly introduced advanced segmentation strategies (Token-based, Structure-aware, Agentic, and Semantic) split text correctly and parse options dynamically.
+* **Low-Level Technical Details:**
+  * **Token-based check:** Splits text based on tokenizer encoding counts (simulating tiktoken model counts). Asserts that the resulting output returns segmented chunks.
+  * **Structure-aware check:** Slices markdown text containing headings (`#` and `##`) and verifies that chunks are aligned cleanly along heading boundaries.
+  * **Agentic check:** Runs the agentic splitter with `generate_summaries` enabled, asserting that AI summaries are generated and correctly prepended as headings to the chunk.
+  * **Semantic check:** Employs a custom `MockEmbeddingProvider` to calculate cosine similarities between sentences, computing standard deviation boundaries to split sentences on topic transitions. Asserts that the semantic splitter segments sentences on topic jumps without crashing.
+

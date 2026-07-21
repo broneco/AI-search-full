@@ -67,6 +67,31 @@ interface SearchConfig {
   chunk_overlap: number;
   chunk_cross_page: boolean;
   chunk_splitter_type: "recursive" | "character";
+  chunking_strategy?: "standard" | "semantic" | "structure" | "token" | "agentic";
+  semantic_params?: {
+    threshold_type: "percentile" | "standard_deviation" | "absolute";
+    threshold_value: number;
+    sentence_splitter: "nltk" | "spacy" | "simple_regex";
+    buffer_size: number;
+    max_size: number;
+  };
+  structure_params?: {
+    parser_type: "markdown" | "html" | "pdf_layout";
+    preserve_tables: boolean;
+    preserve_lists: boolean;
+    heading_levels: string[];
+    max_size: number;
+  };
+  token_params?: {
+    tokenizer_type: "cl100k_base" | "o200k_base";
+    size_tokens: number;
+    overlap_tokens: number;
+  };
+  agentic_params?: {
+    model_name: string;
+    generate_summaries: boolean;
+    custom_prompt: string;
+  };
 }
 
 interface Category {
@@ -211,6 +236,20 @@ const findOverlapText = (prevText: string, currentText: string, maxOverlap: numb
     }
   }
   return "";
+};
+
+
+// Reusable Tooltip component for hover parameters info
+const Tooltip = ({ text }: { text?: string }) => {
+  if (!text) return null;
+  return (
+    <span className="relative group inline-flex ml-1.5 text-zinc-500 hover:text-zinc-300 transition-colors cursor-help select-none align-middle">
+      <span className="text-[9px] w-3.5 h-3.5 flex items-center justify-center border border-zinc-700 rounded-full font-bold bg-[#141b2e]/60">i</span>
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 rounded-2xl bg-[#0e1726]/95 backdrop-blur-md border border-white/[0.08] text-[10px] text-zinc-200 leading-normal font-medium shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
+        {text}
+      </span>
+    </span>
+  );
 };
 
 export default function Home() {
@@ -369,6 +408,11 @@ export default function Home() {
             chunk_overlap: editingSearchConfig.chunk_overlap,
             chunk_cross_page: editingSearchConfig.chunk_cross_page,
             chunk_splitter_type: editingSearchConfig.chunk_splitter_type,
+            chunking_strategy: editingSearchConfig.chunking_strategy || "standard",
+            semantic_params: editingSearchConfig.semantic_params,
+            structure_params: editingSearchConfig.structure_params,
+            token_params: editingSearchConfig.token_params,
+            agentic_params: editingSearchConfig.agentic_params,
           }),
         });
 
@@ -394,6 +438,11 @@ export default function Home() {
     editingSearchConfig?.chunk_overlap,
     editingSearchConfig?.chunk_cross_page,
     editingSearchConfig?.chunk_splitter_type,
+    editingSearchConfig?.chunking_strategy,
+    JSON.stringify(editingSearchConfig?.semantic_params),
+    JSON.stringify(editingSearchConfig?.structure_params),
+    JSON.stringify(editingSearchConfig?.token_params),
+    JSON.stringify(editingSearchConfig?.agentic_params),
     activeTab
   ]);
 
@@ -2677,84 +2726,478 @@ export default function Home() {
                   <div className="space-y-6">
                     {/* Chunking Settings */}
                     <div className="space-y-4 pb-2">
-                      {/* Chunk Size */}
+                      {/* Strategy Selection */}
                       <div className="space-y-1.5">
                         <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
-                          {appLanguage === "cs" ? "Velikost chunku (znaky)" : "Chunk Size (characters)"}
-                        </label>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="range"
-                            min="200"
-                            max="5000"
-                            step="100"
-                            value={editingSearchConfig.chunk_size}
-                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) })}
-                            className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                          />
-                          <input
-                            type="number"
-                            min="200"
-                            max="5000"
-                            step="100"
-                            value={editingSearchConfig.chunk_size}
-                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) || 1500 })}
-                            className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Chunk Overlap */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
-                          {appLanguage === "cs" ? "Překryv chunku (znaky)" : "Chunk Overlap (characters)"}
-                        </label>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="range"
-                            min="0"
-                            max="1000"
-                            step="50"
-                            value={editingSearchConfig.chunk_overlap}
-                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) })}
-                            className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                          />
-                          <input
-                            type="number"
-                            min="0"
-                            max="1000"
-                            step="50"
-                            value={editingSearchConfig.chunk_overlap}
-                            onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) || 250 })}
-                            className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Splitter Type */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
-                          {appLanguage === "cs" ? "Typ splitteru" : "Splitter Type"}
+                          {appLanguage === "cs" ? "Strategie chunkování" : "Chunking Strategy"}
+                          <Tooltip text={TRANSLATIONS[appLanguage].tooltips[`strategy_${editingSearchConfig.chunking_strategy || "standard"}`]} />
                         </label>
                         <select
-                          value={editingSearchConfig.chunk_splitter_type || "recursive"}
-                          onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_splitter_type: e.target.value as any })}
+                          value={editingSearchConfig.chunking_strategy || "standard"}
+                          onChange={(e) => setEditingSearchConfig({
+                            ...editingSearchConfig,
+                            chunking_strategy: e.target.value as any
+                          })}
                           className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
                         >
-                          <option value="recursive">
-                            {appLanguage === "cs" ? "Rekurzivní podle oddělovačů (Recursive)" : "Recursive character splitter"}
-                          </option>
-                          <option value="character">
-                            {appLanguage === "cs" ? "Pevná velikost znaků (Character)" : "Fixed character splitter"}
-                          </option>
+                          <option value="standard">{appLanguage === "cs" ? "Standardní (Hierarchický)" : "Standard (Hierarchical)"}</option>
+                          <option value="semantic">{appLanguage === "cs" ? "Sémantický (AI témata)" : "Semantic (AI Topic Shifts)"}</option>
+                          <option value="structure">{appLanguage === "cs" ? "Strukturální (Nadpisy/Tabulky)" : "Structure-Aware"}</option>
+                          <option value="token">{appLanguage === "cs" ? "Podle Tokenů (LLM limit)" : "Token-Based (LLM window)"}</option>
+                          <option value="agentic">{appLanguage === "cs" ? "Agentický (LLM Editor)" : "Agentic (LLM editor)"}</option>
                         </select>
                       </div>
+
+                      {/* --- STANDARD STRATEGY FIELDS --- */}
+                      {(editingSearchConfig.chunking_strategy === "standard" || !editingSearchConfig.chunking_strategy) && (
+                        <>
+                          {/* Chunk Size */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Velikost chunku (znaky)" : "Chunk Size (characters)"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.chunk_size} />
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min="200"
+                                max="5000"
+                                step="100"
+                                value={editingSearchConfig.chunk_size}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) })}
+                                className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                              <input
+                                type="number"
+                                min="200"
+                                max="5000"
+                                step="100"
+                                value={editingSearchConfig.chunk_size}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) || 1500 })}
+                                className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Chunk Overlap */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Překryv chunku (znaky)" : "Chunk Overlap (characters)"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.chunk_overlap} />
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min="0"
+                                max="1000"
+                                step="50"
+                                value={editingSearchConfig.chunk_overlap}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) })}
+                                className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="1000"
+                                step="50"
+                                value={editingSearchConfig.chunk_overlap}
+                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) || 250 })}
+                                className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Splitter Type */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Typ splitteru" : "Splitter Type"}
+                            </label>
+                            <select
+                              value={editingSearchConfig.chunk_splitter_type || "recursive"}
+                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_splitter_type: e.target.value as any })}
+                              className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                            >
+                              <option value="recursive">
+                                {appLanguage === "cs" ? "Rekurzivní podle oddělovačů (Recursive)" : "Recursive character splitter"}
+                              </option>
+                              <option value="character">
+                                {appLanguage === "cs" ? "Pevná velikost znaků (Character)" : "Fixed character splitter"}
+                              </option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+
+                      {/* --- SEMANTIC STRATEGY FIELDS --- */}
+                      {editingSearchConfig.chunking_strategy === "semantic" && (
+                        <>
+                          {/* Sentence Splitter */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Dělič vět" : "Sentence Splitter"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.semantic_sentence_splitter} />
+                            </label>
+                            <select
+                              value={editingSearchConfig.semantic_params?.sentence_splitter || "nltk"}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                semantic_params: {
+                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  sentence_splitter: e.target.value as any
+                                }
+                              })}
+                              className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                            >
+                              <option value="nltk">NLTK Tokenizer</option>
+                              <option value="spacy">SpaCy Blank NLP</option>
+                              <option value="simple_regex">Standard Regex</option>
+                            </select>
+                          </div>
+
+                          {/* Threshold Type */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Typ prahu shody" : "Threshold Type"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.semantic_threshold_type} />
+                            </label>
+                            <select
+                              value={editingSearchConfig.semantic_params?.threshold_type || "percentile"}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                semantic_params: {
+                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  threshold_type: e.target.value as any
+                                }
+                              })}
+                              className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                            >
+                              <option value="percentile">{appLanguage === "cs" ? "Percentil (Doporučeno)" : "Percentile (Recommended)"}</option>
+                              <option value="standard_deviation">{appLanguage === "cs" ? "Směrodatná odchylka" : "Standard Deviation"}</option>
+                              <option value="absolute">{appLanguage === "cs" ? "Absolutní hodnota" : "Absolute distance"}</option>
+                            </select>
+                          </div>
+
+                          {/* Threshold Value */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Práh shody (Hodnota)" : "Threshold Value"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.semantic_threshold_value} />
+                            </label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={editingSearchConfig.semantic_params?.threshold_value ?? 95.0}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                semantic_params: {
+                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  threshold_value: parseFloat(e.target.value) || 0.0
+                                }
+                              })}
+                              className="w-full bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold"
+                            />
+                          </div>
+
+                          {/* Buffer Size */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Velikost vyrovnávací paměti (věty)" : "Buffer Size (sentences)"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.semantic_buffer_size} />
+                            </label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min="1"
+                                max="5"
+                                step="1"
+                                value={editingSearchConfig.semantic_params?.buffer_size ?? 1}
+                                onChange={(e) => setEditingSearchConfig({
+                                  ...editingSearchConfig,
+                                  semantic_params: {
+                                    ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                    buffer_size: parseInt(e.target.value)
+                                  }
+                                })}
+                                className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                              />
+                              <input
+                                type="number"
+                                min="1"
+                                max="5"
+                                step="1"
+                                value={editingSearchConfig.semantic_params?.buffer_size ?? 1}
+                                onChange={(e) => setEditingSearchConfig({
+                                  ...editingSearchConfig,
+                                  semantic_params: {
+                                    ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                    buffer_size: parseInt(e.target.value) || 1
+                                  }
+                                })}
+                                className="w-16 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Max Size */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Maximální velikost chunku" : "Max Chunk Size (chars)"}
+                            </label>
+                            <input
+                              type="number"
+                              min="500"
+                              max="10000"
+                              value={editingSearchConfig.semantic_params?.max_size ?? 3000}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                semantic_params: {
+                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  max_size: parseInt(e.target.value) || 3000
+                                }
+                              })}
+                              className="w-full bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* --- STRUCTURE STRATEGY FIELDS --- */}
+                      {editingSearchConfig.chunking_strategy === "structure" && (
+                        <>
+                          {/* Parser Type */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Typ analyzátoru struktury" : "Structure Parser"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.structure_parser_type} />
+                            </label>
+                            <select
+                              value={editingSearchConfig.structure_params?.parser_type || "markdown"}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                structure_params: {
+                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  parser_type: e.target.value as any
+                                }
+                              })}
+                              className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                            >
+                              <option value="markdown">Markdown AST Parser</option>
+                              <option value="html">HTML DOM Parser</option>
+                              <option value="pdf_layout">PDF Visual Layout</option>
+                            </select>
+                          </div>
+
+                          {/* Preserve Tables */}
+                          <div className="flex items-center justify-between bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[10px] text-zinc-200 font-semibold flex items-center">
+                                {appLanguage === "cs" ? "Zachovat tabulky vcelku" : "Preserve tables intact"}
+                                <Tooltip text={TRANSLATIONS[appLanguage].tooltips.structure_preserve_tables} />
+                              </span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={editingSearchConfig.structure_params?.preserve_tables ?? true}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                structure_params: {
+                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  preserve_tables: e.target.checked
+                                }
+                              })}
+                              className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Preserve Lists */}
+                          <div className="flex items-center justify-between bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[10px] text-zinc-200 font-semibold flex items-center">
+                                {appLanguage === "cs" ? "Zachovat seznamy" : "Preserve bullet lists"}
+                                <Tooltip text={TRANSLATIONS[appLanguage].tooltips.structure_preserve_lists} />
+                              </span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={editingSearchConfig.structure_params?.preserve_lists ?? true}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                structure_params: {
+                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  preserve_lists: e.target.checked
+                                }
+                              })}
+                              className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Max Size */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Maximální velikost" : "Max Size (chars)"}
+                            </label>
+                            <input
+                              type="number"
+                              min="500"
+                              max="10000"
+                              value={editingSearchConfig.structure_params?.max_size ?? 4000}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                structure_params: {
+                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  max_size: parseInt(e.target.value) || 4000
+                                }
+                              })}
+                              className="w-full bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* --- TOKEN STRATEGY FIELDS --- */}
+                      {editingSearchConfig.chunking_strategy === "token" && (
+                        <>
+                          {/* Tokenizer Type */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Typ tokenizéru modelů" : "Tokenizer Type"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.token_tokenizer_type} />
+                            </label>
+                            <select
+                              value={editingSearchConfig.token_params?.tokenizer_type || "cl100k_base"}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                token_params: {
+                                  ...(editingSearchConfig.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
+                                  tokenizer_type: e.target.value as any
+                                }
+                              })}
+                              className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                            >
+                              <option value="cl100k_base">cl100k_base (GPT-4 / GPT-3.5)</option>
+                              <option value="o200k_base">o200k_base (GPT-4o / o1)</option>
+                            </select>
+                          </div>
+
+                          {/* Token Size */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Velikost v tokenech" : "Chunk Size (Tokens)"}
+                            </label>
+                            <input
+                              type="number"
+                              min="64"
+                              max="4096"
+                              step="32"
+                              value={editingSearchConfig.token_params?.size_tokens ?? 512}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                token_params: {
+                                  ...(editingSearchConfig.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
+                                  size_tokens: parseInt(e.target.value) || 512
+                                }
+                              })}
+                              className="w-full bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold"
+                            />
+                          </div>
+
+                          {/* Token Overlap */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Překryv v tokenech" : "Chunk Overlap (Tokens)"}
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="1024"
+                              step="8"
+                              value={editingSearchConfig.token_params?.overlap_tokens ?? 64}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                token_params: {
+                                  ...(editingSearchConfig.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
+                                  overlap_tokens: parseInt(e.target.value) || 0
+                                }
+                              })}
+                              className="w-full bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* --- AGENTIC STRATEGY FIELDS --- */}
+                      {editingSearchConfig.chunking_strategy === "agentic" && (
+                        <>
+                          {/* Model Name */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Název AI modelu" : "AI Model Name"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.agentic_model_name} />
+                            </label>
+                            <input
+                              type="text"
+                              value={editingSearchConfig.agentic_params?.model_name || "gpt-4o-mini"}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                agentic_params: {
+                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", generate_summaries: false, custom_prompt: "" }),
+                                  model_name: e.target.value
+                                }
+                              })}
+                              className="w-full bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold"
+                            />
+                          </div>
+
+                          {/* Generate summaries */}
+                          <div className="flex items-center justify-between bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[10px] text-zinc-200 font-semibold flex items-center">
+                                {appLanguage === "cs" ? "Generovat AI shrnutí pasáží" : "Generate chunk summaries"}
+                                <Tooltip text={TRANSLATIONS[appLanguage].tooltips.agentic_generate_summaries} />
+                              </span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={editingSearchConfig.agentic_params?.generate_summaries ?? false}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                agentic_params: {
+                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", generate_summaries: false, custom_prompt: "" }),
+                                  generate_summaries: e.target.checked
+                                }
+                              })}
+                              className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
+                            />
+                          </div>
+
+                          {/* Custom instructions */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Vlastní instrukce pro dělení" : "Custom Split Instructions"}
+                            </label>
+                            <textarea
+                              rows={3}
+                              placeholder="e.g. Split only when a new legal paragraph begins..."
+                              value={editingSearchConfig.agentic_params?.custom_prompt || ""}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                agentic_params: {
+                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", generate_summaries: false, custom_prompt: "" }),
+                                  custom_prompt: e.target.value
+                                }
+                              })}
+                              className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 font-medium resize-none"
+                            />
+                          </div>
+                        </>
+                      )}
 
                       {/* Allow page crossing */}
                       <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-xl border border-white/[0.04]">
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-[11px] text-zinc-200 font-semibold">
+                          <span className="text-[11px] text-zinc-200 font-semibold flex items-center">
                             {appLanguage === "cs" ? "Povolit překryv stránek" : "Allow page boundaries crossing"}
+                            <Tooltip text={TRANSLATIONS[appLanguage].tooltips.chunk_cross_page} />
                           </span>
                           <span className="text-[9px] text-zinc-500 max-w-[200px] leading-tight">
                             {appLanguage === "cs"

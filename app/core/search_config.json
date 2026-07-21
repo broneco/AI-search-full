@@ -17,5 +17,34 @@
   "chunk_overlap": 250,
   "chunk_cross_page": false,
   "chunk_splitter_type": "recursive",
-  "context_max_tokens": 4000
+  "context_max_tokens": 4000,
+  "chunking_strategy": "standard",
+  "semantic_params": {
+    "threshold_type": "percentile",
+    "threshold_value": 95.0,
+    "sentence_splitter": "nltk",
+    "buffer_size": 1,
+    "max_size": 3000
+  },
+  "structure_params": {
+    "parser_type": "markdown",
+    "preserve_tables": true,
+    "preserve_lists": true,
+    "heading_levels": [
+      "h1",
+      "h2",
+      "h3"
+    ],
+    "max_size": 4000
+  },
+  "token_params": {
+    "tokenizer_type": "cl100k_base",
+    "size_tokens": 512,
+    "overlap_tokens": 64
+  },
+  "agentic_params": {
+    "model_name": "gpt-4o-mini",
+    "generate_summaries": false,
+    "custom_prompt": ""
+  }
 }

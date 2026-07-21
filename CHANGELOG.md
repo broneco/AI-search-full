@@ -7,6 +7,11 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ## [Unreleased]
 
 ### Added
+- **Decoupled Localization and Tooltips**: Created separate translation file `frontend/app/translations.ts` containing all copy strings and nested strategy tooltips, reducing `frontend/app/page.tsx` size by 400+ lines and separating content from JSX markup.
+- **Advanced Chunking Strategy Engines**: Added complete backend splitting support for Semantic Chunking (topic shifts via sentence embeddings cosine similarity), Structure-Aware (preserving markdown headers and block hierarchies), Token-Based (splitting by tiktoken token count), and Agentic (LLM-driven summaries prepend prefix).
+- **Dynamic Strategies Config UI Panel**: Built dynamic parameter form input fields in the Next.js chunking tab that show or hide inputs based on the selected strategy. Added help icon widgets rendering hover tooltips bound to translated strings.
+- **Dynamic Simulation Support**: Updated `/api/documents/preview-chunks` to dynamically apply semantic thresholds, token boundaries, and agentic summaries in real-time.
+- **Testing Coverage**: Updated `tests/test_rechunk.py` to cover all 4 strategies (Token, Structure, Agentic, and Semantic) with mock embedding calculations, passing 4/4 backend tests successfully.
 - **Advanced Chunking Strategy & Splitter Type Configuration**: Added controls to select between `"recursive"` (separators list) and `"character"` (fixed size) splitters. Added support for `"chunk_cross_page"` enabling continuous text chunks to cross page transitions while maintaining offset-based page citation mapping.
 - **Visual Overlap Highlights**: Built client-side character overlap suffix-to-prefix matching in the Next.js interactive preview tab, rendering overlapping text chunks with an amber-dotted border and hover tooltip description.
 - **Visual Raw PDF Formatting Warning**: Rendered a card banner explaining why PDF styling (fonts, alignments, columns) is stripped during raw plain-text parsing.
