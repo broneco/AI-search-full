@@ -119,7 +119,22 @@ class RecursiveCharacterTextSplitter:
         embeddings = None
         if self.embedding_provider and hasattr(self.embedding_provider, "embed_documents"):
             try:
-                embeddings = self.embedding_provider.embed_documents(combined_sentences)
+                import asyncio
+                import concurrent.futures
+                
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop and loop.is_running():
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            lambda: asyncio.run(self.embedding_provider.embed_documents(combined_sentences))
+                        )
+                        embeddings = future.result()
+                else:
+                    embeddings = asyncio.run(self.embedding_provider.embed_documents(combined_sentences))
             except Exception as e:
                 logger.error(f"Semantic splitter failed to compute embeddings: {e}")
 

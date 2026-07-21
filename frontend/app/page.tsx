@@ -387,48 +387,60 @@ export default function Home() {
     }
   }, [activeTab, documents, selectedPreviewDocId]);
 
+  const fetchPreview = async (force: boolean = false) => {
+    if (!selectedPreviewDocId || !editingSearchConfig) {
+      setPreviewChunks([]);
+      return;
+    }
+    setLoadingPreviewChunks(true);
+    setPreviewError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/preview-chunks`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          document_id: selectedPreviewDocId,
+          chunk_size: editingSearchConfig.chunk_size,
+          chunk_overlap: editingSearchConfig.chunk_overlap,
+          chunk_cross_page: editingSearchConfig.chunk_cross_page,
+          chunk_splitter_type: editingSearchConfig.chunk_splitter_type,
+          chunking_strategy: editingSearchConfig.chunking_strategy || "standard",
+          semantic_params: editingSearchConfig.semantic_params,
+          structure_params: editingSearchConfig.structure_params,
+          token_params: editingSearchConfig.token_params,
+          agentic_params: editingSearchConfig.agentic_params,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewChunks(data);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setPreviewError(errData.detail || "Failed to load preview chunks.");
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewError("Network error loading preview chunks.");
+    } finally {
+      setLoadingPreviewChunks(false);
+    }
+  };
+
+  const triggerManualPreviewFetch = () => {
+    fetchPreview(true);
+  };
+
   useEffect(() => {
     if (!selectedPreviewDocId || !editingSearchConfig) {
       setPreviewChunks([]);
       return;
     }
 
-    const delayDebounceFn = setTimeout(async () => {
-      setLoadingPreviewChunks(true);
-      setPreviewError(null);
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/documents/preview-chunks`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            document_id: selectedPreviewDocId,
-            chunk_size: editingSearchConfig.chunk_size,
-            chunk_overlap: editingSearchConfig.chunk_overlap,
-            chunk_cross_page: editingSearchConfig.chunk_cross_page,
-            chunk_splitter_type: editingSearchConfig.chunk_splitter_type,
-            chunking_strategy: editingSearchConfig.chunking_strategy || "standard",
-            semantic_params: editingSearchConfig.semantic_params,
-            structure_params: editingSearchConfig.structure_params,
-            token_params: editingSearchConfig.token_params,
-            agentic_params: editingSearchConfig.agentic_params,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setPreviewChunks(data);
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          setPreviewError(errData.detail || "Failed to load preview chunks.");
-        }
-      } catch (err) {
-        console.error(err);
-        setPreviewError("Network error loading preview chunks.");
-      } finally {
-        setLoadingPreviewChunks(false);
-      }
+    const delayDebounceFn = setTimeout(() => {
+      fetchPreview(false);
     }, 450);
 
     return () => clearTimeout(delayDebounceFn);
@@ -3281,21 +3293,33 @@ export default function Home() {
                     </p>
                   </div>
 
-                  <div className="w-full sm:w-[250px]">
-                    <select
-                      value={selectedPreviewDocId}
-                      onChange={(e) => setSelectedPreviewDocId(e.target.value)}
-                      className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
-                    >
-                      <option value="" disabled>
-                        {appLanguage === "cs" ? "-- Vyberte dokument --" : "-- Select a document --"}
-                      </option>
-                      {documents.map((doc) => (
-                        <option key={doc.document_id} value={doc.document_id}>
-                          {doc.title}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                    <div className="w-full sm:w-[220px]">
+                      <select
+                        value={selectedPreviewDocId}
+                        onChange={(e) => setSelectedPreviewDocId(e.target.value)}
+                        className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                      >
+                        <option value="" disabled>
+                          {appLanguage === "cs" ? "-- Vyberte dokument --" : "-- Select a document --"}
                         </option>
-                      ))}
-                    </select>
+                        {documents.map((doc) => (
+                          <option key={doc.document_id} value={doc.document_id}>
+                            {doc.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {(editingSearchConfig?.chunking_strategy === "agentic" || editingSearchConfig?.chunking_strategy === "semantic") && (
+                      <button
+                        onClick={() => triggerManualPreviewFetch()}
+                        className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span>🔄</span>
+                        {appLanguage === "cs" ? "Znovu vygenerovat" : "Regenerate"}
+                      </button>
+                    )}
                   </div>
                 </div>
 
