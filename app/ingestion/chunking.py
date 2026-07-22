@@ -25,6 +25,8 @@ class RecursiveCharacterTextSplitter:
         overlap_cross_page: bool = False,
         chunk_splitter_type: str = "recursive",
         chunking_strategy: str = "standard",
+        enrich_with_summary: bool = False,
+        summary_custom_prompt: str = "",
         semantic_params: Optional[dict] = None,
         structure_params: Optional[dict] = None,
         token_params: Optional[dict] = None,
@@ -39,6 +41,8 @@ class RecursiveCharacterTextSplitter:
         self.overlap_cross_page = overlap_cross_page
         self.chunk_splitter_type = chunk_splitter_type
         self.chunking_strategy = chunking_strategy
+        self.enrich_with_summary = enrich_with_summary
+        self.summary_custom_prompt = summary_custom_prompt
         self.semantic_params = semantic_params or {}
         self.structure_params = structure_params or {}
         self.token_params = token_params or {}
@@ -242,75 +246,75 @@ class RecursiveCharacterTextSplitter:
                 final_chunks.append(chunk)
         return final_chunks
 
-    def _split_agentic(self, text: str) -> List[str]:
-        generate_summaries = self.agentic_params.get("generate_summaries", False)
+    def _split_agentic(self, text: str, force_ai: bool = True) -> List[str]:
         custom_prompt = self.agentic_params.get("custom_prompt", "").strip()
         model_name = self.agentic_params.get("model_name", "gpt-4o-mini")
+        max_context_chars = self.agentic_params.get("max_context_chars", 4000)
 
-        splits = self._split_text(text, self.separators)
-        if not splits:
-            return [text]
+        if not text.strip():
+            return []
 
-        if generate_summaries or custom_prompt:
-            final_splits = []
-            for chunk in splits:
-                if not chunk.strip():
-                    continue
+        # If force_ai is False (fast live preview drag simulation) or no LLM provider, fallback to fast recursive split
+        if not force_ai or not self.llm_provider or not hasattr(self.llm_provider, "generate"):
+            fallback_splits = self._split_text(text, self.separators)
+            return fallback_splits
 
-                summary_text = None
-                if self.llm_provider and hasattr(self.llm_provider, "generate"):
-                    try:
-                        import asyncio
-                        import concurrent.futures
-                        from app.providers.llm import ChatMessage
+        # True Agentic Splitting using Azure OpenAI
+        chunk_delimiter = "===CHUNK_BREAK==="
+        final_splits = []
 
-                        system_instruction = (
-                            "You are an expert AI document editor and summarizer.\n"
-                            "Summarize the provided text passage in 1-2 concise sentences."
+        # Slice text into batches of max_context_chars
+        batches = []
+        for i in range(0, len(text), max_context_chars):
+            batches.append(text[i:i+max_context_chars])
+
+        for batch in batches:
+            try:
+                import asyncio
+                import concurrent.futures
+                from app.providers.llm import ChatMessage
+
+                system_instruction = (
+                    "You are an expert AI document editor. Your job is to split the input text into logical, standalone chunks.\n"
+                    f"Separate each chunk with the exact delimiter '{chunk_delimiter}'.\n"
+                    "Output ONLY the resulting text chunks separated by the delimiter with no extra conversational preamble or markdown code blocks."
+                )
+                if custom_prompt:
+                    system_instruction += f"\nSTRICTLY follow these custom splitting rules provided by the user:\n\"{custom_prompt}\""
+
+                messages = [
+                    ChatMessage(role="system", content=system_instruction),
+                    ChatMessage(role="user", content=f"Text to split:\n\"\"\"\n{batch}\n\"\"\"")
+                ]
+
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop and loop.is_running():
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            lambda: asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
                         )
-                        if custom_prompt:
-                            system_instruction += (
-                                f"\nCRITICAL INSTRUCTION FROM USER:\n"
-                                f"Strictly follow these custom rules for output language, format, or focus:\n"
-                                f"\"{custom_prompt}\""
-                            )
-
-                        messages = [
-                            ChatMessage(role="system", content=system_instruction),
-                            ChatMessage(role="user", content=f"Text passage:\n{chunk}")
-                        ]
-
-                        try:
-                            loop = asyncio.get_running_loop()
-                        except RuntimeError:
-                            loop = None
-
-                        if loop and loop.is_running():
-                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                                future = executor.submit(
-                                    lambda: asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
-                                )
-                                summary_text = future.result()
-                        else:
-                            summary_text = asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
-                    except Exception as e:
-                        logger.error(f"Agentic LLM prompt execution failed: {e}")
-
-                if summary_text and summary_text.strip():
-                    summary_clean = summary_text.strip()
-                    summary_prefix = f"[AI Shrnutí: {summary_clean}]\n\n"
-                    final_splits.append(summary_prefix + chunk)
+                        llm_out = future.result()
                 else:
-                    words = chunk.split()[:8]
-                    fallback_words = " ".join(words) + "..."
-                    if custom_prompt:
-                        summary_prefix = f"[AI Shrnutí ({custom_prompt}): {fallback_words}]\n\n"
-                    else:
-                        summary_prefix = f"[AI Shrnutí: {fallback_words}]\n\n"
-                    final_splits.append(summary_prefix + chunk)
-            return final_splits
+                    llm_out = asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
 
-        return splits
+                if llm_out and chunk_delimiter in llm_out:
+                    raw_chunks = llm_out.split(chunk_delimiter)
+                    for c in raw_chunks:
+                        if c.strip():
+                            final_splits.append(c.strip())
+                elif llm_out and llm_out.strip():
+                    final_splits.append(llm_out.strip())
+                else:
+                    final_splits.extend(self._split_text(batch, self.separators))
+            except Exception as e:
+                logger.error(f"True agentic LLM boundary splitting failed: {e}")
+                final_splits.extend(self._split_text(batch, self.separators))
+
+        return final_splits if final_splits else self._split_text(text, self.separators)
 
     def _split_character_only(self, text: str) -> List[str]:
         """Split text strictly by character count with overlap, ignoring paragraph/newline hierarchy."""
@@ -335,24 +339,19 @@ class RecursiveCharacterTextSplitter:
         """Split text recursively."""
         final_chunks = []
         
-        # Get first separator
         separator = separators[0]
         next_separators = separators[1:]
         
-        # Split by separator
         if separator == "":
             splits = list(text)
         else:
             splits = text.split(separator)
             
-        # Recombine splits
         current_chunk = []
         current_len = 0
         
         for split in splits:
-            # If the single split is larger than chunk_size, split it recursively with remaining separators
             if len(split) > self.chunk_size:
-                # Flush current chunk first
                 if current_chunk:
                     chunk_str = separator.join(current_chunk)
                     if chunk_str.strip():
@@ -364,7 +363,6 @@ class RecursiveCharacterTextSplitter:
                     recursed = self._split_text(split, next_separators)
                     final_chunks.extend(recursed)
                 else:
-                    # No separators left, force-split by characters
                     start = 0
                     while start < len(split):
                         chunk_str = split[start:start + self.chunk_size]
@@ -374,14 +372,12 @@ class RecursiveCharacterTextSplitter:
                             break
                         start += self.chunk_size - self.chunk_overlap
             else:
-                # If adding this split exceeds chunk_size, flush and start a new chunk
                 split_len = len(split) + (len(separator) if current_chunk else 0)
                 if current_len + split_len > self.chunk_size:
                     chunk_str = separator.join(current_chunk)
                     if chunk_str.strip():
                         final_chunks.append(chunk_str)
                     
-                    # Backtrack for overlap
                     overlap_splits = []
                     overlap_len = 0
                     for prev_split in reversed(current_chunk):
@@ -412,7 +408,7 @@ class RecursiveCharacterTextSplitter:
             
         return final_chunks
 
-    def _run_split_strategy(self, text: str) -> List[str]:
+    def _run_split_strategy(self, text: str, force_ai: bool = True) -> List[str]:
         if self.chunking_strategy == "semantic":
             return self._split_semantic(text)
         elif self.chunking_strategy == "structure":
@@ -426,29 +422,24 @@ class RecursiveCharacterTextSplitter:
             tokenizer_type = self.token_params.get("tokenizer_type", "cl100k_base")
             return self._split_by_tokens(text, size, overlap, tokenizer_type)
         elif self.chunking_strategy == "agentic":
-            return self._split_agentic(text)
+            return self._split_agentic(text, force_ai=force_ai)
         else:
             if self.chunk_splitter_type == "character":
                 return self._split_character_only(text)
             else:
                 return self._split_text(text, self.separators)
 
-    def split_pages(self, pages: List[ExtractedPage]) -> List[DocumentChunk]:
-        """Process page-by-page text blocks and return recursive overlapping chunks with section titles.
-
-        Maintains accurate page numbering references and extracts section titles.
-        """
+    def split_pages(self, pages: List[ExtractedPage], force_ai: bool = True) -> List[DocumentChunk]:
+        """Process page-by-page text blocks and return recursive overlapping chunks with section titles."""
         import re
-        # Czech-friendly decimal numbering section header regex
         SECTION_REGEX = re.compile(r'^\s*(\d+(?:\.\d+)*\.?\s+[^\W\d_].*?)\s*$', re.MULTILINE)
 
         chunks = []
         chunk_counter = 0
 
         if self.chunk_cross_page:
-            # CROSS-PAGE CHUNKING STRATEGY
             concat_text = ""
-            page_boundaries = []  # List of tuples: (start_idx, end_idx, page_number, headers)
+            page_boundaries = []
             for page in pages:
                 start = len(concat_text)
                 concat_text += page.text + "\n"
@@ -461,7 +452,7 @@ class RecursiveCharacterTextSplitter:
                 
                 page_boundaries.append((start, end, page.page_number, headers))
 
-            splits = self._run_split_strategy(concat_text)
+            splits = self._run_split_strategy(concat_text, force_ai=force_ai)
 
             current_offset = 0
             active_section = None
@@ -506,7 +497,6 @@ class RecursiveCharacterTextSplitter:
                 )
                 chunk_counter += 1
         else:
-            # PAGE-ISOLATED CHUNKING STRATEGY (default)
             active_section = None
             prev_page_overlap = ""
             for page in pages:
@@ -523,7 +513,7 @@ class RecursiveCharacterTextSplitter:
                 for match in SECTION_REGEX.finditer(text):
                     headers.append((match.start(), match.group(1).strip()))
 
-                page_splits = self._run_split_strategy(text_to_split)
+                page_splits = self._run_split_strategy(text_to_split, force_ai=force_ai)
 
                 if self.overlap_cross_page and page_splits:
                     last_split = page_splits[-1]
@@ -565,6 +555,50 @@ class RecursiveCharacterTextSplitter:
                         )
                     )
                     chunk_counter += 1
+
+        # Apply Universal AI Summary Enrichment if enabled
+        if self.enrich_with_summary:
+            for c in chunks:
+                summary_text = None
+                if force_ai and self.llm_provider and hasattr(self.llm_provider, "generate"):
+                    try:
+                        import asyncio
+                        import concurrent.futures
+                        from app.providers.llm import ChatMessage
+
+                        system_instruction = (
+                            "You are an AI document summarizer.\n"
+                            "Summarize the provided text passage in 1-2 concise sentences."
+                        )
+                        if self.summary_custom_prompt:
+                            system_instruction += f"\nFollow these user rules:\n\"{self.summary_custom_prompt}\""
+
+                        messages = [
+                            ChatMessage(role="system", content=system_instruction),
+                            ChatMessage(role="user", content=f"Text passage:\n{c.content}")
+                        ]
+
+                        try:
+                            loop = asyncio.get_running_loop()
+                        except RuntimeError:
+                            loop = None
+
+                        if loop and loop.is_running():
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                                future = executor.submit(
+                                    lambda: asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
+                                )
+                                summary_text = future.result()
+                        else:
+                            summary_text = asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
+                    except Exception as e:
+                        logger.error(f"Summary enrichment LLM call failed: {e}")
+
+                if summary_text and summary_text.strip():
+                    c.content = f"[AI Shrnutí: {summary_text.strip()}]\n\n{c.content}"
+                else:
+                    words = " ".join(c.content.split()[:8]) + "..."
+                    c.content = f"[AI Shrnutí (Klikněte na 'Znovu vygenerovat' pro AI zpracování): {words}]\n\n{c.content}"
 
         logger.info(f"Split {len(pages)} pages using strategy ({self.chunking_strategy}) into {len(chunks)} chunks.")
         return chunks

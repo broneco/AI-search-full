@@ -1103,6 +1103,9 @@ async def preview_document_chunks(
     overlap_cross_page = payload.get("overlap_cross_page", False)
     chunk_splitter_type = payload.get("chunk_splitter_type", "recursive")
     chunking_strategy = payload.get("chunking_strategy", "standard")
+    enrich_with_summary = payload.get("enrich_with_summary", False)
+    summary_custom_prompt = payload.get("summary_custom_prompt", "")
+    force_ai = payload.get("force_ai", False)
     semantic_params = payload.get("semantic_params")
     structure_params = payload.get("structure_params")
     token_params = payload.get("token_params")
@@ -1160,6 +1163,8 @@ async def preview_document_chunks(
         overlap_cross_page=overlap_cross_page,
         chunk_splitter_type=chunk_splitter_type,
         chunking_strategy=chunking_strategy,
+        enrich_with_summary=enrich_with_summary,
+        summary_custom_prompt=summary_custom_prompt,
         semantic_params=semantic_params,
         structure_params=structure_params,
         token_params=token_params,
@@ -1167,7 +1172,7 @@ async def preview_document_chunks(
         embedding_provider=embedding_provider,
         llm_provider=llm_provider
     )
-    chunks = splitter.split_pages(pages)
+    chunks = splitter.split_pages(pages, force_ai=force_ai)
     
     return [
         {

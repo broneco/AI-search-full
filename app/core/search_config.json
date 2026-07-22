@@ -19,6 +19,8 @@
   "overlap_cross_page": false,
   "chunk_splitter_type": "recursive",
   "context_max_tokens": 4000,
+  "enrich_with_summary": false,
+  "summary_custom_prompt": "",
   "chunking_strategy": "standard",
   "semantic_params": {
     "threshold_type": "percentile",
@@ -45,7 +47,7 @@
   },
   "agentic_params": {
     "model_name": "gpt-4o-mini",
-    "generate_summaries": false,
-    "custom_prompt": ""
+    "custom_prompt": "",
+    "max_context_chars": 4000
   }
 }

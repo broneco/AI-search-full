@@ -247,14 +247,30 @@ def test_advanced_chunking_strategies():
     assert chunks_struct[0].content.startswith("# Heading 1")
     assert chunks_struct[1].content.startswith("## Heading 2")
 
-    # 3. Agentic Strategy (with summaries and custom prompt)
+    # 3. Agentic Strategy (true LLM splitting) & Universal Summary Enrichment
+    class MockLLMProvider:
+        async def generate(self, messages, model_profile="flash"):
+            return "First chunk content===CHUNK_BREAK===Second chunk content"
+
     splitter_agentic = RecursiveCharacterTextSplitter(
         chunking_strategy="agentic",
-        agentic_params={"generate_summaries": True, "custom_prompt": "Shrnutí v angličtině prosím", "model_name": "gpt-4o-mini"}
+        agentic_params={"custom_prompt": "Rozděl podle odseků", "model_name": "gpt-4o-mini", "max_context_chars": 4000},
+        llm_provider=MockLLMProvider()
     )
-    chunks_agentic = splitter_agentic.split_pages(pages)
-    assert len(chunks_agentic) > 0
-    assert "[AI Shrnutí" in chunks_agentic[0].content
+    chunks_agentic = splitter_agentic.split_pages(pages, force_ai=True)
+    assert len(chunks_agentic) >= 2
+    assert "First chunk content" in chunks_agentic[0].content
+
+    # 4. Universal AI Summary Enrichment Check
+    splitter_summary = RecursiveCharacterTextSplitter(
+        chunking_strategy="standard",
+        enrich_with_summary=True,
+        summary_custom_prompt="Shrnutí v angličtině prosím",
+        llm_provider=MockLLMProvider()
+    )
+    chunks_summary = splitter_summary.split_pages(pages, force_ai=True)
+    assert len(chunks_summary) > 0
+    assert "[AI Shrnutí" in chunks_summary[0].content
 
     # 4. Semantic Strategy (with mock embedding provider)
     class MockEmbeddingProvider:

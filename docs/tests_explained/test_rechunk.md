@@ -66,7 +66,8 @@ This test suite verifies the background re-indexing and document re-segmentation
 * **Low-Level Technical Details:**
   * **Token-based check:** Splits text based on tokenizer encoding counts (simulating tiktoken model counts). Asserts that the resulting output returns segmented chunks.
   * **Structure-aware check:** Slices markdown text containing headings (`#` and `##`) and verifies that chunks are aligned cleanly along heading boundaries.
-  * **Agentic check:** Runs the agentic splitter with `generate_summaries` enabled and custom prompt `Shrnutí v angličtině prosím`, asserting that LLM summaries are generated and correctly prepended to the chunk.
+  * **Agentic check:** Runs the agentic splitter with mock LLM delimiters (`===CHUNK_BREAK===`), asserting that true LLM boundary splitting generates discrete chunks according to custom rules.
+  * **Universal AI Summary Enrichment check:** Verifies that when `enrich_with_summary=True` is set on any strategy, an AI summary header is prepended to each chunk.
   * **Semantic check:** Employs an async `MockEmbeddingProvider` to calculate cosine similarities between sentences, computing standard deviation boundaries to split sentences on topic transitions without crashing.
   * **Pure Overlap & Cross-Page Overlap check:** Runs character splitting with `chunk_overlap = 30` over distinct words, asserting that no chunk is a 100% duplicate substring of its predecessor and that `overlap_cross_page` controls carryover across page breaks.
 

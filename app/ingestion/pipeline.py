@@ -36,6 +36,8 @@ class IngestionPipeline:
             overlap_cross_page=config.get("overlap_cross_page", False),
             chunk_splitter_type=config.get("chunk_splitter_type", "recursive"),
             chunking_strategy=config.get("chunking_strategy", "standard"),
+            enrich_with_summary=config.get("enrich_with_summary", False),
+            summary_custom_prompt=config.get("summary_custom_prompt", ""),
             semantic_params=config.get("semantic_params"),
             structure_params=config.get("structure_params"),
             token_params=config.get("token_params"),

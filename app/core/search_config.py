@@ -31,8 +31,8 @@ class TokenChunkingParams(BaseModel):
 
 class AgenticChunkingParams(BaseModel):
     model_name: str = Field("gpt-4o-mini")
-    generate_summaries: bool = Field(False)
     custom_prompt: str = Field("")
+    max_context_chars: int = Field(4000, ge=1000, le=16000)
 
 class SearchConfigSchema(BaseModel):
     search_strategy: str = Field("hybrid", pattern="^(hybrid|vector|keyword)$")
@@ -55,6 +55,8 @@ class SearchConfigSchema(BaseModel):
     overlap_cross_page: bool = Field(False)
     chunk_splitter_type: str = Field("recursive", pattern="^(recursive|character)$")
     context_max_tokens: int = Field(4000, ge=1000, le=30000)
+    enrich_with_summary: bool = Field(False)
+    summary_custom_prompt: str = Field("")
 
     # Advanced chunking strategy parameters
     chunking_strategy: str = Field("standard", pattern="^(standard|semantic|structure|token|agentic)$")
@@ -150,6 +152,8 @@ class SearchConfigManager:
             "overlap_cross_page": False,
             "chunk_splitter_type": "recursive",
             "context_max_tokens": 4000,
+            "enrich_with_summary": False,
+            "summary_custom_prompt": "",
             "chunking_strategy": "standard",
             "semantic_params": {
                 "threshold_type": "percentile",
@@ -172,7 +176,7 @@ class SearchConfigManager:
             },
             "agentic_params": {
                 "model_name": "gpt-4o-mini",
-                "generate_summaries": False,
-                "custom_prompt": ""
+                "custom_prompt": "",
+                "max_context_chars": 4000
             }
         }

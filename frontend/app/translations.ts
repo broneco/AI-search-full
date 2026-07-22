@@ -221,8 +221,10 @@ export const TRANSLATIONS = {
       structure_preserve_lists: "Zajistí, že celé odrážkové seznamy nebudou rozděleny do samostatných chunků.",
       token_tokenizer_type: "Typ tokenizéru, který odpovídá cílovému LLM modelu. Zaručuje absolutní přesnost velikostí tokenů.",
       agentic_model_name: "AI model, který provede analýzu a rozdělení dokumentu. Menší modely jsou rychlejší a levnější.",
-      agentic_generate_summaries: "AI vytvoří krátké shrnutí pro každý segment a připojí jej na začátek chunku pro posílení sémantického vyhledávání.",
-      agentic_custom_prompt: "Vlastní instrukce a pravidla pro LLM editor (např. 'Přednostně děl na hranicích paragrafů' nebo 'Shrnutí generuj v angličtině')."
+      agentic_custom_prompt: "Vlastní pravidla pro LLM editor určení hranic chunků (např. 'Rozděl pouze tam, kde začíná nový právní článek nebo odsek').",
+      agentic_max_context_chars: "Maximální počet znaků textu, který je odeslán AI modelu v jedné dávcové výzvě k rozdělení.",
+      enrich_with_summary: "Generuje 1-2 věté AI shrnutí a kontextový štítek na začátek každého chunku pro radikální zvýšení přesnosti vyhledávání (RAG).",
+      summary_custom_prompt: "Vlastní instrukce pro tvar AI shrnutí (např. 'Shrnutí generuj v angličtině' nebo 'Zaměř se na sankce a lhůty')."
     }
   },
   en: {
@@ -447,8 +449,10 @@ export const TRANSLATIONS = {
       structure_preserve_lists: "Ensures bullet lists are kept fully together inside a single chunk.",
       token_tokenizer_type: "The tokenizer matching your target LLM. Guarantees absolute token measurement accuracy.",
       agentic_model_name: "The AI model that performs the segmentation. Smaller models are faster and cheaper.",
-      agentic_generate_summaries: "AI generates a short summary for each segment and prepends it to the chunk to boost vector search retrieval.",
-      agentic_custom_prompt: "Custom instructions and rules for the LLM editor (e.g. 'Split preferably on article boundaries' or 'Generate summaries in English')."
+      agentic_custom_prompt: "Custom rules for the LLM editor to determine chunk boundaries (e.g. 'Split only when a new legal article or section starts').",
+      agentic_max_context_chars: "Maximum character length of input text sent to the LLM per batch prompt.",
+      enrich_with_summary: "Generates a 1-2 sentence AI summary header prepended to each chunk to significantly boost RAG retrieval accuracy.",
+      summary_custom_prompt: "Custom instructions for the AI summary style (e.g. 'Generate summary in English' or 'Focus on penalties and deadlines')."
     }
   }
 };

@@ -68,6 +68,8 @@ interface SearchConfig {
   chunk_cross_page: boolean;
   overlap_cross_page?: boolean;
   chunk_splitter_type: "recursive" | "character";
+  enrich_with_summary?: boolean;
+  summary_custom_prompt?: string;
   chunking_strategy?: "standard" | "semantic" | "structure" | "token" | "agentic";
   semantic_params?: {
     threshold_type: "percentile" | "standard_deviation" | "absolute";
@@ -90,8 +92,8 @@ interface SearchConfig {
   };
   agentic_params?: {
     model_name: string;
-    generate_summaries: boolean;
     custom_prompt: string;
+    max_context_chars: number;
   };
 }
 
@@ -409,6 +411,9 @@ export default function Home() {
           overlap_cross_page: editingSearchConfig.overlap_cross_page,
           chunk_splitter_type: editingSearchConfig.chunk_splitter_type,
           chunking_strategy: editingSearchConfig.chunking_strategy || "standard",
+          enrich_with_summary: editingSearchConfig.enrich_with_summary,
+          summary_custom_prompt: editingSearchConfig.summary_custom_prompt,
+          force_ai: force,
           semantic_params: editingSearchConfig.semantic_params,
           structure_params: editingSearchConfig.structure_params,
           token_params: editingSearchConfig.token_params,
@@ -454,6 +459,8 @@ export default function Home() {
     editingSearchConfig?.overlap_cross_page,
     editingSearchConfig?.chunk_splitter_type,
     editingSearchConfig?.chunking_strategy,
+    editingSearchConfig?.enrich_with_summary,
+    editingSearchConfig?.summary_custom_prompt,
     JSON.stringify(editingSearchConfig?.semantic_params),
     JSON.stringify(editingSearchConfig?.structure_params),
     JSON.stringify(editingSearchConfig?.token_params),
@@ -3140,6 +3147,49 @@ export default function Home() {
                         </>
                       )}
 
+                      {/* --- UNIVERSAL AI SUMMARY ENRICHMENT TOGGLE --- */}
+                      <div className="pt-2 border-t border-white/[0.06] space-y-3">
+                        <div className="flex items-center justify-between bg-indigo-950/20 p-3 rounded-xl border border-indigo-500/20">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs text-indigo-300 font-semibold flex items-center">
+                              ✨ {appLanguage === "cs" ? "Generovat AI shrnutí pasáží (Enrichment)" : "Generate AI Chunk Summaries (Enrichment)"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.enrich_with_summary} />
+                            </span>
+                            <span className="text-[10px] text-zinc-400">
+                              {appLanguage === "cs" ? "Přidá AI kontextový štítek na začátek každého chunku pro posílení RAG vyhledávání." : "Prepend an AI context summary header to each chunk."}
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={editingSearchConfig.enrich_with_summary ?? false}
+                            onChange={(e) => setEditingSearchConfig({
+                              ...editingSearchConfig,
+                              enrich_with_summary: e.target.checked
+                            })}
+                            className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
+                          />
+                        </div>
+
+                        {editingSearchConfig.enrich_with_summary && (
+                          <div className="space-y-1.5 pl-1">
+                            <label className="text-[10px] text-indigo-400 block uppercase tracking-wider font-bold">
+                              {appLanguage === "cs" ? "Vlastní instrukce pro AI shrnutí" : "Custom Summary Instructions"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.summary_custom_prompt} />
+                            </label>
+                            <textarea
+                              rows={2}
+                              placeholder={appLanguage === "cs" ? "např. Shrnutí generuj v angličtině / Zaměř se na sankce a lhůty..." : "e.g. Generate summaries in English / Focus on deadlines..."}
+                              value={editingSearchConfig.summary_custom_prompt || ""}
+                              onChange={(e) => setEditingSearchConfig({
+                                ...editingSearchConfig,
+                                summary_custom_prompt: e.target.value
+                              })}
+                              className="w-full bg-[#111827] border border-indigo-500/30 text-xs text-zinc-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 font-medium resize-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+
                       {/* --- AGENTIC STRATEGY FIELDS --- */}
                       {editingSearchConfig.chunking_strategy === "agentic" && (
                         <>
@@ -3155,7 +3205,7 @@ export default function Home() {
                               onChange={(e) => setEditingSearchConfig({
                                 ...editingSearchConfig,
                                 agentic_params: {
-                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", generate_summaries: false, custom_prompt: "" }),
+                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
                                   model_name: e.target.value
                                 }
                               })}
@@ -3163,42 +3213,48 @@ export default function Home() {
                             />
                           </div>
 
-                          {/* Generate summaries */}
-                          <div className="flex items-center justify-between bg-white/[0.02] p-2.5 rounded-xl border border-white/[0.04]">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] text-zinc-200 font-semibold flex items-center">
-                                {appLanguage === "cs" ? "Generovat AI shrnutí pasáží" : "Generate chunk summaries"}
-                                <Tooltip text={TRANSLATIONS[appLanguage].tooltips.agentic_generate_summaries} />
+                          {/* Max context chars per LLM batch */}
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-500">
+                              <span className="flex items-center">
+                                {appLanguage === "cs" ? "Max. znaků na AI dávku (batch)" : "Max Input Chars per Batch"}
+                                <Tooltip text={TRANSLATIONS[appLanguage].tooltips.agentic_max_context_chars} />
+                              </span>
+                              <span className="text-indigo-400 font-semibold text-xs">
+                                {editingSearchConfig.agentic_params?.max_context_chars || 4000} znaků
                               </span>
                             </div>
                             <input
-                              type="checkbox"
-                              checked={editingSearchConfig.agentic_params?.generate_summaries ?? false}
+                              type="range"
+                              min={1000}
+                              max={16000}
+                              step={500}
+                              value={editingSearchConfig.agentic_params?.max_context_chars || 4000}
                               onChange={(e) => setEditingSearchConfig({
                                 ...editingSearchConfig,
                                 agentic_params: {
-                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", generate_summaries: false, custom_prompt: "" }),
-                                  generate_summaries: e.target.checked
+                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
+                                  max_context_chars: parseInt(e.target.value) || 4000
                                 }
                               })}
-                              className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
+                              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                             />
                           </div>
 
-                          {/* Custom instructions */}
+                          {/* Custom split rules */}
                           <div className="space-y-1.5">
                             <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
-                              {appLanguage === "cs" ? "Vlastní instrukce pro dělení" : "Custom Split Instructions"}
+                              {appLanguage === "cs" ? "Vlastní pravidla pro dělení LLM" : "Custom LLM Split Rules"}
                               <Tooltip text={TRANSLATIONS[appLanguage].tooltips.agentic_custom_prompt} />
                             </label>
                             <textarea
                               rows={3}
-                              placeholder="e.g. Split only when a new legal paragraph begins..."
+                              placeholder={appLanguage === "cs" ? "např. Rozděl text pouze tam, kde začíná nový právní článek nebo odsek..." : "e.g. Split only when a new legal paragraph or section begins..."}
                               value={editingSearchConfig.agentic_params?.custom_prompt || ""}
                               onChange={(e) => setEditingSearchConfig({
                                 ...editingSearchConfig,
                                 agentic_params: {
-                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", generate_summaries: false, custom_prompt: "" }),
+                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
                                   custom_prompt: e.target.value
                                 }
                               })}
@@ -3285,7 +3341,6 @@ export default function Home() {
                               : "Do you really want to trigger a background re-indexing of all documents?\n\nThis operation may take several minutes."
                           );
                           if (conf) {
-                            // Automatically save first to ensure background task gets current sliders configuration
                             await saveSearchConfigToServer(editingSearchConfig);
                             startReindexing("reindex-all", "scanning");
                           }
@@ -3336,7 +3391,7 @@ export default function Home() {
                       </select>
                     </div>
 
-                    {(editingSearchConfig?.chunking_strategy === "agentic" || editingSearchConfig?.chunking_strategy === "semantic") && (
+                    {(editingSearchConfig?.chunking_strategy === "agentic" || editingSearchConfig?.chunking_strategy === "semantic" || editingSearchConfig?.enrich_with_summary) && (
                       <button
                         onClick={() => triggerManualPreviewFetch()}
                         className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 whitespace-nowrap cursor-pointer flex items-center gap-1.5"
@@ -3347,6 +3402,17 @@ export default function Home() {
                     )}
                   </div>
                 </div>
+
+                {(editingSearchConfig?.chunking_strategy === "agentic" || editingSearchConfig?.chunking_strategy === "semantic" || editingSearchConfig?.enrich_with_summary) && (
+                  <div className="text-[11px] text-amber-300 bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <span>
+                      {appLanguage === "cs"
+                        ? "Rychlý náhled (AI dělení / Sémantika / AI Shrnutí) je v reálném čase pouze orientační. Pro kompletní spuštění AI modelů přes OpenAI klikněte na tlačítko '🔄 Znovu vygenerovat'."
+                        : "Real-time preview (AI splitting / Semantic / AI Summaries) is approximate. Click '🔄 Regenerate' to execute full AI processing via OpenAI."}
+                    </span>
+                  </div>
+                )}
 
                 {loadingPreviewChunks ? (
                   <div className="flex-1 flex flex-col items-center justify-center py-12 text-zinc-500 gap-3">
