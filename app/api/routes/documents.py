@@ -1100,12 +1100,16 @@ async def preview_document_chunks(
     chunk_size = payload.get("chunk_size", 1500)
     chunk_overlap = payload.get("chunk_overlap", 250)
     chunk_cross_page = payload.get("chunk_cross_page", False)
+    overlap_cross_page = payload.get("overlap_cross_page", False)
     chunk_splitter_type = payload.get("chunk_splitter_type", "recursive")
     chunking_strategy = payload.get("chunking_strategy", "standard")
     semantic_params = payload.get("semantic_params")
     structure_params = payload.get("structure_params")
     token_params = payload.get("token_params")
     agentic_params = payload.get("agentic_params")
+    
+    from app.providers.azure_openai import AzureOpenAIProvider
+    llm_provider = AzureOpenAIProvider()
     
     if not document_id:
         raise HTTPException(status_code=400, detail="Missing document_id")
@@ -1153,13 +1157,15 @@ async def preview_document_chunks(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         chunk_cross_page=chunk_cross_page,
+        overlap_cross_page=overlap_cross_page,
         chunk_splitter_type=chunk_splitter_type,
         chunking_strategy=chunking_strategy,
         semantic_params=semantic_params,
         structure_params=structure_params,
         token_params=token_params,
         agentic_params=agentic_params,
-        embedding_provider=embedding_provider
+        embedding_provider=embedding_provider,
+        llm_provider=llm_provider
     )
     chunks = splitter.split_pages(pages)
     

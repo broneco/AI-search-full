@@ -7,6 +7,9 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ## [Unreleased]
 
 ### Added
+- **Eliminated 100% Pure Overlap Chunks**: Fixed end-of-text boundary loops across character, token, and recursive splitters to ensure chunks are never created containing only duplicate overlap text without new non-whitespace content.
+- **Separate Cross-Page Overlap Toggle (`overlap_cross_page`)**: Added dedicated settings control allowing chunk overlap to carry over across page transitions independently of continuous page content merging (`chunk_cross_page`).
+- **Dynamic Agentic LLM Editor Processing**: Implemented real `AzureOpenAIProvider` LLM generation for Agentic chunking. Custom prompt rules (`custom_prompt`) and summary settings (`generate_summaries`) are now sent directly to Azure OpenAI, dynamically formatting summaries according to user instructions.
 - **Decoupled Localization and Tooltips**: Created separate translation file `frontend/app/translations.ts` containing all copy strings and nested strategy tooltips, reducing `frontend/app/page.tsx` size by 400+ lines and separating content from JSX markup.
 - **Advanced Chunking Strategy Engines**: Added complete backend splitting support for Semantic Chunking (topic shifts via sentence embeddings cosine similarity), Structure-Aware (preserving markdown headers and block hierarchies), Token-Based (splitting by tiktoken token count), and Agentic (LLM-driven summaries prepend prefix).
 - **Dynamic Strategies Config UI Panel**: Built dynamic parameter form input fields in the Next.js chunking tab that show or hide inputs based on the selected strategy. Added help icon widgets rendering hover tooltips bound to translated strings.

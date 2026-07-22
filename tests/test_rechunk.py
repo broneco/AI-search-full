@@ -247,18 +247,18 @@ def test_advanced_chunking_strategies():
     assert chunks_struct[0].content.startswith("# Heading 1")
     assert chunks_struct[1].content.startswith("## Heading 2")
 
-    # 3. Agentic Strategy (with summaries)
+    # 3. Agentic Strategy (with summaries and custom prompt)
     splitter_agentic = RecursiveCharacterTextSplitter(
         chunking_strategy="agentic",
-        agentic_params={"generate_summaries": True, "model_name": "gpt-4o-mini"}
+        agentic_params={"generate_summaries": True, "custom_prompt": "Shrnutí v angličtině prosím", "model_name": "gpt-4o-mini"}
     )
     chunks_agentic = splitter_agentic.split_pages(pages)
     assert len(chunks_agentic) > 0
-    assert "[AI Shrnutí:" in chunks_agentic[0].content
+    assert "[AI Shrnutí" in chunks_agentic[0].content
 
     # 4. Semantic Strategy (with mock embedding provider)
     class MockEmbeddingProvider:
-        def embed_documents(self, texts):
+        async def embed_documents(self, texts):
             return [[0.1] * 1536 for _ in texts]
             
     splitter_semantic = RecursiveCharacterTextSplitter(
@@ -274,6 +274,14 @@ def test_advanced_chunking_strategies():
     )
     chunks_semantic = splitter_semantic.split_pages(pages)
     assert len(chunks_semantic) > 0
+
+    # 5. Overlap Cross Page & No Pure-Overlap Duplicates Verification
+    distinct_text = " ".join([f"UniqueWord{i}" for i in range(200)])
+    splitter_no_dup = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=30, chunk_splitter_type="character")
+    chunks_no_dup = splitter_no_dup.split_pages([ExtractedPage(page_number=1, text=distinct_text)])
+    # Ensure no chunk is a duplicate substring of its predecessor
+    for i in range(1, len(chunks_no_dup)):
+        assert chunks_no_dup[i].content not in chunks_no_dup[i-1].content
 
 
 

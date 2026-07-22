@@ -40,6 +40,7 @@ Phase 2/3 Separation of Ingestion Chunking Settings Page & Fast database re-inde
 Phase 2/3 Interactive Live Chunking Preview (POST /preview-chunks simulator, dropdown document selector, debounced UI, color-coded segment indicators, and TestClient API test cases) - [x] Completed.
 Phase 2/3 Dynamic Chunking strategies, Overlap Visualizations, and PDF page viewer links (Recursive vs Character splitter settings, chunk_cross_page continuous boundary combination with offset-based page mapping, visual overlap dotted highlighter, raw PDF format description card, and original streamed PDF anchor links) - [x] Completed.
 Phase 2/3 Advanced Chunking strategies & localized tooltips decoupling (Semantic sentence embeddings similarity splitting, Structure-aware Markdown parsing, Token-based Tiktoken splitting, Agentic LLM-summary chunk prefixes, decoupled translations.ts localized dictionary, conditional settings panel layout, and pytest test suite) - [x] Completed.
+Phase 2/3 Pure Overlap Elimination, Cross-page Overlap toggle & Agentic LLM Execution (Eliminated 100% duplicate overlap chunks, added overlap_cross_page setting, executed custom prompts with AzureOpenAIProvider, added tooltips and pytest coverage) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 

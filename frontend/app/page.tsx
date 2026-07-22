@@ -66,6 +66,7 @@ interface SearchConfig {
   chunk_size: number;
   chunk_overlap: number;
   chunk_cross_page: boolean;
+  overlap_cross_page?: boolean;
   chunk_splitter_type: "recursive" | "character";
   chunking_strategy?: "standard" | "semantic" | "structure" | "token" | "agentic";
   semantic_params?: {
@@ -405,6 +406,7 @@ export default function Home() {
           chunk_size: editingSearchConfig.chunk_size,
           chunk_overlap: editingSearchConfig.chunk_overlap,
           chunk_cross_page: editingSearchConfig.chunk_cross_page,
+          overlap_cross_page: editingSearchConfig.overlap_cross_page,
           chunk_splitter_type: editingSearchConfig.chunk_splitter_type,
           chunking_strategy: editingSearchConfig.chunking_strategy || "standard",
           semantic_params: editingSearchConfig.semantic_params,
@@ -449,6 +451,7 @@ export default function Home() {
     editingSearchConfig?.chunk_size,
     editingSearchConfig?.chunk_overlap,
     editingSearchConfig?.chunk_cross_page,
+    editingSearchConfig?.overlap_cross_page,
     editingSearchConfig?.chunk_splitter_type,
     editingSearchConfig?.chunking_strategy,
     JSON.stringify(editingSearchConfig?.semantic_params),
@@ -3186,6 +3189,7 @@ export default function Home() {
                           <div className="space-y-1.5">
                             <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
                               {appLanguage === "cs" ? "Vlastní instrukce pro dělení" : "Custom Split Instructions"}
+                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.agentic_custom_prompt} />
                             </label>
                             <textarea
                               rows={3}
@@ -3221,6 +3225,27 @@ export default function Home() {
                           type="checkbox"
                           checked={editingSearchConfig.chunk_cross_page || false}
                           onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_cross_page: e.target.checked })}
+                          className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Allow overlap crossing pages */}
+                      <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-xl border border-white/[0.04]">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[11px] text-zinc-200 font-semibold flex items-center">
+                            {appLanguage === "cs" ? "Překryv (overlap) napříč stránkami" : "Allow overlap across pages"}
+                            <Tooltip text={TRANSLATIONS[appLanguage].tooltips.overlap_cross_page} />
+                          </span>
+                          <span className="text-[9px] text-zinc-500 max-w-[200px] leading-tight">
+                            {appLanguage === "cs"
+                              ? "Přenáší duplikovaný opakovací přesah z konce strany na novou stranu."
+                              : "Carries trailing duplication overlap across page transitions."}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={editingSearchConfig.overlap_cross_page || false}
+                          onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, overlap_cross_page: e.target.checked })}
                           className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
                         />
                       </div>

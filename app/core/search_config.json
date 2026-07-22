@@ -16,6 +16,7 @@
   "chunk_size": 2000,
   "chunk_overlap": 250,
   "chunk_cross_page": false,
+  "overlap_cross_page": false,
   "chunk_splitter_type": "recursive",
   "context_max_tokens": 4000,
   "chunking_strategy": "standard",

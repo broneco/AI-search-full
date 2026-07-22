@@ -26,18 +26,22 @@ class IngestionPipeline:
         from app.core.search_config import SearchConfigManager
         manager = SearchConfigManager()
         config = manager.load_config_sync()
+        from app.providers.azure_openai import AzureOpenAIProvider
         self.embedding_provider = AzureOpenAIEmbeddingProvider()
+        self.llm_provider = AzureOpenAIProvider()
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=config.get("chunk_size", 1500),
             chunk_overlap=config.get("chunk_overlap", 250),
             chunk_cross_page=config.get("chunk_cross_page", False),
+            overlap_cross_page=config.get("overlap_cross_page", False),
             chunk_splitter_type=config.get("chunk_splitter_type", "recursive"),
             chunking_strategy=config.get("chunking_strategy", "standard"),
             semantic_params=config.get("semantic_params"),
             structure_params=config.get("structure_params"),
             token_params=config.get("token_params"),
             agentic_params=config.get("agentic_params"),
-            embedding_provider=self.embedding_provider
+            embedding_provider=self.embedding_provider,
+            llm_provider=self.llm_provider
         )
         self.blob_provider = BlobStorageProvider()
 

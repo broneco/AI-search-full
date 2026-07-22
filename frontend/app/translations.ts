@@ -211,6 +211,7 @@ export const TRANSLATIONS = {
       chunk_size: "Maximální počet znaků v jednom segmentu. Větší chunky uchovávají širší kontext, menší jsou přesnější pro vyhledávání detailů.",
       chunk_overlap: "Počet znaků, které se duplikují na rozhraní sousedních chunků. Pomáhá zachovat plynulost informací na hranicích rozdělení.",
       chunk_cross_page: "Pokud je zapnuto, text stránek se spojí a chunky mohou přesahovat konce stránek. Vhodné pro souvislá čtení.",
+      overlap_cross_page: "Umožňuje, aby se opakovací přesah (overlap) přenášel i přes hranice stránek (z konce jedné strany na začátek druhé), i pokud jsou jednotlivé stránky děleny samostatně.",
       semantic_threshold_type: "Způsob detekce tématických skoků (percentil vzdálenosti, násobek směrodatné odchylky nebo absolutní hodnota).",
       semantic_threshold_value: "Číselná hranice pro tématický skok. Vyšší hodnota generuje méně (ale větších) chunků, nižší hodnota rozděluje text častěji.",
       semantic_sentence_splitter: "NLP nástroj pro rozdělení textu na jednotlivé věty, které se následně porovnávají.",
@@ -220,7 +221,8 @@ export const TRANSLATIONS = {
       structure_preserve_lists: "Zajistí, že celé odrážkové seznamy nebudou rozděleny do samostatných chunků.",
       token_tokenizer_type: "Typ tokenizéru, který odpovídá cílovému LLM modelu. Zaručuje absolutní přesnost velikostí tokenů.",
       agentic_model_name: "AI model, který provede analýzu a rozdělení dokumentu. Menší modely jsou rychlejší a levnější.",
-      agentic_generate_summaries: "AI vytvoří krátké shrnutí pro každý segment a připojí jej na začátek chunku pro posílení sémantického vyhledávání."
+      agentic_generate_summaries: "AI vytvoří krátké shrnutí pro každý segment a připojí jej na začátek chunku pro posílení sémantického vyhledávání.",
+      agentic_custom_prompt: "Vlastní instrukce a pravidla pro LLM editor (např. 'Přednostně děl na hranicích paragrafů' nebo 'Shrnutí generuj v angličtině')."
     }
   },
   en: {
@@ -435,6 +437,7 @@ export const TRANSLATIONS = {
       chunk_size: "Maximum character length of a segment. Larger chunks preserve broader context; smaller chunks are more precise for details.",
       chunk_overlap: "Number of characters duplicated between adjacent chunks. Helps preserve context continuity across splitting boundaries.",
       chunk_cross_page: "If enabled, page texts are merged and chunks can cross page transitions. Best for continuous reading flow.",
+      overlap_cross_page: "Allows the duplication overlap to carry across page boundaries (from the tail of page N to the start of page N+1) even when page-isolated chunking is used.",
       semantic_threshold_type: "Formula to detect topic shifts (distance percentile, standard deviation multiplier, or absolute cosine value).",
       semantic_threshold_value: "Numerical threshold for topic shifts. Higher values generate fewer (larger) chunks; lower values split text more frequently.",
       semantic_sentence_splitter: "NLP utility used to isolate sentences prior to vector comparison.",
@@ -444,7 +447,8 @@ export const TRANSLATIONS = {
       structure_preserve_lists: "Ensures bullet lists are kept fully together inside a single chunk.",
       token_tokenizer_type: "The tokenizer matching your target LLM. Guarantees absolute token measurement accuracy.",
       agentic_model_name: "The AI model that performs the segmentation. Smaller models are faster and cheaper.",
-      agentic_generate_summaries: "AI generates a short summary for each segment and prepends it to the chunk to boost vector search retrieval."
+      agentic_generate_summaries: "AI generates a short summary for each segment and prepends it to the chunk to boost vector search retrieval.",
+      agentic_custom_prompt: "Custom instructions and rules for the LLM editor (e.g. 'Split preferably on article boundaries' or 'Generate summaries in English')."
     }
   }
 };

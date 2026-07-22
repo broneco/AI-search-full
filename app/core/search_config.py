@@ -52,6 +52,7 @@ class SearchConfigSchema(BaseModel):
     chunk_size: int = Field(1500, ge=200, le=5000)
     chunk_overlap: int = Field(250, ge=0, le=1000)
     chunk_cross_page: bool = Field(False)
+    overlap_cross_page: bool = Field(False)
     chunk_splitter_type: str = Field("recursive", pattern="^(recursive|character)$")
     context_max_tokens: int = Field(4000, ge=1000, le=30000)
 
@@ -146,6 +147,7 @@ class SearchConfigManager:
             "chunk_size": 1500,
             "chunk_overlap": 250,
             "chunk_cross_page": False,
+            "overlap_cross_page": False,
             "chunk_splitter_type": "recursive",
             "context_max_tokens": 4000,
             "chunking_strategy": "standard",

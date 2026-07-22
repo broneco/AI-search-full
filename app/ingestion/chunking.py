@@ -22,6 +22,7 @@ class RecursiveCharacterTextSplitter:
         chunk_size: int = 1500,
         chunk_overlap: int = 250,
         chunk_cross_page: bool = False,
+        overlap_cross_page: bool = False,
         chunk_splitter_type: str = "recursive",
         chunking_strategy: str = "standard",
         semantic_params: Optional[dict] = None,
@@ -29,11 +30,13 @@ class RecursiveCharacterTextSplitter:
         token_params: Optional[dict] = None,
         agentic_params: Optional[dict] = None,
         embedding_provider: Optional[Any] = None,
+        llm_provider: Optional[Any] = None,
     ) -> None:
         from typing import Any
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.chunk_cross_page = chunk_cross_page
+        self.overlap_cross_page = overlap_cross_page
         self.chunk_splitter_type = chunk_splitter_type
         self.chunking_strategy = chunking_strategy
         self.semantic_params = semantic_params or {}
@@ -41,6 +44,7 @@ class RecursiveCharacterTextSplitter:
         self.token_params = token_params or {}
         self.agentic_params = agentic_params or {}
         self.embedding_provider = embedding_provider
+        self.llm_provider = llm_provider
         self.separators = ["\n\n", "\n", " ", ""]
 
     def _split_character_only_with_params(self, text: str, size: int, overlap: int) -> List[str]:
@@ -53,7 +57,11 @@ class RecursiveCharacterTextSplitter:
             step = 1
         while start < len(text):
             end = start + size
-            chunks.append(text[start:end])
+            chunk_str = text[start:end]
+            if chunk_str.strip():
+                chunks.append(chunk_str)
+            if end >= len(text):
+                break
             start += step
         return chunks
 
@@ -70,7 +78,11 @@ class RecursiveCharacterTextSplitter:
             while start < len(tokens):
                 end = start + size
                 chunk_tokens = tokens[start:end]
-                chunks.append(encoding.decode(chunk_tokens))
+                decoded = encoding.decode(chunk_tokens)
+                if decoded.strip():
+                    chunks.append(decoded)
+                if end >= len(tokens):
+                    break
                 start += step
             return chunks
         except Exception as e:
@@ -232,15 +244,72 @@ class RecursiveCharacterTextSplitter:
 
     def _split_agentic(self, text: str) -> List[str]:
         generate_summaries = self.agentic_params.get("generate_summaries", False)
+        custom_prompt = self.agentic_params.get("custom_prompt", "").strip()
+        model_name = self.agentic_params.get("model_name", "gpt-4o-mini")
+
         splits = self._split_text(text, self.separators)
-        if generate_summaries:
+        if not splits:
+            return [text]
+
+        if generate_summaries or custom_prompt:
             final_splits = []
             for chunk in splits:
-                words = chunk.split()[:8]
-                summary = " ".join(words) + "..."
-                summary_prefix = f"[AI Shrnutí: Zpracování pasáže týkající se: {summary}]\n\n"
-                final_splits.append(summary_prefix + chunk)
+                if not chunk.strip():
+                    continue
+
+                summary_text = None
+                if self.llm_provider and hasattr(self.llm_provider, "generate"):
+                    try:
+                        import asyncio
+                        import concurrent.futures
+                        from app.providers.llm import ChatMessage
+
+                        system_instruction = (
+                            "You are an expert AI document editor and summarizer.\n"
+                            "Summarize the provided text passage in 1-2 concise sentences."
+                        )
+                        if custom_prompt:
+                            system_instruction += (
+                                f"\nCRITICAL INSTRUCTION FROM USER:\n"
+                                f"Strictly follow these custom rules for output language, format, or focus:\n"
+                                f"\"{custom_prompt}\""
+                            )
+
+                        messages = [
+                            ChatMessage(role="system", content=system_instruction),
+                            ChatMessage(role="user", content=f"Text passage:\n{chunk}")
+                        ]
+
+                        try:
+                            loop = asyncio.get_running_loop()
+                        except RuntimeError:
+                            loop = None
+
+                        if loop and loop.is_running():
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                                future = executor.submit(
+                                    lambda: asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
+                                )
+                                summary_text = future.result()
+                        else:
+                            summary_text = asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
+                    except Exception as e:
+                        logger.error(f"Agentic LLM prompt execution failed: {e}")
+
+                if summary_text and summary_text.strip():
+                    summary_clean = summary_text.strip()
+                    summary_prefix = f"[AI Shrnutí: {summary_clean}]\n\n"
+                    final_splits.append(summary_prefix + chunk)
+                else:
+                    words = chunk.split()[:8]
+                    fallback_words = " ".join(words) + "..."
+                    if custom_prompt:
+                        summary_prefix = f"[AI Shrnutí ({custom_prompt}): {fallback_words}]\n\n"
+                    else:
+                        summary_prefix = f"[AI Shrnutí: {fallback_words}]\n\n"
+                    final_splits.append(summary_prefix + chunk)
             return final_splits
+
         return splits
 
     def _split_character_only(self, text: str) -> List[str]:
@@ -254,7 +323,11 @@ class RecursiveCharacterTextSplitter:
             step = 1
         while start < len(text):
             end = start + self.chunk_size
-            chunks.append(text[start:end])
+            chunk_str = text[start:end]
+            if chunk_str.strip():
+                chunks.append(chunk_str)
+            if end >= len(text):
+                break
             start += step
         return chunks
 
@@ -281,7 +354,9 @@ class RecursiveCharacterTextSplitter:
             if len(split) > self.chunk_size:
                 # Flush current chunk first
                 if current_chunk:
-                    final_chunks.append(separator.join(current_chunk))
+                    chunk_str = separator.join(current_chunk)
+                    if chunk_str.strip():
+                        final_chunks.append(chunk_str)
                     current_chunk = []
                     current_len = 0
                     
@@ -292,14 +367,19 @@ class RecursiveCharacterTextSplitter:
                     # No separators left, force-split by characters
                     start = 0
                     while start < len(split):
-                        final_chunks.append(split[start:start + self.chunk_size])
+                        chunk_str = split[start:start + self.chunk_size]
+                        if chunk_str.strip():
+                            final_chunks.append(chunk_str)
+                        if start + self.chunk_size >= len(split):
+                            break
                         start += self.chunk_size - self.chunk_overlap
             else:
                 # If adding this split exceeds chunk_size, flush and start a new chunk
-                # Note: include separators in length calculation
                 split_len = len(split) + (len(separator) if current_chunk else 0)
                 if current_len + split_len > self.chunk_size:
-                    final_chunks.append(separator.join(current_chunk))
+                    chunk_str = separator.join(current_chunk)
+                    if chunk_str.strip():
+                        final_chunks.append(chunk_str)
                     
                     # Backtrack for overlap
                     overlap_splits = []
@@ -319,7 +399,16 @@ class RecursiveCharacterTextSplitter:
                 current_len += len(split) + (len(separator) if len(current_chunk) > 1 else 0)
                 
         if current_chunk:
-            final_chunks.append(separator.join(current_chunk))
+            chunk_str = separator.join(current_chunk)
+            if chunk_str.strip():
+                if final_chunks:
+                    prev = final_chunks[-1]
+                    if prev.endswith(chunk_str) or chunk_str in prev:
+                        pass # Pure overlap - skip!
+                    else:
+                        final_chunks.append(chunk_str)
+                else:
+                    final_chunks.append(chunk_str)
             
         return final_chunks
 
@@ -358,7 +447,6 @@ class RecursiveCharacterTextSplitter:
 
         if self.chunk_cross_page:
             # CROSS-PAGE CHUNKING STRATEGY
-            # 1. Concatenate all page texts and keep track of character offsets per page boundary
             concat_text = ""
             page_boundaries = []  # List of tuples: (start_idx, end_idx, page_number, headers)
             for page in pages:
@@ -366,7 +454,6 @@ class RecursiveCharacterTextSplitter:
                 concat_text += page.text + "\n"
                 end = len(concat_text)
                 
-                # Extract headers for this page and translate start offset to global concat offset
                 headers = []
                 for match in SECTION_REGEX.finditer(page.text):
                     global_header_start = start + match.start()
@@ -374,10 +461,8 @@ class RecursiveCharacterTextSplitter:
                 
                 page_boundaries.append((start, end, page.page_number, headers))
 
-            # 2. Split the concatenated continuous text string
             splits = self._run_split_strategy(concat_text)
 
-            # 3. Resolve page number, section title, and offsets sequentially
             current_offset = 0
             active_section = None
             
@@ -386,23 +471,19 @@ class RecursiveCharacterTextSplitter:
                 if not content_stripped:
                     continue
 
-                # Find start offset in concatenated text to determine page and section mapping
                 start_idx = concat_text.find(content_stripped, current_offset)
                 if start_idx == -1:
                     start_idx = current_offset
                 else:
                     current_offset = start_idx + len(content_stripped)
 
-                # Determine which page this chunk starts on
                 chunk_page = 1
                 chunk_headers = []
                 for p_start, p_end, p_num, p_headers in page_boundaries:
                     if p_start <= start_idx < p_end:
                         chunk_page = p_num
-                    # Collect all headers for section resolution
                     chunk_headers.extend(p_headers)
 
-                # Sort headers by global start offset to find active section
                 chunk_headers.sort(key=lambda x: x[0])
                 
                 chunk_section = active_section
@@ -427,20 +508,32 @@ class RecursiveCharacterTextSplitter:
         else:
             # PAGE-ISOLATED CHUNKING STRATEGY (default)
             active_section = None
+            prev_page_overlap = ""
             for page in pages:
                 text = page.text
                 if not text.strip():
                     continue
 
-                # Find all section headers on the current page
+                if self.overlap_cross_page and prev_page_overlap:
+                    text_to_split = prev_page_overlap + "\n" + text
+                else:
+                    text_to_split = text
+
                 headers = []
                 for match in SECTION_REGEX.finditer(text):
                     headers.append((match.start(), match.group(1).strip()))
 
-                # Split text on this page using strategy
-                page_splits = self._run_split_strategy(text)
+                page_splits = self._run_split_strategy(text_to_split)
 
-                # Reconstruct character start offsets to resolve sections
+                if self.overlap_cross_page and page_splits:
+                    last_split = page_splits[-1]
+                    if len(last_split) > self.chunk_overlap:
+                        prev_page_overlap = last_split[-self.chunk_overlap:]
+                    else:
+                        prev_page_overlap = last_split
+                else:
+                    prev_page_overlap = ""
+
                 current_offset = 0
                 for content in page_splits:
                     content_stripped = content.strip()
@@ -453,7 +546,6 @@ class RecursiveCharacterTextSplitter:
                     else:
                         current_offset = start_idx + len(content_stripped)
 
-                    # Resolve active section title
                     chunk_section = active_section
                     for h_start, h_title in headers:
                         if h_start <= start_idx:

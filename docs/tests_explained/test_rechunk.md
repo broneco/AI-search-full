@@ -62,10 +62,11 @@ This test suite verifies the background re-indexing and document re-segmentation
 ### Test 4: `test_advanced_chunking_strategies`
 
 * **High-Level Purpose:**
-  Verifies that all four newly introduced advanced segmentation strategies (Token-based, Structure-aware, Agentic, and Semantic) split text correctly and parse options dynamically.
+  Verifies that all advanced segmentation strategies (Token-based, Structure-aware, Agentic, and Semantic) split text correctly, handle custom user prompts, eliminate 100% pure overlap duplicate chunks, and respect page overlap boundaries.
 * **Low-Level Technical Details:**
   * **Token-based check:** Splits text based on tokenizer encoding counts (simulating tiktoken model counts). Asserts that the resulting output returns segmented chunks.
   * **Structure-aware check:** Slices markdown text containing headings (`#` and `##`) and verifies that chunks are aligned cleanly along heading boundaries.
-  * **Agentic check:** Runs the agentic splitter with `generate_summaries` enabled, asserting that AI summaries are generated and correctly prepended as headings to the chunk.
-  * **Semantic check:** Employs a custom `MockEmbeddingProvider` to calculate cosine similarities between sentences, computing standard deviation boundaries to split sentences on topic transitions. Asserts that the semantic splitter segments sentences on topic jumps without crashing.
+  * **Agentic check:** Runs the agentic splitter with `generate_summaries` enabled and custom prompt `Shrnutí v angličtině prosím`, asserting that LLM summaries are generated and correctly prepended to the chunk.
+  * **Semantic check:** Employs an async `MockEmbeddingProvider` to calculate cosine similarities between sentences, computing standard deviation boundaries to split sentences on topic transitions without crashing.
+  * **Pure Overlap & Cross-Page Overlap check:** Runs character splitting with `chunk_overlap = 30` over distinct words, asserting that no chunk is a 100% duplicate substring of its predecessor and that `overlap_cross_page` controls carryover across page breaks.
 
