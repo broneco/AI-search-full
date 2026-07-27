@@ -43,6 +43,7 @@ Phase 2/3 Advanced Chunking strategies & localized tooltips decoupling (Semantic
 43: Phase 2/3 Pure Overlap Elimination, Cross-page Overlap toggle & Agentic LLM Execution (Eliminated 100% duplicate overlap chunks, added overlap_cross_page setting, executed custom prompts with AzureOpenAIProvider, added tooltips and pytest coverage) - [x] Completed.
 44: Phase 2/3 Universal AI Summary Enrichment, True Agentic LLM Boundary Splitting & Deferred Preview Calls (Decoupled AI summaries into universal toggle for all strategies, implemented true LLM delimiter splitting with max_context_chars batching, deferred preview AI API calls to 'Znovu vygenerovat' button with warning banner) - [x] Completed.
 45: Phase 2/3 Dedicated End-User Search Application & Embedded Formatted PDF Viewer (Created frontend-user Next.js application, glassmorphic search UI without admin controls, CZ/EN dictionary, ACL role switcher, and PdfViewerModal with dynamic PyMuPDF yellow text highlight overlays) - [x] Completed.
+46: Phase 2/3 Direct Live PDF Right Inspector Panel & Interactive Citation Document Badges (Embedded live PDF page canvas in right panel drawer with dynamic PyMuPDF yellow text highlight overlays, zoom controls, download links, and interactive document badges in AI answer text) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 

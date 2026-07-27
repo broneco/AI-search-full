@@ -35,8 +35,9 @@ export default function UserSearchPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [activeSource, setActiveSource] = useState<CitationSource | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState<boolean>(false);
+  const [drawerZoom, setDrawerZoom] = useState<number>(100);
 
-  // PDF Viewer Modal State
+  // PDF Viewer Modal State (Full screen expansion)
   const [pdfModalOpen, setPdfModalOpen] = useState<boolean>(false);
   const [selectedPdfDocId, setSelectedPdfDocId] = useState<string | null>(null);
   const [selectedPdfTitle, setSelectedPdfTitle] = useState<string>("");
@@ -125,9 +126,10 @@ export default function UserSearchPage() {
         };
         setMessages([...newMessages, assistantMessage]);
 
-        // Auto-select first citation source if available
+        // Auto-select first citation source if available and open PDF drawer
         if (data.sources && data.sources.length > 0) {
           setActiveSource(data.sources[0]);
+          setWorkspaceOpen(true);
         }
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -153,8 +155,8 @@ export default function UserSearchPage() {
     }
   };
 
-  // Open PDF Viewer Modal for a specific citation
-  const openPdfViewer = (source: CitationSource) => {
+  // Open Full-screen PDF Viewer Modal
+  const openPdfViewerModal = (source: CitationSource) => {
     setSelectedPdfDocId(source.document_id);
     setSelectedPdfTitle(source.title);
     setSelectedPdfPage(source.page_number || 1);
@@ -162,7 +164,7 @@ export default function UserSearchPage() {
     setPdfModalOpen(true);
   };
 
-  // Render assistant response with interactive inline citations [1], [2]
+  // Render assistant response with interactive inline document badges
   const renderMessageContent = (msg: Message) => {
     if (msg.role === "user") {
       return <p className="text-sm text-zinc-100 leading-relaxed font-medium">{msg.content}</p>;
@@ -171,14 +173,15 @@ export default function UserSearchPage() {
     let parsedContent = msg.content;
 
     if (msg.sources && msg.sources.length > 0) {
-      const parts = parsedContent.split(/(\[\d+\])/g);
+      // Regex matches both [1] and [Source 1] patterns
+      const parts = parsedContent.split(/(\[(?:Source\s*)?\d+\])/gi);
       return (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="text-sm text-zinc-200 leading-relaxed space-y-2">
             {parts.map((part, idx) => {
-              const match = part.match(/\[(\d+)\]/);
+              const match = part.match(/\[(?:Source\s*)?(\d+)\]/i);
               if (match) {
-                const citeIndex = parseInt(match[1]) - 1;
+                const citeIndex = parseInt(match[1], 10) - 1;
                 const source = msg.sources && msg.sources[citeIndex];
 
                 if (source) {
@@ -189,11 +192,15 @@ export default function UserSearchPage() {
                         setActiveSource(source);
                         setWorkspaceOpen(true);
                       }}
-                      className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-md bg-indigo-500/20 hover:bg-indigo-500/35 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition-all transform hover:scale-105 cursor-pointer shadow-sm"
-                      title={`${source.title} (${TRANSLATIONS[appLanguage].pageLabel} ${source.page_number || "N/A"})`}
+                      className="inline-flex items-center gap-1.5 mx-1 px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-500/50 text-indigo-200 hover:text-white border border-indigo-500/40 text-xs font-semibold transition-all transform hover:scale-105 cursor-pointer shadow-md my-0.5"
+                      title={`Klikněte pro zobrazení originální PDF strany ${source.page_number || 1}`}
                     >
                       <span>📄</span>
-                      <span>[{citeIndex + 1}]</span>
+                      <span className="font-bold">[{citeIndex + 1}]</span>
+                      <span className="truncate max-w-[180px] font-normal">{source.title}</span>
+                      <span className="text-[10px] bg-indigo-500/30 px-1.5 py-0.2 rounded font-mono">
+                        {TRANSLATIONS[appLanguage].pageLabel} {source.page_number || 1}
+                      </span>
                     </button>
                   );
                 }
@@ -202,7 +209,7 @@ export default function UserSearchPage() {
             })}
           </div>
 
-          {/* Sources Quick Buttons Bar */}
+          {/* Bottom Summary List of Citations */}
           <div className="pt-3 border-t border-white/10 flex flex-wrap gap-2 items-center">
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
               {TRANSLATIONS[appLanguage].citationsTitle}:
@@ -214,15 +221,16 @@ export default function UserSearchPage() {
                   setActiveSource(src);
                   setWorkspaceOpen(true);
                 }}
-                className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`text-xs px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer ${
                   activeSource?.chunk_id === src.chunk_id
-                    ? "bg-indigo-600 text-white border-indigo-400 shadow-md font-bold"
+                    ? "bg-indigo-600 text-white border-indigo-400 shadow-lg font-bold"
                     : "bg-white/5 hover:bg-white/10 text-zinc-300 border-white/10"
                 }`}
               >
+                <span>📄</span>
                 <span>[{sIdx + 1}]</span>
-                <span className="truncate max-w-[160px]">{src.title}</span>
-                <span className="text-[10px] opacity-75 font-mono">({TRANSLATIONS[appLanguage].pageLabel} {src.page_number || 1})</span>
+                <span className="truncate max-w-[180px]">{src.title}</span>
+                <span className="text-[10px] opacity-80 font-mono">({TRANSLATIONS[appLanguage].pageLabel} {src.page_number || 1})</span>
               </button>
             ))}
           </div>
@@ -403,111 +411,124 @@ export default function UserSearchPage() {
           </div>
         </main>
 
-        {/* 3. Right Citation Source Inspector Drawer */}
+        {/* 3. Direct Live Formatted PDF Page Inspector Drawer */}
         {(workspaceOpen || activeSource) && (
-          <aside className="w-full lg:w-96 border-l border-white/10 bg-[#0d1322] flex flex-col h-full shrink-0 z-20 shadow-2xl transition-all">
-            {/* Drawer Header */}
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">📁</span>
-                <div>
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                    {TRANSLATIONS[appLanguage].citationsTitle}
+          <aside className="w-full lg:w-[480px] xl:w-[560px] border-l border-white/10 bg-[#0d1322] flex flex-col h-full shrink-0 z-20 shadow-2xl transition-all">
+            {/* Drawer Header Toolbar */}
+            <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <span className="text-lg">📄</span>
+                <div className="overflow-hidden">
+                  <h3 className="text-xs font-bold text-white truncate max-w-[240px]" title={activeSource?.title}>
+                    {activeSource?.title || "PDF Doklad"}
                   </h3>
-                  <p className="text-[10px] text-zinc-400">
-                    {TRANSLATIONS[appLanguage].citationsSubtitle}
-                  </p>
+                  <div className="flex items-center gap-2 text-[10px] text-zinc-400 mt-0.5">
+                    <span className="bg-indigo-500/20 text-indigo-300 font-bold px-2 py-0.5 rounded border border-indigo-500/30 font-mono">
+                      {TRANSLATIONS[appLanguage].pageLabel} {activeSource?.page_number || 1}
+                    </span>
+                    <span className="bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-500/30">
+                      ✨ PyMuPDF Highlight
+                    </span>
+                  </div>
                 </div>
               </div>
-              <button
-                onClick={() => setWorkspaceOpen(false)}
-                className="text-zinc-400 hover:text-white text-lg p-1 transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
+
+              {/* PDF Control Buttons */}
+              <div className="flex items-center gap-1.5">
+                {/* Zoom Controls */}
+                <div className="flex items-center bg-black/40 border border-white/10 rounded-lg p-0.5 text-xs">
+                  <button
+                    onClick={() => setDrawerZoom((prev) => Math.max(50, prev - 15))}
+                    className="px-2 py-1 text-zinc-400 hover:text-white hover:bg-white/10 rounded transition-colors cursor-pointer"
+                    title="Zoom out"
+                  >
+                    🔍 -
+                  </button>
+                  <span className="px-1 text-zinc-300 font-mono text-[10px]">{drawerZoom}%</span>
+                  <button
+                    onClick={() => setDrawerZoom((prev) => Math.min(200, prev + 15))}
+                    className="px-2 py-1 text-zinc-400 hover:text-white hover:bg-white/10 rounded transition-colors cursor-pointer"
+                    title="Zoom in"
+                  >
+                    🔍 +
+                  </button>
+                </div>
+
+                {/* Download PDF */}
+                {activeSource && (
+                  <a
+                    href={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}`}
+                    target="_blank"
+                    download
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-xs"
+                    title="Stáhnout PDF"
+                  >
+                    ⬇️
+                  </a>
+                )}
+
+                {/* Pop-out Modal */}
+                {activeSource && (
+                  <button
+                    onClick={() => openPdfViewerModal(activeSource)}
+                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-xs"
+                    title="Otevřít celoobrazovkové modal okno"
+                  >
+                    ⛶
+                  </button>
+                )}
+
+                {/* Close Drawer */}
+                <button
+                  onClick={() => setWorkspaceOpen(false)}
+                  className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-base font-bold cursor-pointer ml-1"
+                  title="Zavřít panel"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            {/* Drawer Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {/* KEY FEATURE: Embedded Live Formatted PDF Page Canvas directly inside right panel */}
+            <div className="flex-1 bg-zinc-950/90 w-full h-full overflow-hidden flex items-center justify-center relative">
               {activeSource ? (
-                <div className="space-y-4">
-                  {/* Document Title Header */}
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-2">
-                    <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider block">
-                      {TRANSLATIONS[appLanguage].sourceDocHeader}
-                    </span>
-                    <h4 className="text-sm font-bold text-white leading-snug">
-                      📄 {activeSource.title}
-                    </h4>
-                    <div className="grid grid-cols-2 gap-2 pt-2 text-xs border-t border-white/5 mt-2">
-                      <div>
-                        <span className="text-zinc-500 block text-[10px]">{TRANSLATIONS[appLanguage].pageNumberLabel}</span>
-                        <span className="font-semibold text-indigo-300 font-mono">
-                          {TRANSLATIONS[appLanguage].pageLabel} {activeSource.page_number || 1}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-zinc-500 block text-[10px]">{TRANSLATIONS[appLanguage].chapterSectionLabel}</span>
-                        <span className="font-semibold text-zinc-300 truncate block">
-                          {activeSource.section_title || "Hlavní text"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* KEY FEATURE: PROMINENT FULLY FORMATTED PDF PREVIEW BUTTON */}
-                  <button
-                    onClick={() => openPdfViewer(activeSource)}
-                    className="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-2xl font-extrabold text-xs transition-all shadow-xl shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95 border border-indigo-400/30"
-                  >
-                    <span>📄</span>
-                    <span>{TRANSLATIONS[appLanguage].openPdfBtn}</span>
-                  </button>
-
-                  {/* Cited Text Passage Snippet */}
-                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05] space-y-2">
-                    <span className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider block">
-                      {TRANSLATIONS[appLanguage].citedPassageLabel}
-                    </span>
-                    <div className="text-xs text-zinc-300 leading-relaxed font-mono bg-black/40 p-3 rounded-xl border border-white/5 max-h-48 overflow-y-auto">
-                      {activeSource.content}
-                    </div>
-                  </div>
-
-                  {/* Security & Freshness Audit Metrics */}
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-3 text-xs">
-                    <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider block">
-                      {TRANSLATIONS[appLanguage].securityAuditLabel}
-                    </span>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400">{TRANSLATIONS[appLanguage].freshnessLabel}:</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        PLATNÝ (Current)
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-zinc-400">{TRANSLATIONS[appLanguage].aclGroupsLabel}:</span>
-                      <div className="flex gap-1">
-                        {(activeSource.allowed_groups || ["User"]).map((grp, gIdx) => (
-                          <span key={gIdx} className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-white/5 text-zinc-300 border border-white/10">
-                            {grp}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <iframe
+                  src={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}?highlight_chunk_id=${activeSource.chunk_id}#page=${activeSource.page_number || 1}&toolbar=0&navpanes=0`}
+                  title={`PDF Live View - ${activeSource.title}`}
+                  className="w-full h-full border-none transition-transform duration-200"
+                  style={{ transform: `scale(${drawerZoom / 100})`, transformOrigin: "top center" }}
+                />
               ) : (
                 <div className="text-center py-12 text-zinc-500 text-xs">
                   {TRANSLATIONS[appLanguage].noCitationsFound}
                 </div>
               )}
             </div>
+
+            {/* Security & Freshness Audit Footer */}
+            {activeSource && (
+              <div className="px-5 py-2.5 bg-black/60 border-t border-white/5 flex items-center justify-between text-[10px] text-zinc-400 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-zinc-300">Stav:</span>
+                  <span className="px-2 py-0.5 rounded font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    PLATNÝ (Current)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-semibold text-zinc-300">ACL:</span>
+                  {(activeSource.allowed_groups || ["User"]).map((grp, gIdx) => (
+                    <span key={gIdx} className="px-1.5 py-0.5 rounded font-bold bg-white/5 text-zinc-300 border border-white/10">
+                      {grp}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </aside>
         )}
       </div>
 
-      {/* 4. Embedded Fully Formatted PDF Viewer Modal */}
+      {/* 4. Full-screen PDF Viewer Modal */}
       <PdfViewerModal
         isOpen={pdfModalOpen}
         onClose={() => setPdfModalOpen(false)}

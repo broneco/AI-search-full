@@ -145,7 +145,7 @@ async def chat_interaction(
                 "- Odpovídejte VÝHRADNĚ v českém jazyce.\n"
                 "- Spoléhejte se POUZE na poskytnuté dokumenty. Nevymýšlejte si informace ani neextrapolujte mimo kontext.\n"
                 "- Pokud poskytnutý kontext neobsahuje dostatek informací pro úplnou odpověď, uveďte to výslovně.\n"
-                "- Citujte své zdroje pomocí čísel v hranatých závorkách, např. [Source 1], [Source 2] odpovídající číslům níže.\n\n"
+                "- Citujte své zdroje pomocí čísel v hranatých závorkách, např. [1], [2] odpovídající číslům zdrojů níže.\n\n"
                 f"=== ZÍSKANÉ firemní dokumenty ===\n{context_str}\n"
             )
         else:
@@ -156,7 +156,7 @@ async def chat_interaction(
                 "- Answer EXCLUSIVELY in the English language.\n"
                 "- Rely ONLY on the provided context evidence. Do not extrapolate.\n"
                 "- If the context does not contain enough information to formulate a complete answer, state that explicitly.\n"
-                "- Cite your sources using bracketed annotations, e.g. [Source 1], [Source 2] matching the numbers.\n\n"
+                "- Cite your sources using bracketed annotations, e.g. [1], [2] matching source numbers below.\n\n"
                 f"=== RETRIEVED corporate documents ===\n{context_str}\n"
             )
 
