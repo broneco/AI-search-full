@@ -110,7 +110,7 @@ export default function UserSearchPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/chat/query`, {
+      const res = await fetch(`${BACKEND_URL}/api/chat`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ query: trimmedQuery }),

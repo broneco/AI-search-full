@@ -38,6 +38,7 @@ async def update_search_config(config_request: SearchConfigSchema):
 
 @router.post("", response_model=ChatResponse)
 @router.post("/", response_model=ChatResponse, include_in_schema=False)
+@router.post("/query", response_model=ChatResponse, include_in_schema=False)
 async def chat_interaction(
     request: ChatRequest,
     http_request: Request,
