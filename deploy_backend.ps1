@@ -8,7 +8,11 @@ param (
     [string]$Location = "northeurope"
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
+$env:AZURE_CORE_ONLY_SHOW_ERRORS = "true"
+$env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUTF8 = "1"
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Write colored messages helper
 function Write-Header ($msg) {
@@ -38,23 +42,25 @@ try {
     $null = Get-Command az -ErrorAction Stop
 } catch {
     Write-Error "Azure CLI (az) was not found on your system. Please install it from https://aka.ms/installazurecliwindows first."
+    exit 1
 }
 
 # 2. Check if logged in to Azure
 Write-Info "Checking Azure login status..."
-$azAccount = az account show --query name --output tsv 2>$null
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($azAccount)) {
+$azAccount = (az account show --query name --output tsv 2>$null)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($azAccount)) {
     Write-WarningMsg "You are not logged in to Azure CLI or your token expired. Launching login screen..."
     az login
-    $azAccount = az account show --query name --output tsv
+    $azAccount = (az account show --query name --output tsv)
 }
 Write-Success "Logged in to Azure. Active Subscription: $azAccount"
 
 # 3. Retrieve ACR Login Server dynamically
 Write-Info "Querying Container Registry server URL..."
-$RegistryServer = az acr show --name $RegistryName --resource-group $ResourceGroup --query loginServer --output tsv
-if ([string]::IsNullOrEmpty($RegistryServer)) {
+$RegistryServer = (az acr show --name $RegistryName --resource-group $ResourceGroup --query loginServer --output tsv)
+if ([string]::IsNullOrWhiteSpace($RegistryServer)) {
     Write-Error "Failed to retrieve Login Server for registry: $RegistryName in resource group $ResourceGroup"
+    exit 1
 }
 Write-Success "Found Registry Server: $RegistryServer"
 
