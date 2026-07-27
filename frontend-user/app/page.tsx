@@ -192,15 +192,15 @@ export default function UserSearchPage() {
                         setActiveSource(source);
                         setWorkspaceOpen(true);
                       }}
-                      className="inline-flex items-center gap-1.5 mx-1 px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-500/50 text-indigo-200 hover:text-white border border-indigo-500/40 text-xs font-semibold transition-all transform hover:scale-105 cursor-pointer shadow-md my-0.5"
-                      title={`Klikněte pro zobrazení originální PDF strany ${source.page_number || 1}`}
+                      className={`inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-md font-bold text-xs transition-all transform hover:scale-110 cursor-pointer shadow-sm ${
+                        activeSource?.chunk_id === source.chunk_id
+                          ? "bg-indigo-500 text-white border border-indigo-400 ring-2 ring-indigo-400/30"
+                          : "bg-indigo-500/20 hover:bg-indigo-500/35 text-indigo-300 hover:text-white border border-indigo-500/40"
+                      }`}
+                      title={`${source.title} (${TRANSLATIONS[appLanguage].pageLabel} ${source.page_number || 1})`}
                     >
                       <span>📄</span>
-                      <span className="font-bold">[{citeIndex + 1}]</span>
-                      <span className="truncate max-w-[180px] font-normal">{source.title}</span>
-                      <span className="text-[10px] bg-indigo-500/30 px-1.5 py-0.2 rounded font-mono">
-                        {TRANSLATIONS[appLanguage].pageLabel} {source.page_number || 1}
-                      </span>
+                      <span>[{citeIndex + 1}]</span>
                     </button>
                   );
                 }
