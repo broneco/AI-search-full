@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { TRANSLATIONS } from "./translations";
+import { CLIENT_THEMES, DEFAULT_THEME_ID } from "./config/themes";
 import { PdfViewerModal } from "./components/PdfViewerModal";
+import { AuthModal } from "./components/AuthModal";
+import { ThreadSidebar, ThreadItem } from "./components/ThreadSidebar";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -37,6 +40,48 @@ export default function UserSearchPage() {
   const [workspaceOpen, setWorkspaceOpen] = useState<boolean>(false);
   const [drawerZoom, setDrawerZoom] = useState<number>(100);
 
+  // Client Theme State
+  const [currentThemeId, setCurrentThemeId] = useState<string>("alzbeta");
+
+  // Read saved theme on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("dolphin_client_theme") || process.env.NEXT_PUBLIC_CLIENT_THEME || DEFAULT_THEME_ID;
+    if (CLIENT_THEMES[savedTheme]) {
+      setCurrentThemeId(savedTheme);
+    }
+  }, []);
+
+  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.alzbeta;
+
+  // Apply dynamic CSS variables when theme changes
+  useEffect(() => {
+    if (currentTheme) {
+      document.documentElement.style.setProperty("--brand-primary", currentTheme.colors.primary);
+      document.documentElement.style.setProperty("--brand-primary-hover", currentTheme.colors.primaryHover);
+      document.documentElement.style.setProperty("--brand-secondary", currentTheme.colors.secondary);
+      document.documentElement.style.setProperty("--brand-gradient", currentTheme.colors.gradient);
+      document.documentElement.style.setProperty("--brand-topbar-bg", currentTheme.colors.topBarBg);
+      document.documentElement.style.setProperty("--brand-sidebar-bg", currentTheme.colors.sidebarBg);
+      document.documentElement.style.setProperty("--brand-user-bubble", currentTheme.colors.userBubbleBg);
+    }
+  }, [currentTheme]);
+
+  const handleThemeChange = (themeId: string) => {
+    setCurrentThemeId(themeId);
+    localStorage.setItem("dolphin_client_theme", themeId);
+  };
+
+  // Authentication State
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+
+  // Thread History State & Document Library State
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [threads, setThreads] = useState<ThreadItem[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+
   // PDF Viewer Modal State (Full screen expansion)
   const [pdfModalOpen, setPdfModalOpen] = useState<boolean>(false);
   const [selectedPdfDocId, setSelectedPdfDocId] = useState<string | null>(null);
@@ -45,6 +90,91 @@ export default function UserSearchPage() {
   const [selectedPdfHighlightId, setSelectedPdfHighlightId] = useState<string | undefined>(undefined);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Read saved auth token on mount & verify session
+  useEffect(() => {
+    const savedToken = localStorage.getItem("dolphin_auth_token");
+    if (savedToken) {
+      setAuthToken(savedToken);
+      fetchUserProfile(savedToken);
+    } else {
+      setAuthModalOpen(true);
+    }
+  }, []);
+
+  // Fetch logged in user profile
+  const fetchUserProfile = async (token: string) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUserProfile(data);
+        setUserRole(data.role || "User");
+        fetchUserThreads(token);
+        fetchDocuments(token);
+      } else {
+        localStorage.removeItem("dolphin_auth_token");
+        setAuthToken(null);
+        setUserProfile(null);
+        setThreads([]);
+        setDocuments([]);
+        setAuthModalOpen(true);
+      }
+    } catch {
+      console.error("Auth check failed");
+    }
+  };
+
+  // Fetch threads list
+  const fetchUserThreads = async (token?: string) => {
+    try {
+      const headers: Record<string, string> = {};
+      const tok = token !== undefined ? token : authToken;
+      if (tok) headers["Authorization"] = `Bearer ${tok}`;
+      
+      const res = await fetch(`${BACKEND_URL}/api/threads`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setThreads(data);
+      }
+    } catch {
+      console.error("Threads fetch failed");
+    }
+  };
+
+  // Fetch accessible documents list
+  const fetchDocuments = async (token?: string) => {
+    try {
+      const headers: Record<string, string> = {};
+      const tok = token !== undefined ? token : authToken;
+      if (tok) headers["Authorization"] = `Bearer ${tok}`;
+
+      const res = await fetch(`${BACKEND_URL}/api/documents/list`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data);
+      }
+    } catch {
+      console.error("Documents fetch failed");
+    }
+  };
+
+  const handleSelectDocument = (doc: any) => {
+    const docSource: CitationSource = {
+      document_id: doc.document_id,
+      chunk_id: "",
+      title: doc.title,
+      content: `Dokument: ${doc.title}`,
+      section_title: undefined,
+      page_number: 1,
+      freshness_status: doc.freshness_status || "current",
+      score: 1.0,
+    };
+    setActiveSource(docSource);
+    setWorkspaceOpen(true);
+  };
 
   // Periodic API Health check
   useEffect(() => {
@@ -62,9 +192,9 @@ export default function UserSearchPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Initialize greeting message
+  // Initialize greeting message when no active thread is selected
   useEffect(() => {
-    if (messages.length === 0) {
+    if (!activeThreadId && messages.length === 0) {
       setMessages([
         {
           role: "assistant",
@@ -72,14 +202,146 @@ export default function UserSearchPage() {
         },
       ]);
     }
-  }, [appLanguage]);
+  }, [appLanguage, activeThreadId]);
 
   // Auto-scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Get Auth headers based on active role
+  // Load thread detail (messages & citations)
+  const handleSelectThread = async (threadId: string) => {
+    setActiveThreadId(threadId);
+    setLoading(true);
+
+    try {
+      const headers: Record<string, string> = {};
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
+      const res = await fetch(`${BACKEND_URL}/api/threads/${threadId}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const formattedMsgs: Message[] = (data.messages || []).map((m: any) => ({
+          role: m.role,
+          content: m.content,
+          sources: m.sources || [],
+        }));
+
+        setMessages(
+          formattedMsgs.length > 0
+            ? formattedMsgs
+            : [{ role: "assistant", content: TRANSLATIONS[appLanguage].initialGreeting }]
+        );
+
+        // Auto-select latest citation source from last assistant message
+        const lastAsst = formattedMsgs.filter((m) => m.role === "assistant" && m.sources && m.sources.length > 0).pop();
+        if (lastAsst && lastAsst.sources && lastAsst.sources.length > 0) {
+          setActiveSource(lastAsst.sources[0]);
+          setWorkspaceOpen(true);
+        } else {
+          setActiveSource(null);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Create New Chat Thread
+  const handleNewThread = async () => {
+    setActiveThreadId(null);
+    setActiveSource(null);
+    setMessages([
+      {
+        role: "assistant",
+        content: TRANSLATIONS[appLanguage].initialGreeting,
+      },
+    ]);
+
+    if (authToken) {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/threads`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({ title: "Nová konverzace" }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setActiveThreadId(data.thread_id);
+          fetchUserThreads(authToken);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  // Rename Thread Title
+  const handleRenameThread = async (threadId: string, newTitle: string) => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/threads/${threadId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (res.ok) {
+        fetchUserThreads(authToken);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Delete Thread
+  const handleDeleteThread = async (threadId: string) => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/threads/${threadId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.ok) {
+        if (activeThreadId === threadId) {
+          handleNewThread();
+        }
+        fetchUserThreads(authToken);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Handle Auth Login Success
+  const handleAuthSuccess = (token: string, user: any) => {
+    localStorage.setItem("dolphin_auth_token", token);
+    setAuthToken(token);
+    setUserProfile(user);
+    setUserRole(user.role || "User");
+    fetchUserThreads(token);
+    fetchDocuments(token);
+  };
+
+  // Logout
+  const handleLogout = () => {
+    localStorage.removeItem("dolphin_auth_token");
+    setAuthToken(null);
+    setUserProfile(null);
+    setThreads([]);
+    setDocuments([]);
+    handleNewThread();
+    setAuthModalOpen(true);
+  };
+
+  // Get Auth headers based on active session
   const getHeaders = () => {
     const roleGroupsMap: Record<string, string[]> = {
       User: ["User"],
@@ -88,21 +350,30 @@ export default function UserSearchPage() {
     };
 
     const userGroups = roleGroupsMap[userRole] || ["User"];
-    return {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-User-Role": userRole,
       "X-User-Groups": userGroups.join(","),
     };
+
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+    return headers;
   };
 
   // Submit Query to Backend API
   const handleSubmit = async (userQuery: string) => {
     if (!userQuery.trim() || loading) return;
 
+    if (!authToken) {
+      setAuthModalOpen(true);
+      return;
+    }
+
     const trimmedQuery = userQuery.trim();
     setQuery("");
 
-    // Add user message
     const newMessages: Message[] = [
       ...messages,
       { role: "user", content: trimmedQuery },
@@ -114,7 +385,11 @@ export default function UserSearchPage() {
       const res = await fetch(`${BACKEND_URL}/api/chat`, {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({ query: trimmedQuery }),
+        body: JSON.stringify({
+          query: trimmedQuery,
+          thread_id: activeThreadId,
+          locale: appLanguage,
+        }),
       });
 
       if (res.ok) {
@@ -125,6 +400,11 @@ export default function UserSearchPage() {
           sources: data.sources || [],
         };
         setMessages([...newMessages, assistantMessage]);
+
+        if (data.thread_id) {
+          setActiveThreadId(data.thread_id);
+          if (authToken) fetchUserThreads(authToken);
+        }
 
         // Auto-select first citation source if available and open PDF drawer
         if (data.sources && data.sources.length > 0) {
@@ -164,16 +444,68 @@ export default function UserSearchPage() {
     setPdfModalOpen(true);
   };
 
-  // Render assistant response with interactive inline document badges
+  // Helper to format raw markdown text (**bold**, *italic*, - bullet lists)
+  const renderFormattedMarkdown = (text: string) => {
+    if (!text) return null;
+    const lines = text.split("\n");
+
+    return (
+      <span className="inline">
+        {lines.map((line, lineIdx) => {
+          const trimmed = line.trim();
+          const isBullet = trimmed.startsWith("- ") || trimmed.startsWith("* ");
+          const contentText = isBullet ? trimmed.substring(2) : line;
+
+          // Parse bold **text** and italic *text*
+          const tokens = contentText.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+
+          const formattedLine = tokens.map((token, tIdx) => {
+            if (token.startsWith("**") && token.endsWith("**") && token.length > 4) {
+              return (
+                <strong key={tIdx} className="font-extrabold text-white bg-white/5 px-1 py-0.5 rounded border border-white/10">
+                  {token.slice(2, -2)}
+                </strong>
+              );
+            }
+            if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
+              return (
+                <em key={tIdx} className="italic text-indigo-300">
+                  {token.slice(1, -1)}
+                </em>
+              );
+            }
+            return <span key={tIdx}>{token}</span>;
+          });
+
+          if (isBullet) {
+            return (
+              <div key={lineIdx} className="flex items-start gap-2 my-1 pl-2 font-medium">
+                <span className="text-indigo-400 font-extrabold select-none mt-0.5">•</span>
+                <span className="flex-1">{formattedLine}</span>
+              </div>
+            );
+          }
+
+          return (
+            <React.Fragment key={lineIdx}>
+              {formattedLine}
+              {lineIdx < lines.length - 1 && <br />}
+            </React.Fragment>
+          );
+        })}
+      </span>
+    );
+  };
+
+  // Render assistant response with interactive inline document badges and Markdown formatting
   const renderMessageContent = (msg: Message) => {
     if (msg.role === "user") {
       return <p className="text-sm text-zinc-100 leading-relaxed font-medium">{msg.content}</p>;
     }
 
-    let parsedContent = msg.content;
+    let parsedContent = msg.content || "";
 
     if (msg.sources && msg.sources.length > 0) {
-      // Regex matches both [1] and [Source 1] patterns
       const parts = parsedContent.split(/(\[(?:Source\s*)?\d+\])/gi);
       return (
         <div className="space-y-4">
@@ -205,7 +537,7 @@ export default function UserSearchPage() {
                   );
                 }
               }
-              return <span key={idx}>{part}</span>;
+              return <React.Fragment key={idx}>{renderFormattedMarkdown(part)}</React.Fragment>;
             })}
           </div>
 
@@ -238,41 +570,49 @@ export default function UserSearchPage() {
       );
     }
 
-    return <p className="text-sm text-zinc-200 leading-relaxed font-normal">{msg.content}</p>;
+    return <div className="text-sm text-zinc-200 leading-relaxed font-normal">{renderFormattedMarkdown(parsedContent)}</div>;
   };
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#090d16] text-zinc-100 font-sans">
       
       {/* 1. Header Bar */}
-      <header className="h-16 border-b border-white/10 bg-[#0d1322]/90 backdrop-blur-md px-6 flex items-center justify-between shrink-0 z-30 shadow-lg">
+      <header
+        style={{ backgroundColor: currentTheme.colors.topBarBg }}
+        className="h-16 border-b border-white/10 backdrop-blur-md px-6 flex items-center justify-between shrink-0 z-30 shadow-lg transition-colors duration-300"
+      >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-xl shadow-lg shadow-indigo-500/20">
-            🐬
+          <div className="h-11 px-2.5 py-1 bg-white/90 rounded-xl flex items-center justify-center border border-white/30 shadow-md">
+            <img
+              src={currentTheme.logoUrl}
+              alt={currentTheme.name}
+              style={{ height: `${currentTheme.logoHeight}px` }}
+              className="object-contain max-w-[160px]"
+            />
           </div>
           <div>
             <h1 className="text-base font-extrabold tracking-tight text-white flex items-center gap-2">
-              {TRANSLATIONS[appLanguage].title}
+              {currentTheme.appName}
             </h1>
-            <p className="text-[11px] text-zinc-400 font-medium">
-              {TRANSLATIONS[appLanguage].subtitle}
+            <p className="text-[11px] text-white/80 font-medium">
+              {currentTheme.appTagline}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           {/* API Health Heartbeat */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-xs font-semibold text-zinc-300">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.08] border border-white/[0.12] text-xs font-semibold text-white">
             <span className={apiOnline ? "pulse-dot" : "w-2 h-2 rounded-full bg-red-500"} />
             <span>{apiOnline ? TRANSLATIONS[appLanguage].apiOnlineStatus : TRANSLATIONS[appLanguage].apiOfflineStatus}</span>
           </div>
 
           {/* Language Switcher */}
-          <div className="flex items-center bg-black/40 border border-white/10 rounded-lg p-0.5 text-xs font-bold">
+          <div className="flex items-center bg-black/40 border border-white/20 rounded-lg p-0.5 text-xs font-bold">
             <button
               onClick={() => setAppLanguage("cs")}
               className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                appLanguage === "cs" ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                appLanguage === "cs" ? "bg-white/25 text-white shadow-sm font-extrabold" : "text-white/70 hover:text-white"
               }`}
             >
               CZ
@@ -280,32 +620,53 @@ export default function UserSearchPage() {
             <button
               onClick={() => setAppLanguage("en")}
               className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                appLanguage === "en" ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                appLanguage === "en" ? "bg-white/25 text-white shadow-sm font-extrabold" : "text-white/70 hover:text-white"
               }`}
             >
               EN
             </button>
           </div>
 
-          {/* User Role Selector */}
-          <div className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-xl px-3 py-1.5 text-xs">
-            <span className="text-zinc-400 font-semibold">{TRANSLATIONS[appLanguage].userRoleLabel}</span>
-            <select
-              value={userRole}
-              onChange={(e) => setUserRole(e.target.value)}
-              className="bg-transparent text-indigo-300 font-bold focus:outline-none cursor-pointer"
+          {/* User Auth Profile Button */}
+          {userProfile ? (
+            <div className="flex items-center gap-2 bg-white/15 border border-white/25 rounded-xl px-3 py-1.5 text-xs text-white">
+              <span className="font-bold">👤 {userProfile.username}</span>
+              <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.2 rounded uppercase font-semibold">
+                {userProfile.role}
+              </span>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="px-3.5 py-1.5 bg-white/20 hover:bg-white/30 text-white border border-white/30 rounded-xl font-bold text-xs transition-all shadow-md cursor-pointer flex items-center gap-1.5"
             >
-              <option value="User" className="bg-zinc-900 text-white">👤 User</option>
-              <option value="Management" className="bg-zinc-900 text-white">🎖️ Management</option>
-              <option value="Admin" className="bg-zinc-900 text-white">👑 Admin</option>
-            </select>
-          </div>
+              <span>🔑</span>
+              <span>{appLanguage === "cs" ? "Přihlásit se" : "Sign In"}</span>
+            </button>
+          )}
         </div>
       </header>
 
       {/* 2. Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative">
         
+        {/* Left Thread History & Document Library Sidebar */}
+        <ThreadSidebar
+          isOpen={sidebarOpen}
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+          threads={threads}
+          activeThreadId={activeThreadId}
+          onSelectThread={handleSelectThread}
+          onNewThread={handleNewThread}
+          onRenameThread={handleRenameThread}
+          onDeleteThread={handleDeleteThread}
+          documents={documents}
+          onSelectDocument={handleSelectDocument}
+          user={userProfile}
+          onLogout={handleLogout}
+          language={appLanguage}
+        />
+
         {/* Main Search & Chat Panel */}
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#090d16] relative">
           
@@ -427,7 +788,7 @@ export default function UserSearchPage() {
                       {TRANSLATIONS[appLanguage].pageLabel} {activeSource?.page_number || 1}
                     </span>
                     <span className="bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-500/30">
-                      ✨ PyMuPDF Highlight
+                      ✨ {appLanguage === "cs" ? "Zvýrazněná pasáž" : "Highlighted Passage"}
                     </span>
                   </div>
                 </div>
@@ -454,16 +815,16 @@ export default function UserSearchPage() {
                   </button>
                 </div>
 
-                {/* Download PDF */}
+                {/* Open in New Window */}
                 {activeSource && (
                   <a
                     href={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}`}
                     target="_blank"
-                    download
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-xs"
-                    title="Stáhnout PDF"
+                    rel="noopener noreferrer"
+                    className="p-2 text-zinc-400 hover:text-indigo-300 hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-xs flex items-center justify-center font-bold"
+                    title={appLanguage === "cs" ? "Otevřít na nové záložce" : "Open in new tab"}
                   >
-                    ⬇️
+                    <span>↗️</span>
                   </a>
                 )}
 
@@ -472,7 +833,7 @@ export default function UserSearchPage() {
                   <button
                     onClick={() => openPdfViewerModal(activeSource)}
                     className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-xs"
-                    title="Otevřít celoobrazovkové modal okno"
+                    title={appLanguage === "cs" ? "Celoobrazovkový náhled" : "Full screen modal"}
                   >
                     ⛶
                   </button>
@@ -480,16 +841,19 @@ export default function UserSearchPage() {
 
                 {/* Close Drawer */}
                 <button
-                  onClick={() => setWorkspaceOpen(false)}
+                  onClick={() => {
+                    setWorkspaceOpen(false);
+                    setActiveSource(null);
+                  }}
                   className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-base font-bold cursor-pointer ml-1"
-                  title="Zavřít panel"
+                  title={appLanguage === "cs" ? "Zavřít panel" : "Close panel"}
                 >
                   ✕
                 </button>
               </div>
             </div>
 
-            {/* KEY FEATURE: Embedded Live Formatted PDF Page Canvas directly inside right panel */}
+            {/* Embedded Live Formatted PDF Page Canvas */}
             <div className="flex-1 bg-zinc-950/90 w-full h-full overflow-hidden flex items-center justify-center relative">
               {activeSource ? (
                 <iframe
@@ -536,6 +900,15 @@ export default function UserSearchPage() {
         documentTitle={selectedPdfTitle}
         pageNumber={selectedPdfPage}
         highlightChunkId={selectedPdfHighlightId}
+        backendUrl={BACKEND_URL}
+        language={appLanguage}
+      />
+
+      {/* 5. Auth Login/Register Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={handleAuthSuccess}
         backendUrl={BACKEND_URL}
         language={appLanguage}
       />

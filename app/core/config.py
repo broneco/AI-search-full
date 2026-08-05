@@ -1,18 +1,26 @@
+import os
 from typing import Optional
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Determine environment: 'dev', 'prod', or 'local'
+_APP_ENV = os.getenv("APP_ENV", "dev").lower()
+_ENV_FILES = (f".env.{_APP_ENV}", ".env")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILES,
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
     )
 
     # General
-    APP_ENV: str = "local"
+    APP_ENV: str = _APP_ENV
     APP_NAME: str = "ai-search-app"
     LOG_LEVEL: str = "INFO"
+    TENANT_ID: str = "dolphin"
+    JWT_SECRET: str = "dolphin-ai-search-secret-key-2026"
 
     # OpenAI Deployments
     AZURE_OPENAI_ENDPOINT: Optional[str] = None
@@ -27,7 +35,7 @@ class Settings(BaseSettings):
     # PostgreSQL
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "ai_search"
+    POSTGRES_DB: Optional[str] = None
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_SSLMODE: str = "disable"
@@ -40,6 +48,30 @@ class Settings(BaseSettings):
 
     # Observability
     APPLICATIONINSIGHTS_CONNECTION_STRING: Optional[str] = None
+
+    @model_validator(mode="after")
+    def set_environment_defaults(self):
+        # Set default DB name if not explicitly set
+        if not self.POSTGRES_DB:
+            if self.APP_ENV == "prod":
+                self.POSTGRES_DB = "ai_search_prod"
+            else:
+                self.POSTGRES_DB = "ai_search_dev"
+
+        # Set default blob container name if not explicitly set
+        if not self.AZURE_BLOB_CONTAINER_ORIGINALS:
+            if self.APP_ENV == "prod":
+                self.AZURE_BLOB_CONTAINER_ORIGINALS = "dolphin-originals-prod"
+            else:
+                self.AZURE_BLOB_CONTAINER_ORIGINALS = "dolphin-originals-dev"
+
+        if not self.AZURE_BLOB_CONTAINER_ARTIFACTS:
+            if self.APP_ENV == "prod":
+                self.AZURE_BLOB_CONTAINER_ARTIFACTS = "dolphin-artifacts-prod"
+            else:
+                self.AZURE_BLOB_CONTAINER_ARTIFACTS = "dolphin-artifacts-dev"
+
+        return self
 
 
 settings = Settings()

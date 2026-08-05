@@ -68,15 +68,16 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Download PDF button */}
+            {/* Open in new window button */}
             <a
               href={`${backendUrl}/api/documents/view/${documentId}`}
               target="_blank"
-              download
+              rel="noopener noreferrer"
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold rounded-lg border border-white/10 transition-colors"
+              title={language === "cs" ? "Otevřít v novém okně" : "Open in new window"}
             >
-              <span>⬇️</span>
-              <span>{language === "cs" ? "Stáhnout" : "Download"}</span>
+              <span>↗️</span>
+              <span>{language === "cs" ? "Otevřít v novém okně" : "Open in new window"}</span>
             </a>
 
             {/* Zoom Controls */}

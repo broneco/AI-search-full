@@ -37,7 +37,7 @@ class VectorRetriever(BaseRetriever):
         keyword_limit = search_config.get("keyword_limit", 50)
         
         # Respect explicitly passed query limit, otherwise fallback to configured final_limit
-        final_limit = limit if limit != 10 else search_config.get("final_limit", 5)
+        final_limit = limit if limit != 10 else search_config.get("final_limit", 8)
         vector_final_limit = search_config.get("vector_final_limit", 5)
         keyword_final_limit = search_config.get("keyword_final_limit", 5)
         score_threshold = search_config.get("score_threshold", 0.0)
@@ -100,8 +100,9 @@ class VectorRetriever(BaseRetriever):
         return final_results
 
     def _build_sql_filters(self, context: QueryContext) -> List[Any]:
-        """Build SQLAlchemy expression filters for ACL and freshness."""
-        filters = []
+        """Build SQLAlchemy expression filters for ACL, freshness, and tenant isolation."""
+        tenant_base = settings.TENANT_ID.split("-")[0]
+        filters = [DBDocument.tenant_id.in_([settings.TENANT_ID, tenant_base])]
         
         # 1. ACL pre-filtering
         if "Management" not in context.acl_groups:
@@ -308,10 +309,10 @@ class VectorRetriever(BaseRetriever):
         self,
         vector_results: List[RetrievalResult],
         keyword_results: List[RetrievalResult],
-        rrf_k: int,
-        vector_weight: float,
-        keyword_weight: float,
-        limit: int,
+        rrf_k: int = 60,
+        vector_weight: float = 0.6,
+        keyword_weight: float = 0.4,
+        limit: int = 5,
     ) -> List[RetrievalResult]:
         """Perform Weighted Reciprocal Rank Fusion (Weighted RRF) on candidate sets."""
         rrf_scores = {}
@@ -330,16 +331,24 @@ class VectorRetriever(BaseRetriever):
             if cid not in chunk_map:
                 chunk_map[cid] = (item, 0.0)
 
-        # 3. Sort by aggregated RRF score descending
+        # 3. Sort by aggregated RRF score descending with chunk text deduplication
         sorted_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
 
         final_results = []
-        for cid in sorted_ids[:limit]:
+        seen_texts = set()
+        for cid in sorted_ids:
             item, original_vector_score = chunk_map[cid]
+            # Deduplicate near-identical chunk text to maximize prompt diversity
+            normalized_text = " ".join(item.content.strip().split())[:120].lower()
+            if normalized_text in seen_texts:
+                continue
+            seen_texts.add(normalized_text)
             item.score = rrf_scores[cid]
             item.metadata["rrf_score"] = rrf_scores[cid]
             item.metadata["vector_score"] = original_vector_score
             final_results.append(item)
+            if len(final_results) >= limit:
+                break
 
         return final_results
 
@@ -381,16 +390,23 @@ class VectorRetriever(BaseRetriever):
             if cid not in chunk_map:
                 chunk_map[cid] = (item, 0.0)
 
-        # 3. Sort by aggregated combined score descending
+        # 3. Sort by aggregated combined score descending with chunk text deduplication
         sorted_ids = sorted(combined_scores.keys(), key=lambda x: combined_scores[x], reverse=True)
 
         final_results = []
-        for cid in sorted_ids[:limit]:
+        seen_texts = set()
+        for cid in sorted_ids:
             item, original_vector_score = chunk_map[cid]
+            normalized_text = " ".join(item.content.strip().split())[:120].lower()
+            if normalized_text in seen_texts:
+                continue
+            seen_texts.add(normalized_text)
             item.score = combined_scores[cid]
             item.metadata["combined_score"] = combined_scores[cid]
             item.metadata["vector_score"] = original_vector_score
             final_results.append(item)
+            if len(final_results) >= limit:
+                break
 
         return final_results
 
@@ -401,21 +417,30 @@ class VectorRetriever(BaseRetriever):
         vector_final_limit: int,
         keyword_final_limit: int,
     ) -> List[RetrievalResult]:
-        """Combine top N vector results and top M keyword results, deduplicating by chunk_id."""
+        """Combine top N vector results and top M keyword results, deduplicating by chunk_id and content text."""
         final_results = []
         seen_chunk_ids = set()
+        seen_texts = set()
 
         # Add top N vector results
-        for item in vector_results[:vector_final_limit]:
-            if item.chunk_id not in seen_chunk_ids:
+        for item in vector_results:
+            normalized_text = " ".join(item.content.strip().split())[:120].lower()
+            if item.chunk_id not in seen_chunk_ids and normalized_text not in seen_texts:
                 seen_chunk_ids.add(item.chunk_id)
+                seen_texts.add(normalized_text)
                 final_results.append(item)
+                if len(final_results) >= vector_final_limit:
+                    break
 
         # Add top M keyword results
-        for item in keyword_results[:keyword_final_limit]:
-            if item.chunk_id not in seen_chunk_ids:
+        for item in keyword_results:
+            normalized_text = " ".join(item.content.strip().split())[:120].lower()
+            if item.chunk_id not in seen_chunk_ids and normalized_text not in seen_texts:
                 seen_chunk_ids.add(item.chunk_id)
+                seen_texts.add(normalized_text)
                 final_results.append(item)
+                if len(final_results) >= (vector_final_limit + keyword_final_limit):
+                    break
 
         return final_results
 

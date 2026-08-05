@@ -37,6 +37,9 @@ class ChatRequest(BaseModel):
     freshness_filter: str = Field(
         default="all", description="Freshness filter constraint: 'all', 'this_year', or 'latest'."
     )
+    thread_id: Optional[str] = Field(
+        default=None, description="Optional thread UUID to continue multi-turn chat history."
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -58,3 +61,4 @@ class ChatResponse(BaseModel):
         default_factory=list, description="Citations used in answer compilation."
     )
     metadata: ChatMetadata
+    thread_id: Optional[str] = Field(None, description="Active thread ID for this conversation.")

@@ -1,0 +1,1134 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.45.15.27210",
+      "templateHash": "12195312822255492150"
+    }
+  },
+  "parameters": {
+    "clientName": {
+      "type": "string",
+      "defaultValue": "dolphin",
+      "metadata": {
+        "description": "Client Name (e.g. dolphin, university)"
+      }
+    },
+    "environment": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [
+        "dev",
+        "prod"
+      ],
+      "metadata": {
+        "description": "Environment (dev or prod)"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "northeurope",
+      "metadata": {
+        "description": "Azure Region"
+      }
+    },
+    "provisionPostgres": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set true to create a new Azure Database for PostgreSQL Flexible Server."
+      }
+    },
+    "existingPostgresHost": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "postgresAdminUser": {
+      "type": "string",
+      "defaultValue": "pgadmin"
+    },
+    "postgresAdminPassword": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "provisionOpenAI": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set true to create a new Azure OpenAI resource."
+      }
+    },
+    "existingOpenAiEndpoint": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "existingOpenAiKey": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "provisionStorage": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set true to create a new Azure Storage Account."
+      }
+    },
+    "existingStorageAccountName": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "existingStorageConnectionString": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "provisionACR": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set true to create a new Azure Container Registry."
+      }
+    },
+    "existingACRName": {
+      "type": "string",
+      "defaultValue": "dolphinds"
+    },
+    "provisionFrontends": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set true to create Azure Static Web Apps for frontends."
+      }
+    }
+  },
+  "variables": {
+    "cleanClient": "[toLower(parameters('clientName'))]",
+    "cleanEnv": "[toLower(parameters('environment'))]",
+    "baseName": "[format('{0}-{1}', variables('cleanClient'), variables('cleanEnv'))]",
+    "workspaceName": "[format('log-{0}', variables('baseName'))]",
+    "appInsightsName": "[format('appins-{0}', variables('baseName'))]",
+    "storageName": "[if(parameters('provisionStorage'), format('st{0}{1}{2}', variables('cleanClient'), variables('cleanEnv'), uniqueString(resourceGroup().id)), parameters('existingStorageAccountName'))]",
+    "originalsContainerName": "[format('{0}-originals-{1}', variables('cleanClient'), variables('cleanEnv'))]",
+    "artifactsContainerName": "[format('{0}-artifacts-{1}', variables('cleanClient'), variables('cleanEnv'))]",
+    "postgresServerName": "[format('psql-{0}-{1}', variables('baseName'), uniqueString(resourceGroup().id))]",
+    "dbName": "[format('{0}_ai_search_{1}', variables('cleanClient'), variables('cleanEnv'))]",
+    "openAiName": "[format('oai-{0}-{1}', variables('baseName'), uniqueString(resourceGroup().id))]",
+    "acrName": "[if(parameters('provisionACR'), format('acr{0}{1}{2}', variables('cleanClient'), variables('cleanEnv'), uniqueString(resourceGroup().id)), parameters('existingACRName'))]",
+    "containerEnvName": "[format('env-{0}', variables('baseName'))]",
+    "containerAppName": "[format('{0}-ai-search-backend-{1}', variables('cleanClient'), variables('cleanEnv'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "logAnalyticsDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceName": {
+            "value": "[variables('workspaceName')]"
+          },
+          "appInsightsName": {
+            "value": "[variables('appInsightsName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "2594817016260604664"
+            }
+          },
+          "parameters": {
+            "workspaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Log Analytics Workspace"
+              }
+            },
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of Application Insights"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2022-10-01",
+              "name": "[parameters('workspaceName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "workspaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+            },
+            "workspaceCustomerId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), '2022-10-01').customerId]"
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').ConnectionString]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('provisionStorage')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "storageModuleDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "storageAccountName": {
+            "value": "[variables('storageName')]"
+          },
+          "originalsContainerName": {
+            "value": "[variables('originalsContainerName')]"
+          },
+          "artifactsContainerName": {
+            "value": "[variables('artifactsContainerName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "10908732882294573605"
+            }
+          },
+          "parameters": {
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account name (3-24 alphanumeric lowercase characters)"
+              }
+            },
+            "originalsContainerName": {
+              "type": "string",
+              "metadata": {
+                "description": "Originals blob container name"
+              }
+            },
+            "artifactsContainerName": {
+              "type": "string",
+              "metadata": {
+                "description": "Artifacts blob container name"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-01-01",
+              "name": "[parameters('storageAccountName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard_LRS"
+              },
+              "kind": "StorageV2",
+              "properties": {
+                "accessTier": "Hot",
+                "supportsHttpsTrafficOnly": true,
+                "minimumTlsVersion": "TLS1_2"
+              }
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}', parameters('storageAccountName'), 'default')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', parameters('originalsContainerName'))]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageAccountName'), 'default', parameters('artifactsContainerName'))]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageAccountName'), 'default')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "storageAccountName": {
+              "type": "string",
+              "value": "[parameters('storageAccountName')]"
+            },
+            "storageAccountId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+            },
+            "connectionString": {
+              "type": "string",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix={2}', parameters('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-01-01').keys[0].value, environment().suffixes.storage)]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('provisionPostgres')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "postgresModuleDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "serverName": {
+            "value": "[variables('postgresServerName')]"
+          },
+          "databaseName": {
+            "value": "[variables('dbName')]"
+          },
+          "adminUser": {
+            "value": "[parameters('postgresAdminUser')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('postgresAdminPassword')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "6846143135312530958"
+            }
+          },
+          "parameters": {
+            "serverName": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL Server Name"
+              }
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL Database Name"
+              }
+            },
+            "adminUser": {
+              "type": "string",
+              "metadata": {
+                "description": "Administrator Login Username"
+              }
+            },
+            "adminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Administrator Login Password"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+              "apiVersion": "2022-12-01",
+              "name": "[parameters('serverName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard_B1ms",
+                "tier": "Burstable"
+              },
+              "properties": {
+                "administratorLogin": "[parameters('adminUser')]",
+                "administratorLoginPassword": "[parameters('adminPassword')]",
+                "version": "15",
+                "storage": {
+                  "storageSizeGB": 32
+                },
+                "backup": {
+                  "backupRetentionDays": 7,
+                  "geoRedundantBackup": "Disabled"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/configurations",
+              "apiVersion": "2022-12-01",
+              "name": "[format('{0}/{1}', parameters('serverName'), 'azure.extensions')]",
+              "properties": {
+                "value": "VECTOR,UUID-OSSP",
+                "source": "user-override"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules",
+              "apiVersion": "2022-12-01",
+              "name": "[format('{0}/{1}', parameters('serverName'), 'AllowAllAzureServicesAndResourcesWithinAzureIps')]",
+              "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+              "apiVersion": "2022-12-01",
+              "name": "[format('{0}/{1}', parameters('serverName'), parameters('databaseName'))]",
+              "properties": {
+                "charset": "UTF8",
+                "collation": "en_US.utf8"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "fqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', parameters('serverName')), '2022-12-01').fullyQualifiedDomainName]"
+            },
+            "dbName": {
+              "type": "string",
+              "value": "[parameters('databaseName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('provisionOpenAI')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "openAiModuleDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "openAiName": {
+            "value": "[variables('openAiName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "5662702029577574426"
+            }
+          },
+          "parameters": {
+            "openAiName": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure OpenAI Resource Name"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('openAiName')]",
+              "location": "[parameters('location')]",
+              "kind": "OpenAI",
+              "sku": {
+                "name": "S0"
+              },
+              "properties": {
+                "customSubDomainName": "[parameters('openAiName')]",
+                "publicNetworkAccess": "Enabled"
+              }
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', parameters('openAiName'), 'text-embedding-3-large')]",
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "text-embedding-3-large",
+                  "version": "1"
+                }
+              },
+              "sku": {
+                "name": "Standard",
+                "capacity": 20
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', parameters('openAiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', parameters('openAiName'), 'gpt-5.4-mini')]",
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-4o-mini",
+                  "version": "2024-07-18"
+                }
+              },
+              "sku": {
+                "name": "Standard",
+                "capacity": 20
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('openAiName'), 'text-embedding-3-large')]",
+                "[resourceId('Microsoft.CognitiveServices/accounts', parameters('openAiName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "endpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('openAiName')), '2023-05-01').endpoint]"
+            },
+            "apiKey": {
+              "type": "string",
+              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('openAiName')), '2023-05-01').key1]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('provisionACR')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "acrModuleDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "acrName": {
+            "value": "[variables('acrName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "3591434515035794787"
+            }
+          },
+          "parameters": {
+            "acrName": {
+              "type": "string",
+              "metadata": {
+                "description": "Container Registry Name"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-07-01",
+              "name": "[parameters('acrName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Basic"
+              },
+              "properties": {
+                "adminUserEnabled": true
+              }
+            }
+          ],
+          "outputs": {
+            "loginServer": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').loginServer]"
+            },
+            "acrName": {
+              "type": "string",
+              "value": "[parameters('acrName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "containerAppDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "containerEnvName": {
+            "value": "[variables('containerEnvName')]"
+          },
+          "containerAppName": {
+            "value": "[variables('containerAppName')]"
+          },
+          "logWorkspaceCustomerId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalyticsDeployment'), '2025-04-01').outputs.workspaceCustomerId.value]"
+          },
+          "logWorkspaceSharedKey": {
+            "value": ""
+          },
+          "imageName": {
+            "value": "[format('{0}/{1}:latest', if(parameters('provisionACR'), reference(resourceId('Microsoft.Resources/deployments', 'acrModuleDeployment'), '2025-04-01').outputs.loginServer.value, format('{0}.azurecr.io', parameters('existingACRName'))), variables('containerAppName'))]"
+          },
+          "postgresHost": "[if(parameters('provisionPostgres'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'postgresModuleDeployment'), '2025-04-01').outputs.fqdn.value), createObject('value', parameters('existingPostgresHost')))]",
+          "postgresDb": {
+            "value": "[variables('dbName')]"
+          },
+          "postgresUser": {
+            "value": "[parameters('postgresAdminUser')]"
+          },
+          "postgresPassword": {
+            "value": "[parameters('postgresAdminPassword')]"
+          },
+          "openAiEndpoint": "[if(parameters('provisionOpenAI'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'openAiModuleDeployment'), '2025-04-01').outputs.endpoint.value), createObject('value', parameters('existingOpenAiEndpoint')))]",
+          "openAiKey": "[if(parameters('provisionOpenAI'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'openAiModuleDeployment'), '2025-04-01').outputs.apiKey.value), createObject('value', parameters('existingOpenAiKey')))]",
+          "storageConnectionString": "[if(parameters('provisionStorage'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'storageModuleDeployment'), '2025-04-01').outputs.connectionString.value), createObject('value', parameters('existingStorageConnectionString')))]",
+          "originalsContainer": {
+            "value": "[variables('originalsContainerName')]"
+          },
+          "tenantId": {
+            "value": "[format('{0}-{1}', variables('cleanClient'), variables('cleanEnv'))]"
+          },
+          "appEnv": {
+            "value": "[variables('cleanEnv')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "5831057345244116362"
+            }
+          },
+          "parameters": {
+            "containerEnvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of Container Apps Environment"
+              }
+            },
+            "containerAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of Backend Container App"
+              }
+            },
+            "logWorkspaceCustomerId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics Workspace Customer ID"
+              }
+            },
+            "logWorkspaceSharedKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Log Analytics Workspace Shared Key"
+              }
+            },
+            "imageName": {
+              "type": "string",
+              "metadata": {
+                "description": "Docker Image Name"
+              }
+            },
+            "postgresHost": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL Host FQDN"
+              }
+            },
+            "postgresDb": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL DB Name"
+              }
+            },
+            "postgresUser": {
+              "type": "string",
+              "metadata": {
+                "description": "PostgreSQL User"
+              }
+            },
+            "postgresPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "PostgreSQL Password"
+              }
+            },
+            "openAiEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure OpenAI Endpoint"
+              }
+            },
+            "openAiKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Azure OpenAI Key"
+              }
+            },
+            "storageConnectionString": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Storage Connection String"
+              }
+            },
+            "originalsContainer": {
+              "type": "string",
+              "metadata": {
+                "description": "Originals Container Name"
+              }
+            },
+            "tenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Tenant ID"
+              }
+            },
+            "appEnv": {
+              "type": "string",
+              "metadata": {
+                "description": "App Environment (dev or prod)"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('containerEnvName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "appLogsConfiguration": {
+                  "destination": "log-analytics",
+                  "logAnalyticsConfiguration": {
+                    "customerId": "[parameters('logWorkspaceCustomerId')]",
+                    "sharedKey": "[parameters('logWorkspaceSharedKey')]"
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('containerAppName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerEnvName'))]",
+                "configuration": {
+                  "ingress": {
+                    "external": true,
+                    "targetPort": 8000,
+                    "allowInsecure": false,
+                    "corsPolicy": {
+                      "allowedOrigins": [
+                        "*"
+                      ],
+                      "allowedMethods": [
+                        "GET",
+                        "POST",
+                        "OPTIONS"
+                      ],
+                      "allowedHeaders": [
+                        "*"
+                      ],
+                      "allowCredentials": true
+                    }
+                  },
+                  "secrets": [
+                    {
+                      "name": "pg-password",
+                      "value": "[parameters('postgresPassword')]"
+                    },
+                    {
+                      "name": "openai-key",
+                      "value": "[parameters('openAiKey')]"
+                    },
+                    {
+                      "name": "storage-conn",
+                      "value": "[parameters('storageConnectionString')]"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "backend",
+                      "image": "[parameters('imageName')]",
+                      "env": [
+                        {
+                          "name": "APP_ENV",
+                          "value": "[parameters('appEnv')]"
+                        },
+                        {
+                          "name": "POSTGRES_HOST",
+                          "value": "[parameters('postgresHost')]"
+                        },
+                        {
+                          "name": "POSTGRES_PORT",
+                          "value": "5432"
+                        },
+                        {
+                          "name": "POSTGRES_DB",
+                          "value": "[parameters('postgresDb')]"
+                        },
+                        {
+                          "name": "POSTGRES_USER",
+                          "value": "[parameters('postgresUser')]"
+                        },
+                        {
+                          "name": "POSTGRES_PASSWORD",
+                          "secretRef": "pg-password"
+                        },
+                        {
+                          "name": "POSTGRES_SSLMODE",
+                          "value": "require"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_ENDPOINT",
+                          "value": "[parameters('openAiEndpoint')]"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_API_KEY",
+                          "secretRef": "openai-key"
+                        },
+                        {
+                          "name": "AZURE_STORAGE_CONNECTION_STRING",
+                          "secretRef": "storage-conn"
+                        },
+                        {
+                          "name": "AZURE_BLOB_CONTAINER_ORIGINALS",
+                          "value": "[parameters('originalsContainer')]"
+                        },
+                        {
+                          "name": "TENANT_ID",
+                          "value": "[parameters('tenantId')]"
+                        }
+                      ],
+                      "resources": {
+                        "cpu": "[json('0.5')]",
+                        "memory": "1.0Gi"
+                      }
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": 1,
+                    "maxReplicas": 3
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/managedEnvironments', parameters('containerEnvName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "fqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('containerAppName')), '2023-05-01').configuration.ingress.fqdn]"
+            },
+            "appName": {
+              "type": "string",
+              "value": "[parameters('containerAppName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'acrModuleDeployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'logAnalyticsDeployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'openAiModuleDeployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'postgresModuleDeployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'storageModuleDeployment')]"
+      ]
+    },
+    {
+      "condition": "[parameters('provisionFrontends')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "userFrontendDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "appName": {
+            "value": "[format('swa-{0}-user-{1}', variables('cleanClient'), variables('cleanEnv'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "7034036090196573730"
+            }
+          },
+          "parameters": {
+            "appName": {
+              "type": "string",
+              "metadata": {
+                "description": "Static Web App Name"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/staticSites",
+              "apiVersion": "2022-09-01",
+              "name": "[parameters('appName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Free",
+                "tier": "Free"
+              },
+              "properties": {
+                "allowConfigFileUpdates": true
+              }
+            }
+          ],
+          "outputs": {
+            "defaultHostname": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/staticSites', parameters('appName')), '2022-09-01').defaultHostname]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('appName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('provisionFrontends')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "adminFrontendDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "appName": {
+            "value": "[format('swa-{0}-admin-{1}', variables('cleanClient'), variables('cleanEnv'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "7034036090196573730"
+            }
+          },
+          "parameters": {
+            "appName": {
+              "type": "string",
+              "metadata": {
+                "description": "Static Web App Name"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure Region"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/staticSites",
+              "apiVersion": "2022-09-01",
+              "name": "[parameters('appName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Free",
+                "tier": "Free"
+              },
+              "properties": {
+                "allowConfigFileUpdates": true
+              }
+            }
+          ],
+          "outputs": {
+            "defaultHostname": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/staticSites', parameters('appName')), '2022-09-01').defaultHostname]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('appName')]"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "backendFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'containerAppDeployment'), '2025-04-01').outputs.fqdn.value]"
+    },
+    "userFrontendUrl": {
+      "type": "string",
+      "value": "[if(parameters('provisionFrontends'), reference(resourceId('Microsoft.Resources/deployments', 'userFrontendDeployment'), '2025-04-01').outputs.defaultHostname.value, '')]"
+    },
+    "adminFrontendUrl": {
+      "type": "string",
+      "value": "[if(parameters('provisionFrontends'), reference(resourceId('Microsoft.Resources/deployments', 'adminFrontendDeployment'), '2025-04-01').outputs.defaultHostname.value, '')]"
+    },
+    "databaseHost": {
+      "type": "string",
+      "value": "[if(parameters('provisionPostgres'), reference(resourceId('Microsoft.Resources/deployments', 'postgresModuleDeployment'), '2025-04-01').outputs.fqdn.value, parameters('existingPostgresHost'))]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "value": "[variables('storageName')]"
+    }
+  }
+}

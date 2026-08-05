@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* --------------------------------------------------------------------------
-   End-User Search Application - Modern Dark Glassmorphic Theme
+   End-User Search Application - Modern Glassmorphic Theme with Client Branding
    -------------------------------------------------------------------------- */
 
 :root {
@@ -10,10 +10,13 @@
   --border-glow: rgba(99, 102, 241, 0.2);
   --border-light: rgba(255, 255, 255, 0.08);
   
-  --color-primary: #6366f1;
-  --color-primary-hover: #4f46e5;
-  --color-accent: #06b6d4;
-  --color-accent-light: #22d3ee;
+  --brand-primary: #00965e;
+  --brand-primary-hover: #007a4c;
+  --brand-secondary: #b59659;
+  --brand-gradient: linear-gradient(135deg, #00965e 0%, #a38244 100%);
+  --brand-topbar-bg: #a38244;
+  --brand-sidebar-bg: #17231c;
+  --brand-user-bubble: #007a4c;
   
   --color-success: #10b981;
   --color-warning: #f59e0b;

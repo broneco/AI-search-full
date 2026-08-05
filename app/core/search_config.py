@@ -42,7 +42,7 @@ class SearchConfigSchema(BaseModel):
     rrf_k: int = Field(60, ge=10, le=100)
     vector_limit: int = Field(50, ge=5, le=200)
     keyword_limit: int = Field(50, ge=5, le=200)
-    final_limit: int = Field(5, ge=1, le=20)
+    final_limit: int = Field(8, ge=1, le=20)
     vector_final_limit: int = Field(5, ge=1, le=20)
     keyword_final_limit: int = Field(5, ge=1, le=20)
     score_threshold: float = Field(0.0, ge=0.0, le=1.0)

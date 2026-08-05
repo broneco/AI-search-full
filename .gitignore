@@ -25,6 +25,9 @@ build/
 
 # Agent temporary local files
 .agents/inbox/*-local.md
+scratch/
+frontend-user/out/
+frontend-admin/out/
 
 # OS/editor
 .DS_Store

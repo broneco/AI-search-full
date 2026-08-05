@@ -9,11 +9,15 @@ Use this file for durable notes that future agents need but that are not obvious
 - **Swagger Security Headers**: Exposing HTTP headers (like `X-User-Id` and `X-User-Groups`) in Swagger UI (/docs) is achieved by formally declaring them as optional parameters of the endpoint function using `x_user_id: Optional[str] = Header(None, alias="X-User-Id")`. The backend route defaults them to standard defaults (e.g. `User` role and `local_user` user id) to maintain out-of-the-box compatibility for standard REST requests.
 - **Czech Character-Mapping PDF Highlighting Algorithm**: Standard PyMuPDF `page.search_for` matches fail on Czech PDFs due to (1) font corruption where accents are extracted as `\ufffd`, (2) phantom spacing inside words due to loader/font kerning conflicts, and (3) multi-line paragraph layout breaks. The view router builds a character-to-word-index mapping of the page by stripping all accents, spaces, and corrupted characters to standard basic ASCII alphanumeric components (`a-z`, `0-9`). It runs a sliding-window substring search on this basic representation, locates corresponding PDF word bounding boxes, and groups them by `(block_no, line_no)` to draw clean line-by-line rectangles.
 
+- **Multi-Environment Configuration Resolution**: FastAPI backend settings (`app/core/config.py`) dynamically resolve environment files (`.env.dev` or `.env.prod`) based on the `APP_ENV` variable. `@model_validator` automatically supplies default PostgreSQL database names (`ai_search_dev` vs `ai_search_prod`) and Azure Blob Storage containers (`dolphin-originals-dev` vs `dolphin-originals`).
+- **Dual-Frontend Application Architecture**: The repository contains two decoupled Next.js applications: `frontend-user` (End-user conversational search workspace, document library sidebar, Markdown renderer, PDF drawer) and `frontend-admin` (Admin management console for category tagging, search strategy tuning, chunking live preview).
+- **Parameterized Azure Deployment Scripts**: `deploy_backend.ps1` supports `-Client <name>` and `-Environment <dev|prod>` parameters to deploy Container Apps `${Client}-ai-search-backend-${Environment}`. `deploy_frontend.ps1` builds and prepares Next.js static output for Azure Static Web Apps.
+
 ## Infrastructure & Deployment Configuration
 
 - **Azure Container Registry (ACR)**: The registry name in the Azure subscription is `dolphinds` (Login Server URL: `dolphinds-b7asdeh8fyayaya2.azurecr.io`). Use `dolphinds` for all future builds and this full URL for image tags.
 - **Resource Group**: `DOLPHIN_DS`
 - **Location**: North Europe (`northeurope`)
-- **Container App**: `dolphin-ai-search-backend` (URL: `https://dolphin-ai-search-backend.graysand-c9254ce4.northeurope.azurecontainerapps.io`)
+- **Container Apps**: `dolphin-ai-search-backend-dev`, `dolphin-ai-search-backend-prod`
 - **Container Apps Environment**: `dolphinds-ai-container-env`
 - **Tags**: `owner: Ondrej Bronec`, `purpose: AI Search - internal`

@@ -159,13 +159,6 @@ async def view_document(
 
         # 1. Fetch raw PDF file bytes
         if doc.source_type == "azure_blob":
-            blob_provider = BlobStorageProvider()
-            if not blob_provider.is_configured():
-                raise HTTPException(
-                    status_code=500,
-                    detail="Azure Blob Storage connection is not configured."
-                )
-            
             uri_parts = doc.source_uri.replace("azure://", "").split("/", 1)
             if len(uri_parts) < 2:
                 container_name = settings.AZURE_BLOB_CONTAINER_ORIGINALS or "originals"
@@ -173,9 +166,35 @@ async def view_document(
             else:
                 container_name = uri_parts[0]
                 blob_name = uri_parts[1]
+
+            # Server-side Blob Cache check for ultra-fast serving (uses tempdir to avoid uvicorn watchfile reloads)
+            import tempfile
+            cache_dir = os.path.join(tempfile.gettempdir(), "dolphin_blob_cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_file = os.path.join(cache_dir, f"{doc.document_id}.pdf")
+
+            if os.path.exists(cache_file):
+                logger.info(f"Serving blob '{blob_name}' from server local cache ({cache_file})...")
+                with open(cache_file, "rb") as f:
+                    data = f.read()
+            else:
+                blob_provider = BlobStorageProvider()
+                if not blob_provider.is_configured():
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Azure Blob Storage connection is not configured."
+                    )
                 
-            logger.info(f"Downloading blob '{blob_name}' from container '{container_name}'...")
-            data = await blob_provider.download_blob(container_name, blob_name)
+                logger.info(f"Downloading blob '{blob_name}' from container '{container_name}'...")
+                data = await blob_provider.download_blob(container_name, blob_name)
+
+                # Persist to local cache for instant sub-millisecond future responses
+                try:
+                    with open(cache_file, "wb") as f:
+                        f.write(data)
+                    logger.info(f"Successfully cached blob '{blob_name}' to {cache_file}.")
+                except Exception as cache_err:
+                    logger.warning(f"Could not save blob to cache: {cache_err}")
         else:
             # Serve from local file
             local_path = doc.source_uri.replace("file://", "")
