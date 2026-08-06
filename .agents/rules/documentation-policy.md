@@ -61,10 +61,9 @@ Bad memory entries:
 
 ## Repository Navigation Guide (navigation_guide.md)
 
-Agents MUST maintain `docs/navigation_guide.md` in 100% synchronization with the actual repository tree.
+Agents MUST maintain `docs/navigation_guide.md` in 100% synchronization with the actual repository tree (excluding individual raw input PDF files inside `data/`, where only the directory structure itself is documented).
 
-Whenever a new file or directory is created, moved, or deleted anywhere in the repository:
+Whenever a new codebase file or directory is created, moved, or deleted anywhere in the repository:
 1. Add/update/remove the entry in `docs/navigation_guide.md`.
 2. Provide a clear, concise 1-sentence description in Czech explaining the purpose and role of the file/folder.
-3. Ensure no files or folders are missed.
-- duplicate changelog entries
+3. Ensure no codebase files or folders are missed.
