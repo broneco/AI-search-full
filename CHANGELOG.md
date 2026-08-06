@@ -17,6 +17,10 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 - **FastAPI CORS 307 Redirect Fix (`app/api/routes/chat.py`)**: Added `@router.post("")` route decorator alongside `@router.post("/")` to prevent CORS preflight network errors on `/api/chat`.
 
 ### Added
+- **Tenant-Specific System Prompts & Leadership Personalities (`app/core/prompts.py`, `app/api/routes/chat.py`, `tests/test_tenant_prompts.py`)**:
+  - Implemented modular tenant prompt manager supporting isolated system prompts per client tenant (`alzbeta`, `dolphin`, `default`).
+  - Integrated key organizational leadership personalities for **Nemocnice sv. Alžběty na Slupi** into the system prompt: Jednatel (RNDr. Karel Matyska, CSc.), Náměstek LPP (MUDr. Ivana Doleželová, MBA) and Náměstek NZOK (Mgr. Marcela Tomanová, MBA, LL.M.).
+  - Added unit test suite `tests/test_tenant_prompts.py` verifying prompt isolation, language localization (CS/EN), and leadership identification.
 - **Repository Navigation Guide & Maintenance Rule (`docs/navigation_guide.md`, `.agents/AGENTS.md`, `.agents/rules/documentation-policy.md`)**:
   - Created [`docs/navigation_guide.md`](file:///c:/Users/ondrej.bronec/OneDrive%20-%20dolphinconsulting.cz/Documents/Projekty/WIP%20-%20AI%20Search%20Full/docs/navigation_guide.md) documenting 100% of all 350 files and directories in the repository with a concise 1-sentence Czech description for each element.
   - Enforced a binding rule in `.agents/AGENTS.md` (Definition of Done) and `.agents/rules/documentation-policy.md` requiring AI agents to update `docs/navigation_guide.md` whenever any file or directory is created, moved, or deleted anywhere in the repository.

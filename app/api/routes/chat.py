@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
 from app.core.config import settings
+from app.core.prompts import get_system_prompt
 from app.core.search_config import SearchConfigManager, SearchConfigSchema
 from app.providers.azure_openai import AzureOpenAIProvider, AzureOpenAIEmbeddingProvider
 from app.providers.llm import ChatMessage
@@ -202,27 +203,7 @@ async def chat_interaction(
         )
 
     context_str = "\n---\n".join(context_blocks)
-    if request.locale == "cs":
-        system_message = (
-            "Jste užitečný firemní asistent pro vyhledávání (AI Search Assistant).\n"
-            "Vaším úkolem je odpovídat na dotazy uživatelů POUZE s využitím níže poskytnutých firemních dokumentů.\n"
-            "Pravidla pro odpověď:\n"
-            "- Spoléhejte se POUZE na poskytnuté dokumenty.\n"
-            "- Pokud v poskytnutých dokumentech naleznete odpověď na dotaz (např. nárok v hodinách či dnech), uveďte ji výslovně a připojte přímé citace [1], [2] atd.\n"
-            "- Pokud poskytnutý kontext neobsahuje dostatek informací pro úplnou odpověď, uveďte to výslovně.\n\n"
-            f"=== ZÍSKANÉ FIREMNÍ DOKUMENTY ===\n{context_str}\n"
-        )
-    else:
-        system_message = (
-            "You are a helpful, enterprise AI Search Assistant.\n"
-            "Your task is to answer user queries using ONLY the retrieved corporate documents supplied below.\n"
-            "Groundedness constraints:\n"
-            "- Answer EXCLUSIVELY in the English language.\n"
-            "- Rely ONLY on the provided context evidence. Do not extrapolate.\n"
-            "- If the context does not contain enough information to formulate a complete answer, state that explicitly.\n"
-            "- Cite your sources using bracketed annotations, e.g. [1], [2] matching source numbers below.\n\n"
-            f"=== RETRIEVED corporate documents ===\n{context_str}\n"
-        )
+    system_message = get_system_prompt(settings.TENANT_ID, request.locale, context_str)
 
     messages = [ChatMessage(role="system", content=system_message)]
     # Attach last 6 past message turns for multi-turn conversational context

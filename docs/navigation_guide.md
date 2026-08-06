@@ -102,6 +102,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📁 `core/` — Složka s jádrem konfigurace, nastavením vyhledávání a klasifikací dokumentů.
     - 📄 `classification_config.json` — Konfigurační soubor definující kategorie dokumentů a jejich přístupová práva (ACL).
     - 📄 `config.py` — Hlavní modul proměnných prostředí a nastavení aplikace pomocí Pydantic BaseSettings.
+    - 📄 `prompts.py` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (prompts.py).
     - 📄 `search_config.json` — Konfigurační soubor parametrů vyhledávání (RRF váhy, limity, práhy skóre).
     - 📄 `search_config.py` — Modul pro načítání a práci s konfigurací vyhledávání.
   - 📁 `ingestion/` — Složka modulů pro zpracování, dělení a indexaci dokumentů.
@@ -243,6 +244,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `hybrid_search.md` — Architektonický návrhový dokument: hybrid_search.md.
     - 📄 `metadata_tagging_system.md` — Architektonický návrhový dokument: metadata_tagging_system.md.
   - 📄 `initial_design_doc.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (initial_design_doc.md).
+  - 📄 `navigation_guide.md` — Kompletní průvodce adresářovou strukturou repozitáře a popisem všech souborů.
   - 📁 `runbooks/` — Složka s podkladovými nemocničními směrnicemi a řády (runbooks).
     - 📄 `azure-first-deployment.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (azure-first-deployment.md).
   - 📁 `tests_explained/` — Složka s detailním vysvětlením jednotlivých testů pro vývojáře.
@@ -257,6 +259,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `test_search_config.md` — Dokumentace s vysvětlením testovacího modulu test_search_config.md.
     - 📄 `test_security_freshness.md` — Dokumentace s vysvětlením testovacího modulu test_security_freshness.md.
     - 📄 `test_security_prefilter.md` — Dokumentace s vysvětlením testovacího modulu test_security_prefilter.md.
+    - 📄 `test_tenant_prompts.md` — Dokumentace s vysvětlením testovacího modulu test_tenant_prompts.md.
     - 📄 `test_vector_db.md` — Dokumentace s vysvětlením testovacího modulu test_vector_db.md.
 
 ---
@@ -275,6 +278,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `test_search_config.py` — Testovací modul pytest ověřující funkčnost test_search_config.py.
   - 📄 `test_security_freshness.py` — Testovací modul pytest ověřující funkčnost test_security_freshness.py.
   - 📄 `test_security_prefilter.py` — Testovací modul pytest ověřující funkčnost test_security_prefilter.py.
+  - 📄 `test_tenant_prompts.py` — Testovací modul pytest ověřující funkčnost test_tenant_prompts.py.
   - 📄 `test_vector_db.py` — Testovací modul pytest ověřující funkčnost test_vector_db.py.
 
 ---
