@@ -293,7 +293,15 @@ export default function Home() {
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
 
   // Application Navigation
-  const [activeTab, setActiveTab] = useState<"chat" | "ingest" | "categories" | "config" | "chunking">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "ingest" | "categories" | "config" | "chunking" | "prompt">("chat");
+
+  // System Prompt State
+  const [promptPromptsMap, setPromptPromptsMap] = useState<{ cs: string; en: string }>({ cs: "", en: "" });
+  const [promptTenantInfo, setPromptTenantInfo] = useState<{ tenant_id: string; tenant_base: string }>({ tenant_id: "", tenant_base: "" });
+  const [promptLocale, setPromptLocale] = useState<"cs" | "en">("cs");
+  const [promptEditorText, setPromptEditorText] = useState<string>("");
+  const [savingPrompt, setSavingPrompt] = useState<boolean>(false);
+  const [promptSaveMsg, setPromptSaveMsg] = useState<string | null>(null);
 
   // Dynamic Categories and Config
   const [config, setConfig] = useState<Config | null>(null);
@@ -412,7 +420,7 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Backend API URL Base
-  const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   // Live Chunking Preview State
   const [selectedPreviewDocId, setSelectedPreviewDocId] = useState<string>("");
@@ -497,10 +505,53 @@ export default function Home() {
     editingSearchConfig?.summary_custom_prompt,
     JSON.stringify(editingSearchConfig?.semantic_params),
     JSON.stringify(editingSearchConfig?.structure_params),
-    JSON.stringify(editingSearchConfig?.token_params),
-    JSON.stringify(editingSearchConfig?.agentic_params),
     activeTab
   ]);
+
+  const fetchPrompts = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/prompts`);
+      if (res.ok) {
+        const data = await res.json();
+        setPromptTenantInfo({ tenant_id: data.tenant_id, tenant_base: data.tenant_base });
+        setPromptPromptsMap(data.prompts);
+        setPromptEditorText(data.prompts[promptLocale] || "");
+      }
+    } catch (e) {
+      console.error("Failed to fetch system prompts:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "prompt") {
+      fetchPrompts();
+    }
+  }, [activeTab, promptLocale]);
+
+  const handleSavePrompt = async () => {
+    setSavingPrompt(true);
+    setPromptSaveMsg(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/prompts`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locale: promptLocale, prompt_text: promptEditorText }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPromptPromptsMap(data.prompts);
+        setPromptSaveMsg(appLanguage === "cs" ? "Systémový prompt byl úspěšně uložen!" : "System prompt saved successfully!");
+        setTimeout(() => setPromptSaveMsg(null), 4000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || "Chyba při ukládání promptu.");
+      }
+    } catch (e) {
+      alert("Chyba připojení k serveru.");
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
 
   // Re-indexing progress state
   const [showReindexModal, setShowReindexModal] = useState(false);
@@ -1544,6 +1595,17 @@ export default function Home() {
             }`}
           >
             {TRANSLATIONS[appLanguage].chunkingTab}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("prompt")}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              activeTab === "prompt"
+                ? "bg-white/25 text-white shadow-md font-bold"
+                : "text-white/70 hover:text-white"
+            }`}
+          >
+            {TRANSLATIONS[appLanguage].promptTab}
           </button>
         </div>
 
@@ -3747,6 +3809,91 @@ export default function Home() {
                 )}
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* 6. Render System Prompt Management tab */}
+        {activeTab === "prompt" && (
+          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
+            <div className="w-full max-w-5xl space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                    <span>📝</span>
+                    <span>{appLanguage === "cs" ? "Správa systémového promptu" : "System Prompt Management"}</span>
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {appLanguage === "cs"
+                      ? `Právě upravujete systémový prompt pro tenant: ${promptTenantInfo.tenant_id} (báze: ${promptTenantInfo.tenant_base})`
+                      : `Editing system prompt for tenant: ${promptTenantInfo.tenant_id} (base: ${promptTenantInfo.tenant_base})`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => { setPromptLocale("cs"); setPromptEditorText(promptPromptsMap.cs || ""); }}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      promptLocale === "cs" ? "bg-indigo-600 text-white shadow-md" : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    🇨🇿 Čeština (CS)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPromptLocale("en"); setPromptEditorText(promptPromptsMap.en || ""); }}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      promptLocale === "en" ? "bg-indigo-600 text-white shadow-md" : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    🇬🇧 English (EN)
+                  </button>
+                </div>
+              </div>
+
+              {promptSaveMsg && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2">
+                  <span>✅</span>
+                  <span>{promptSaveMsg}</span>
+                </div>
+              )}
+
+              <div className="glass-panel p-6 rounded-2xl bg-[#0c1222] border border-white/10 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-white flex items-center gap-2">
+                    <span>⚙️</span>
+                    <span>{appLanguage === "cs" ? "Šablona systémového promptu LLM" : "LLM System Prompt Template"}</span>
+                  </label>
+                  <span className="text-[11px] text-indigo-400 font-medium">
+                    {appLanguage === "cs" ? "Použijte {context_str} pro vložení kontextu" : "Use {context_str} for context insertion"}
+                  </span>
+                </div>
+
+                <textarea
+                  value={promptEditorText}
+                  onChange={(e) => setPromptEditorText(e.target.value)}
+                  rows={18}
+                  className="w-full bg-black/60 border border-white/15 rounded-xl p-4 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 leading-relaxed shadow-inner"
+                  placeholder="Zadejte systémový prompt..."
+                />
+
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-[11px] text-zinc-500">
+                    {appLanguage === "cs"
+                      ? "Změny se uplatní okamžitě na všechny nové dotazy uživatelů v tomto tenantu."
+                      : "Changes take effect immediately for all new user queries in this tenant."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSavePrompt}
+                    disabled={savingPrompt}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-xl transition-all shadow-lg shadow-indigo-600/25 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <span>💾</span>
+                    <span>{savingPrompt ? (appLanguage === "cs" ? "Ukládám..." : "Saving...") : (appLanguage === "cs" ? "Uložit systémový prompt" : "Save System Prompt")}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

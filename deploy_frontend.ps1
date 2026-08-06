@@ -19,7 +19,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ClientClean = $Client.ToLower()
 $EnvClean = $Environment.ToLower()
 $ContainerAppName = "$ClientClean-ai-search-backend-$EnvClean"
-$SwaName = "swa-$ClientClean-$EnvClean"
+$SwaName = if ($AppType -eq "admin") { "swa-$ClientClean-admin-$EnvClean" } else { "swa-$ClientClean-$EnvClean" }
 $AppDir = if ($AppType -eq "admin") { "frontend-admin" } else { "frontend-user" }
 
 # Determine Backend URL dynamically from Azure Container App if not specified
@@ -69,9 +69,15 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "[OK] Build uspesne dokoncen!" -ForegroundColor Green
 
-# Retrieve deployment token from Azure Static Web App and deploy automatically
+# Retrieve deployment token from Azure Static Web App or create SWA if missing
 Write-Host "[INFO] Zistuji deployment token pro Static Web App '$SwaName'..." -ForegroundColor White
 $DeploymentToken = (az staticwebapp secrets list --name $SwaName --resource-group $ResourceGroup --query properties.apiKey --output tsv 2>$null)
+
+if ([string]::IsNullOrWhiteSpace($DeploymentToken)) {
+    Write-Host "[INFO] Static Web App '$SwaName' neexistuje, vytvarim v Azure..." -ForegroundColor Yellow
+    az staticwebapp create --name $SwaName --resource-group $ResourceGroup --location westeurope --sku Free
+    $DeploymentToken = (az staticwebapp secrets list --name $SwaName --resource-group $ResourceGroup --query properties.apiKey --output tsv 2>$null)
+}
 
 if (-not [string]::IsNullOrWhiteSpace($DeploymentToken)) {
     Write-Host "[2/2] Nasazuji frontend do Azure Static Web App ($SwaName)..." -ForegroundColor Yellow

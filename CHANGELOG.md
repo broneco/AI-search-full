@@ -17,6 +17,14 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 - **FastAPI CORS 307 Redirect Fix (`app/api/routes/chat.py`)**: Added `@router.post("")` route decorator alongside `@router.post("/")` to prevent CORS preflight network errors on `/api/chat`.
 
 ### Added
+- **Admin Console Static Web Apps & Automatic Provisioning (`deploy_frontend.ps1`)**:
+  - Created and deployed 3 dedicated Azure Static Web Apps for **Administrační konzole**: `swa-alzbeta-admin-prod`, `swa-dolphin-admin-prod`, and `swa-dolphin-admin-dev`.
+  - Extended `deploy_frontend.ps1` with `-AppType <user|admin>` parameter supporting automated SWA resource creation in `westeurope` and dynamic deployment.
+- **Admin System Prompt Management (`frontend-admin/app/page.tsx`, `app/api/routes/prompts.py`, `tests/test_prompts_api.py`)**:
+  - Added a dedicated **Systémový prompt** tab in `frontend-admin` allowing real-time viewing and editing of system prompt templates per tenant and language (`cs`/`en`).
+  - Added REST API endpoints `GET /api/prompts` and `PUT /api/prompts` with persistent storage in `app/core/custom_prompts.json`.
+- **User Console Auth Simplification (`frontend-user/app/components/AuthModal.tsx`)**:
+  - Removed user self-registration tab and 1-click demo login button from `frontend-user`, restricting user management exclusively to the `frontend-admin` console.
 - **Tenant-Specific System Prompts & Leadership Personalities (`app/core/prompts.py`, `app/api/routes/chat.py`, `tests/test_tenant_prompts.py`)**:
   - Implemented modular tenant prompt manager supporting isolated system prompts per client tenant (`alzbeta`, `dolphin`, `default`).
   - Integrated key organizational leadership personalities for **Nemocnice sv. Alžběty na Slupi** into the system prompt: Jednatel (RNDr. Karel Matyska, CSc.), Náměstek LPP (MUDr. Ivana Doleželová, MBA) and Náměstek NZOK (Mgr. Marcela Tomanová, MBA, LL.M.).

@@ -1,7 +1,17 @@
 """
-Tenant-specific system prompt manager.
+Tenant-specific system prompt manager with custom prompt persistence support.
 Provides customized RAG system prompts grounded in retrieved documents for each client tenant.
 """
+
+import json
+import os
+import logging
+from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
+
+CUSTOM_PROMPTS_FILE = os.path.join(os.path.dirname(__file__), "custom_prompts.json")
+
 
 def get_tenant_base(tenant_id: str) -> str:
     """Extract base tenant name from tenant_id string (e.g. 'alzbeta-prod' -> 'alzbeta')."""
@@ -10,7 +20,7 @@ def get_tenant_base(tenant_id: str) -> str:
     return tenant_id.split("-")[0].lower()
 
 
-TENANT_PROMPTS = {
+DEFAULT_TENANT_PROMPTS = {
     "alzbeta": {
         "cs": (
             "Jste užitečný firemní a zdravotnický AI asistent Nemocnice sv. Alžběty na Slupi.\n"
@@ -87,12 +97,64 @@ TENANT_PROMPTS = {
 }
 
 
+def _load_custom_prompts() -> Dict[str, Any]:
+    """Load custom prompts JSON file if present."""
+    if os.path.exists(CUSTOM_PROMPTS_FILE):
+        try:
+            with open(CUSTOM_PROMPTS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load custom prompts from {CUSTOM_PROMPTS_FILE}: {e}")
+    return {}
+
+
+def _save_custom_prompts(data: Dict[str, Any]) -> None:
+    """Save custom prompts JSON file."""
+    try:
+        with open(CUSTOM_PROMPTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save custom prompts to {CUSTOM_PROMPTS_FILE}: {e}")
+
+
+def get_tenant_prompts_map(tenant_id: str) -> Dict[str, str]:
+    """Get prompt templates map for CS and EN for a given tenant."""
+    tenant_base = get_tenant_base(tenant_id)
+    custom = _load_custom_prompts()
+    defaults = DEFAULT_TENANT_PROMPTS.get(tenant_base, DEFAULT_TENANT_PROMPTS["default"])
+    
+    tenant_custom = custom.get(tenant_base, {})
+    return {
+        "cs": tenant_custom.get("cs", defaults["cs"]),
+        "en": tenant_custom.get("en", defaults["en"]),
+    }
+
+
+def update_tenant_prompt(tenant_id: str, locale: str, prompt_text: str) -> Dict[str, str]:
+    """Update custom system prompt for a tenant and locale."""
+    tenant_base = get_tenant_base(tenant_id)
+    loc = "cs" if locale.lower() == "cs" else "en"
+    
+    custom = _load_custom_prompts()
+    if tenant_base not in custom:
+        custom[tenant_base] = {}
+    
+    custom[tenant_base][loc] = prompt_text
+    _save_custom_prompts(custom)
+    
+    return get_tenant_prompts_map(tenant_id)
+
+
 def get_system_prompt(tenant_id: str, locale: str, context_str: str) -> str:
     """
     Get tenant-specific and locale-specific system prompt populated with context string.
     """
-    tenant_base = get_tenant_base(tenant_id)
-    prompts_map = TENANT_PROMPTS.get(tenant_base, TENANT_PROMPTS["default"])
+    prompts_map = get_tenant_prompts_map(tenant_id)
     loc = "cs" if locale.lower() == "cs" else "en"
     template = prompts_map.get(loc, prompts_map["cs"])
-    return template.format(context_str=context_str)
+    
+    # Ensure template has {context_str} placeholder
+    if "{context_str}" in template:
+        return template.format(context_str=context_str)
+    else:
+        return f"{template}\n\n=== ZÍSKANÉ FIREMNÍ DOKUMENTY ===\n{context_str}\n"

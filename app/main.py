@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI
 from app.core.config import settings
 from contextlib import asynccontextmanager
-from app.api.routes import health, chat, documents, auth, threads
+from app.api.routes import health, chat, documents, auth, threads, prompts
 from app.storage.db import init_db
 
 # Setup logging
@@ -48,6 +48,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(threads.router, prefix="/api/threads", tags=["Threads"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
+app.include_router(prompts.router, prefix="/api/prompts", tags=["Prompts"])
 
 
 @app.get("/")

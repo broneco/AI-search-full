@@ -98,6 +98,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
       - 📄 `chat.py` — API endpointy pro RAG vyhledávání, chatové dotazy a generování odpovídajících citací.
       - 📄 `documents.py` — API endpointy pro správu, nahrávání a mazání dokumentů.
       - 📄 `health.py` — API endpointy pro kontrolu stavu a zdraví aplikace (liveness/readiness).
+      - 📄 `prompts.py` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (prompts.py).
       - 📄 `threads.py` — API endpointy pro správu konverzčních vláken a historie rozhovorů.
   - 📁 `core/` — Složka s jádrem konfigurace, nastavením vyhledávání a klasifikací dokumentů.
     - 📄 `classification_config.json` — Konfigurační soubor definující kategorie dokumentů a jejich přístupová práva (ACL).
@@ -254,6 +255,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `test_metadata_tagging.md` — Dokumentace s vysvětlením testovacího modulu test_metadata_tagging.md.
     - 📄 `test_multi_tenant_auth.md` — Dokumentace s vysvětlením testovacího modulu test_multi_tenant_auth.md.
     - 📄 `test_pdf_annotations.md` — Dokumentace s vysvětlením testovacího modulu test_pdf_annotations.md.
+    - 📄 `test_prompts_api.md` — Dokumentace s vysvětlením testovacího modulu test_prompts_api.md.
     - 📄 `test_rag_pipeline.md` — Dokumentace s vysvětlením testovacího modulu test_rag_pipeline.md.
     - 📄 `test_rechunk.md` — Dokumentace s vysvětlením testovacího modulu test_rechunk.md.
     - 📄 `test_search_config.md` — Dokumentace s vysvětlením testovacího modulu test_search_config.md.
@@ -273,6 +275,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `test_metadata_tagging.py` — Testovací modul pytest ověřující funkčnost test_metadata_tagging.py.
   - 📄 `test_multi_tenant_auth.py` — Testovací modul pytest ověřující funkčnost test_multi_tenant_auth.py.
   - 📄 `test_pdf_annotations.py` — Testovací modul pytest ověřující funkčnost test_pdf_annotations.py.
+  - 📄 `test_prompts_api.py` — Testovací modul pytest ověřující funkčnost test_prompts_api.py.
   - 📄 `test_rag_pipeline.py` — Testovací modul pytest ověřující funkčnost test_rag_pipeline.py.
   - 📄 `test_rechunk.py` — Testovací modul pytest ověřující funkčnost test_rechunk.py.
   - 📄 `test_search_config.py` — Testovací modul pytest ověřující funkčnost test_search_config.py.
