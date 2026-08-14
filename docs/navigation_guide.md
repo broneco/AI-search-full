@@ -235,6 +235,8 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `ADR-0013-hybrid-search-fusion-strategies.md` — Záznam architektonického rozhodnutí: ADR-0013-hybrid-search-fusion-strategies.md.
     - 📄 `ADR-0014-context-expansion-strategies.md` — Záznam architektonického rozhodnutí: ADR-0014-context-expansion-strategies.md.
     - 📄 `ADR-0015-multi-environment-dev-prod-architecture.md` — Záznam architektonického rozhodnutí: ADR-0015-multi-environment-dev-prod-architecture.md.
+  - 📁 `architecture/` — Složka s podkladovými nemocničními směrnicemi a řády (architecture).
+    - 📄 `app_database_usage_info_dump.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (app_database_usage_info_dump.md).
   - 📁 `deployments/` — Složka s návody a prameny pro nasazení do Azure cloudu.
     - 📄 `azure_bicep_provisioning_guide.md` — Dokumentace a návod k nasazení: azure_bicep_provisioning_guide.md.
     - 📄 `cloud_deployment_guide.md` — Dokumentace a návod k nasazení: cloud_deployment_guide.md.
