@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
 from app.core.config import settings
+from app.storage.db import init_db
 from app.storage.models import DBUser
 
 router = APIRouter()
@@ -94,9 +95,16 @@ async def login(
     clean_email = request.email.strip().lower()
     hashed = hash_password(request.password)
 
-    user = db.query(DBUser).filter(
-        DBUser.email == clean_email
-    ).first()
+    try:
+        user = db.query(DBUser).filter(
+            DBUser.email == clean_email
+        ).first()
+    except Exception as query_err:
+        # If database tables do not exist (e.g. startup network timeout), auto-initialize schemas and retry
+        init_db()
+        user = db.query(DBUser).filter(
+            DBUser.email == clean_email
+        ).first()
 
     if not user or user.password_hash != hashed:
         raise HTTPException(
@@ -124,10 +132,17 @@ async def register(
 ):
     """Register a new user scoped to the current TENANT_ID."""
     clean_email = request.email.strip().lower()
-    existing = db.query(DBUser).filter(
-        DBUser.tenant_id == settings.TENANT_ID,
-        DBUser.email == clean_email
-    ).first()
+    try:
+        existing = db.query(DBUser).filter(
+            DBUser.tenant_id == settings.TENANT_ID,
+            DBUser.email == clean_email
+        ).first()
+    except Exception:
+        init_db()
+        existing = db.query(DBUser).filter(
+            DBUser.tenant_id == settings.TENANT_ID,
+            DBUser.email == clean_email
+        ).first()
 
     if existing:
         raise HTTPException(

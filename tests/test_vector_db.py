@@ -3,7 +3,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
-from app.storage.db import engine, init_db, SessionLocal
+from app.storage.db import engine, init_db, clear_db, SessionLocal
 from app.storage.models import DBDocument, DBChunk
 from app.retrieval.vector import VectorRetriever
 from app.retrieval.base import QueryContext
@@ -32,9 +32,7 @@ def db_setup():
     finally:
         # Clean up database tables after tests run to keep dev clean
         db.close()
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+        clear_db()
 
 
 def test_vector_similarity_search(db_setup):

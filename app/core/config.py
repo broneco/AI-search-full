@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_SSLMODE: str = "disable"
 
+    # Azure SQL Database (Microsoft SQL Server)
+    AZURE_SQL_HOST: Optional[str] = None
+    AZURE_SQL_PORT: int = 1433
+    AZURE_SQL_DB: Optional[str] = None
+    AZURE_SQL_USER: Optional[str] = None
+    AZURE_SQL_PASSWORD: Optional[str] = None
+    AZURE_SQL_DRIVER: str = "ODBC Driver 18 for SQL Server"
+    USE_AZURE_SQL: bool = False
+
     # Blob Storage
     AZURE_STORAGE_ACCOUNT: Optional[str] = None
     AZURE_STORAGE_CONNECTION_STRING: Optional[str] = None
@@ -51,6 +60,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def set_environment_defaults(self):
+        # Determine if Azure SQL is active
+        if self.AZURE_SQL_HOST and self.AZURE_SQL_HOST.strip():
+            self.USE_AZURE_SQL = True
+            if not self.AZURE_SQL_DB:
+                self.AZURE_SQL_DB = "dolphin-ai-search-sqldb"
+
         # Set default DB name if not explicitly set
         if not self.POSTGRES_DB:
             if self.APP_ENV == "prod":

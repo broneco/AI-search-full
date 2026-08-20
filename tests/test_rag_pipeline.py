@@ -5,7 +5,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 from app.main import app
-from app.storage.db import engine, init_db, SessionLocal
+from app.storage.db import engine, init_db, clear_db, SessionLocal
 
 client = TestClient(app)
 
@@ -31,9 +31,7 @@ def rag_setup():
     yield
 
     # 4. Clean up tables
-    with engine.begin() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+    clear_db()
 
 
 def test_end_to_end_rag_flow(rag_setup):

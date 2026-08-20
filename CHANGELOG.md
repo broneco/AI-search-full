@@ -17,6 +17,11 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 - **FastAPI CORS 307 Redirect Fix (`app/api/routes/chat.py`)**: Added `@router.post("")` route decorator alongside `@router.post("/")` to prevent CORS preflight network errors on `/api/chat`.
 
 ### Added
+- **Full Refresh Ingestion & README Documentation (`README.md`, `full_refresh_ingest.py`, `app/storage/db.py`)**:
+  - Added dedicated documentation section for `full_refresh_ingest.py` in [`README.md`](file:///c:/Users/ondrej.bronec/OneDrive%20-%20dolphinconsulting.cz/Documents/Projekty/WIP%20-%20AI%20Search%20Full/README.md).
+  - Implemented `clear_document_data()` selectively clearing document chunks and metadata while preserving user accounts, credentials, and security roles.
+- **Azure SQL Database Environment Configuration (`.env`, `.env.dev`, `.env.prod`, `.env.example`)**:
+  - Added `AZURE_SQL_HOST`, `AZURE_SQL_PORT`, `AZURE_SQL_DB`, `AZURE_SQL_USER`, `AZURE_SQL_PASSWORD`, and `AZURE_SQL_DRIVER` parameters for Microsoft SQL Server transition.
 - **Admin Console Static Web Apps & Automatic Provisioning (`deploy_frontend.ps1`)**:
   - Created and deployed 3 dedicated Azure Static Web Apps for **Administrační konzole**: `swa-alzbeta-admin-prod`, `swa-dolphin-admin-prod`, and `swa-dolphin-admin-dev`.
   - Extended `deploy_frontend.ps1` with `-AppType <user|admin>` parameter supporting automated SWA resource creation in `westeurope` and dynamic deployment.

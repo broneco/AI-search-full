@@ -40,7 +40,16 @@ Aplikace podporuje kompletní izolaci vývojového a produkčního prostředí:
 ```
 - **Interaktivní Swagger API dokumentace**: 👉 **[http://localhost:8000/docs](http://localhost:8000/docs)**
 
-### 2. Spuštění uživatelské vyhledávací aplikace (`frontend-user`)
+### 2. Ingestace a obnova dokumentů (Full Refresh)
+Pro kompletní re-indexaci všech souborů ze složky `data/` spusťte:
+```powershell
+python full_refresh_ingest.py
+```
+- **Co skript dělá:** Provede promazání tabulek dokumentů (`documents` a `chunks`), zkontoluje/vytvoří schémata a Full-Text katalog a znovu naindexuje všechny dokumenty ve složce `data/`.
+- **Zachování uživatelských účtů:** Uživatelské účty, hesla a role (`users` tabulka) zůstávají **100% zachovány a netknuty**.
+- **Auto-seeding:** Při prvním spuštění se v databázi automaticky zaloguje výchozí demo účet (`user@dolphin.cz`).
+
+### 3. Spuštění uživatelské vyhledávací aplikace (`frontend-user`)
 ```powershell
 cd frontend-user
 npm install
@@ -48,7 +57,7 @@ npm run dev
 ```
 Otevřete v prohlížeči na adrese: 👉 **[http://localhost:3000](http://localhost:3000)**
 
-### 3. Spuštění administrativní konzole (`frontend-admin`)
+### 4. Spuštění administrativní konzole (`frontend-admin`)
 ```powershell
 cd frontend-admin
 npm install

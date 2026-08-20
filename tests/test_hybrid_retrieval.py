@@ -3,7 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
-from app.storage.db import engine, init_db, SessionLocal
+from app.storage.db import engine, init_db, clear_db, SessionLocal
 from app.storage.models import DBDocument, DBChunk
 from app.retrieval.vector import VectorRetriever
 from app.retrieval.base import QueryContext
@@ -25,9 +25,7 @@ def db_setup():
         yield db
     finally:
         db.close()
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+        clear_db()
 
 
 def test_hybrid_and_lexical_fts_retrieval(db_setup):
@@ -79,19 +77,13 @@ def test_hybrid_and_lexical_fts_retrieval(db_setup):
     keyword_results = db.query(DBChunk).all()
     assert len(keyword_results) >= 2
 
-    # Query with keyword FTS strategy
-    results_keyword = db.execute(
-        text("SELECT chunk_id FROM chunks WHERE to_tsvector('simple', content) @@ websearch_to_tsquery('simple', 'vedení')")
-    ).all()
+    # Call FTS through Retriever
+    results_keyword = retriever._get_fts_candidates("vedení", limit=10, context=context)
     assert len(results_keyword) >= 1
 
-    # Call FTS through Retriever
-    retrieved_kw = db.execute(
-        text("SELECT chunks.chunk_id, chunks.content FROM chunks JOIN documents ON chunks.document_id = documents.document_id WHERE to_tsvector('simple', chunks.content) @@ websearch_to_tsquery('simple', :q)"),
-        {"q": "vedení"}
-    ).all()
+    retrieved_kw = retriever._get_fts_candidates("vedení", limit=10, context=context)
     assert len(retrieved_kw) >= 1
-    assert "vedení" in retrieved_kw[0][1]
+    assert "vedení" in retrieved_kw[0][0].content
 
 
 def test_weighted_rrf_scoring():

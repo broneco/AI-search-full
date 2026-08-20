@@ -4,7 +4,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 from app.core.search_config import SearchConfigManager, SearchConfigSchema
-from app.storage.db import engine, init_db, SessionLocal
+from app.storage.db import engine, init_db, clear_db, SessionLocal
 from app.storage.models import DBDocument, DBChunk
 from app.retrieval.vector import VectorRetriever
 from app.retrieval.base import QueryContext, RetrievalResult
@@ -26,9 +26,7 @@ def db_setup():
         yield db
     finally:
         db.close()
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+        clear_db()
 
 
 def test_search_config_validation():

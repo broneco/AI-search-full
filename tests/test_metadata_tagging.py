@@ -7,7 +7,7 @@ from sqlalchemy import text
 from unittest.mock import AsyncMock, patch
 
 from app.main import app
-from app.storage.db import SessionLocal, init_db, engine
+from app.storage.db import SessionLocal, init_db, clear_db, engine
 from app.storage.models import DBDocument, DBChunk
 from app.ingestion.tagger import MetadataTagger
 from app.schemas.documents import RelationshipInfo, DocumentConfirmedIngestRequest
@@ -73,9 +73,7 @@ def db_setup():
         yield db
     finally:
         db.close()
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+        clear_db()
 
 
 def test_scan_date_candidates():

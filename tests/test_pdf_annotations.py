@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.main import app
-from app.storage.db import engine, init_db, SessionLocal
+from app.storage.db import engine, init_db, clear_db, SessionLocal
 from app.storage.models import DBDocument, DBChunk
 
 client = TestClient(app)
@@ -42,9 +42,7 @@ def pdf_setup():
         if os.path.exists(TEST_PDF_PATH):
             os.remove(TEST_PDF_PATH)
         # Drop test tables
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+        clear_db()
 
 
 def test_view_document_with_highlights(pdf_setup):

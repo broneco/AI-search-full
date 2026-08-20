@@ -158,6 +158,13 @@ async def view_document(
             raise HTTPException(status_code=404, detail="Document not found.")
 
         # 1. Fetch raw PDF file bytes
+        data = None
+
+        def strip_diacritics(text: str) -> str:
+            import unicodedata
+            normalized = unicodedata.normalize('NFD', text)
+            return "".join(c for c in normalized if unicodedata.category(c) != 'Mn').lower().strip()
+
         if doc.source_type == "azure_blob":
             uri_parts = doc.source_uri.replace("azure://", "").split("/", 1)
             if len(uri_parts) < 2:
@@ -167,7 +174,7 @@ async def view_document(
                 container_name = uri_parts[0]
                 blob_name = uri_parts[1]
 
-            # Server-side Blob Cache check for ultra-fast serving (uses tempdir to avoid uvicorn watchfile reloads)
+            # Server-side Blob Cache check for ultra-fast serving
             import tempfile
             cache_dir = os.path.join(tempfile.gettempdir(), "dolphin_blob_cache")
             os.makedirs(cache_dir, exist_ok=True)
@@ -179,42 +186,72 @@ async def view_document(
                     data = f.read()
             else:
                 blob_provider = BlobStorageProvider()
-                if not blob_provider.is_configured():
-                    raise HTTPException(
-                        status_code=500,
-                        detail="Azure Blob Storage connection is not configured."
-                    )
-                
-                logger.info(f"Downloading blob '{blob_name}' from container '{container_name}'...")
-                data = await blob_provider.download_blob(container_name, blob_name)
+                if blob_provider.is_configured():
+                    try:
+                        logger.info(f"Downloading blob '{blob_name}' from container '{container_name}'...")
+                        data = await blob_provider.download_blob(container_name, blob_name)
+                    except Exception as blob_err:
+                        logger.warning(f"Exact Azure Blob download failed for '{blob_name}': {blob_err}. Attempting diacritic-fuzzy cloud search...")
+                        try:
+                            container_client = blob_provider.client.get_container_client(container_name)
+                            target_norm = strip_diacritics(blob_name)
+                            matched_blob_name = None
+                            for b in container_client.list_blobs():
+                                if strip_diacritics(b.name) == target_norm:
+                                    matched_blob_name = b.name
+                                    break
+                            if matched_blob_name:
+                                logger.info(f"Found cloud blob diacritic match '{matched_blob_name}' for target '{blob_name}'...")
+                                data = await blob_provider.download_blob(container_name, matched_blob_name)
+                        except Exception as fuzzy_err:
+                            logger.warning(f"Fuzzy cloud search failed: {fuzzy_err}")
 
-                # Persist to local cache for instant sub-millisecond future responses
-                try:
-                    with open(cache_file, "wb") as f:
-                        f.write(data)
-                    logger.info(f"Successfully cached blob '{blob_name}' to {cache_file}.")
-                except Exception as cache_err:
-                    logger.warning(f"Could not save blob to cache: {cache_err}")
-        else:
-            # Serve from local file
-            local_path = doc.source_uri.replace("file://", "")
+                    if data:
+                        # Persist to local cache for instant sub-millisecond future responses
+                        try:
+                            with open(cache_file, "wb") as f:
+                                f.write(data)
+                            logger.info(f"Successfully cached blob '{blob_name}' to {cache_file}.")
+                        except Exception as cache_err:
+                            logger.warning(f"Could not save blob to cache: {cache_err}")
+
+        if data is None:
+            # Fallback to local file read
+            raw_uri_path = doc.source_uri.replace("azure://", "").replace("file://", "")
+            if "/" in raw_uri_path and not raw_uri_path.startswith("/"):
+                # strip container name prefix if azure://
+                parts = raw_uri_path.split("/", 1)
+                if len(parts) > 1:
+                    raw_uri_path = parts[1]
+
+            local_path = raw_uri_path
             if not os.path.isabs(local_path):
                 data_dir = os.path.abspath("data")
                 local_path = os.path.join(data_dir, local_path)
-            
+
             if not os.path.exists(local_path):
                 data_dir = os.path.abspath("data")
                 filename = os.path.basename(local_path)
-                # Recursive fallback search inside the data folder
+                filename_norm = strip_diacritics(filename)
+
+                # Recursive fallback search inside the data folder with exact & diacritic-fuzzy matching
                 found = False
                 for root, _, files in os.walk(data_dir):
                     if filename in files:
                         local_path = os.path.join(root, filename)
                         found = True
                         break
+                    for f in files:
+                        if strip_diacritics(f) == filename_norm:
+                            local_path = os.path.join(root, f)
+                            found = True
+                            break
+                    if found:
+                        break
+
                 if not found:
-                    raise HTTPException(status_code=404, detail=f"Local PDF file not found: {filename}")
-            
+                    raise HTTPException(status_code=404, detail=f"PDF document file not found in Blob storage or local disk: {filename}")
+
             with open(local_path, "rb") as f:
                 data = f.read()
 

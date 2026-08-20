@@ -2,14 +2,22 @@ import pytest
 import uuid
 from fastapi.testclient import TestClient
 from app.main import app
-from app.storage.db import get_db, SessionLocal, init_db
+from app.storage.db import get_db, SessionLocal, init_db, clear_db
 from app.storage.models import DBUser, DBChatThread, DBChatMessage
 from app.core.config import settings
 
-# Initialize database tables for tests
-init_db()
-
 client = TestClient(app)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def db_setup():
+    init_db()
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        clear_db()
 
 
 def test_auth_login_demo_user():

@@ -25,9 +25,9 @@ This test suite validates our custom **Hybrid Retrieval** search engine. It ensu
 * **Low-Level Technical Details:**
   * Seed a dummy `DBDocument` and two `DBChunk` records containing distinct Czech words (*"Evidence pracovní doby"*, *"Péče o pokusná zvířata"*).
   * Constructs a `QueryContext` querying for the Czech keyword *"vedení"*.
-  * Executes a raw PostgreSQL SQL query using `db.execute(text(...))` to confirm:
-    * The PostgreSQL `to_tsvector` and `websearch_to_tsquery` functions match chunks using the FTS engine.
-    * The system falls back cleanly to `'simple'` text configuration if the Czech `'cs'` language configuration is not installed in the host database catalogs, preventing database transaction crashes.
+  * Executes keyword candidate search via `retriever._get_fts_candidates()` to confirm:
+    * The retrieval engine matches chunks containing exact and stem keywords across PostgreSQL (to_tsvector) and Azure SQL Database (T-SQL search).
+    * The system falls back cleanly to `'simple'` text configuration if the Czech `'cs'` language configuration is not installed in host database catalogs, preventing transaction crashes.
   * Asserts that at least 1 matching chunk is returned and contains the target search term.
 
 ---

@@ -4,7 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
-from app.storage.db import engine, init_db, SessionLocal
+from app.storage.db import engine, init_db, clear_db, SessionLocal
 from app.ingestion.loaders.local import list_local_files
 from app.ingestion.extraction import DocumentExtractor
 from app.ingestion.chunking import RecursiveCharacterTextSplitter
@@ -25,9 +25,7 @@ def db_setup():
         yield db
     finally:
         db.close()
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+        clear_db()
 
 
 def test_pdf_extraction_and_chunking(tmp_path):

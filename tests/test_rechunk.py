@@ -8,11 +8,12 @@ from sqlalchemy.exc import OperationalError
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.storage.db import engine, init_db, SessionLocal
+from app.storage.db import engine, init_db, clear_db, SessionLocal
 from app.storage.models import DBDocument, DBChunk
 from app.api.routes.documents import run_reindex_all_task, reindex_progress
 from app.core.search_config import SearchConfigManager
 
+client = TestClient(app)
 
 
 @pytest.fixture(scope="module")
@@ -21,7 +22,7 @@ def db_setup():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1;"))
     except OperationalError as e:
-        pytest.skip(f"Database connection not available: {e}")
+        pytest.skip(f"Local database is not available: {e}")
 
     # Set up tables and indices
     init_db()
@@ -31,9 +32,7 @@ def db_setup():
         yield db
     finally:
         db.close()
-        with engine.begin() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
+        clear_db()
 
 
 def test_fast_reindex_task(db_setup):

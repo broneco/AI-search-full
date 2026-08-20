@@ -51,6 +51,7 @@ Phase 2/3 Advanced Chunking strategies & localized tooltips decoupling (Semantic
 49: Phase 2/3 Azure Bicep Enterprise Infrastructure Provisioning (Modular infra/main.bicep, modules for PostgreSQL/pgvector, Azure OpenAI, Storage, ACR, Container Apps, Static Web Apps, ON/OFF resource toggles, and infra/deploy_infra.ps1 script) - [x] Completed.
 50: Phase 2/3 Multi-Client White-Label Branding & Theme Engine (Organized public/logos/ directory, brand profiles for Nemocnice sv. Alžběty & Dolphin Consulting, warm gold header #a38244, medical green accent #00965e, dynamic CSS variables, theme switcher dropdown in frontend-user & frontend-admin) - [x] Completed.
 51: Phase 2/3 Live Multi-Environment Azure Cloud Deployment (Deployed 3 Azure Static Web Apps: swa-dolphin-dev, swa-dolphin-prod, swa-alzbeta-prod; and 4 Azure Container App Backends: dolphin-dev, dolphin-prod, alzbeta-dev, alzbeta-prod with isolated PostgreSQL databases and Blob Storage containers) - [x] Completed.
+52: Phase 2/3 Architectural Migration to Azure SQL Database (Microsoft SQL Server) (pyodbc connection engine, universal Uuid/JSON/UniversalVector models, T-SQL FTS catalog & vector distance fusion, Docker msodbcsql18 image update, ADR-0016) - [x] Completed.
 
 Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
 

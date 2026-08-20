@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from app.storage.db import SessionLocal, init_db, clear_db
+from app.storage.db import SessionLocal, init_db, clear_document_data
 from app.ingestion.loaders.local import list_local_files
 from app.ingestion.pipeline import IngestionPipeline
 
@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 async def main():
     logger.info("Starting Full-Refresh Document Ingestion script...")
-    
-    # 1. Wipe database schemas and drop tables
+
+    # 1. Clear document chunks and document metadata (preserving user accounts & auth)
     try:
-        clear_db()
+        clear_document_data()
     except Exception as e:
-        logger.warning(f"Drop tables failed (might be clean state): {e}")
+        logger.warning(f"Clear document data failed: {e}")
 
     # 2. Re-create tables and extensions
     init_db()

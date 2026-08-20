@@ -1,3 +1,5 @@
+import json
+import numpy as np
 from typing import Any, List, Optional
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -106,19 +108,20 @@ class VectorRetriever(BaseRetriever):
         
         # 1. ACL pre-filtering
         if "Management" not in context.acl_groups:
-            from sqlalchemy.dialects.postgresql import ARRAY
-            from sqlalchemy import String, cast
-            user_groups_list = list(context.acl_groups) + ["User"]
-            user_groups_array = cast(user_groups_list, ARRAY(String))
-            
-            # Require both document and chunk to allow access
-            filters.append(DBDocument.security_acl.isnot(None))
-            filters.append(DBDocument.security_acl.has_key('allowed_groups'))
-            filters.append(DBDocument.security_acl['allowed_groups'].op('?|')(user_groups_array))
-            
-            filters.append(DBChunk.security_acl.isnot(None))
-            filters.append(DBChunk.security_acl.has_key('allowed_groups'))
-            filters.append(DBChunk.security_acl['allowed_groups'].op('?|')(user_groups_array))
+            if not settings.USE_AZURE_SQL and self.db.bind.dialect.name == "postgresql":
+                from sqlalchemy.dialects.postgresql import ARRAY
+                from sqlalchemy import String, cast
+                user_groups_list = list(context.acl_groups) + ["User"]
+                user_groups_array = cast(user_groups_list, ARRAY(String))
+                
+                # Require both document and chunk to allow access
+                filters.append(DBDocument.security_acl.isnot(None))
+                filters.append(DBDocument.security_acl.has_key('allowed_groups'))
+                filters.append(DBDocument.security_acl['allowed_groups'].op('?|')(user_groups_array))
+                
+                filters.append(DBChunk.security_acl.isnot(None))
+                filters.append(DBChunk.security_acl.has_key('allowed_groups'))
+                filters.append(DBChunk.security_acl['allowed_groups'].op('?|')(user_groups_array))
 
         # 2. Freshness pre-filtering
         freshness = context.filters.get("freshness_filter", "all")
@@ -131,16 +134,82 @@ class VectorRetriever(BaseRetriever):
         return filters
 
     def _get_vector_candidates(self, query_embedding: List[float], limit: int, context: QueryContext) -> List[Any]:
-        """Execute pgvector select query to retrieve closest semantic chunks."""
+        """Execute vector select query to retrieve closest semantic chunks."""
         filters = self._build_sql_filters(context)
-        stmt = (
-            select(DBChunk, DBDocument)
-            .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
-        )
-        if filters:
-            stmt = stmt.where(*filters)
-        stmt = stmt.order_by(DBChunk.embedding.cosine_distance(query_embedding)).limit(limit)
-        return self.db.execute(stmt).all()
+
+        if settings.USE_AZURE_SQL or self.db.bind.dialect.name != "postgresql":
+            # For Azure SQL / non-pgvector databases:
+            # 1. Pre-fetch candidate chunk IDs and JSON embeddings with candidate limit
+            candidate_limit = max(limit * 20, 300)
+            stmt = (
+                select(DBChunk.chunk_id, DBChunk.document_id, DBChunk.embedding)
+                .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
+            )
+            if filters:
+                stmt = stmt.where(*filters)
+            stmt = stmt.limit(candidate_limit)
+
+            raw_rows = self.db.execute(stmt).all()
+            if not raw_rows:
+                return []
+
+            # 2. Extract vectors and compute Cosine similarity via NumPy SIMD matrix operations
+            query_vec = np.asarray(query_embedding, dtype=np.float32)
+            query_norm = np.linalg.norm(query_vec)
+            if query_norm > 0:
+                query_vec = query_vec / query_norm
+
+            valid_items = []
+            embs = []
+            for r in raw_rows:
+                cid, doc_id, emb_data = r[0], r[1], r[2]
+                if isinstance(emb_data, str):
+                    try:
+                        emb_data = json.loads(emb_data)
+                    except Exception:
+                        emb_data = None
+                if emb_data and isinstance(emb_data, list) and len(emb_data) == len(query_embedding):
+                    valid_items.append((cid, doc_id))
+                    embs.append(emb_data)
+
+            if not valid_items:
+                return []
+
+            mat = np.array(embs, dtype=np.float32)
+            norms = np.linalg.norm(mat, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            norm_mat = mat / norms
+
+            sims = np.dot(norm_mat, query_vec)
+            dists = 1.0 - sims
+            top_indices = np.argsort(dists)[:limit]
+
+            top_chunk_ids = [valid_items[idx][0] for idx in top_indices]
+
+            # 3. Fetch full ORM models ONLY for the Top-N winning chunks
+            final_stmt = (
+                select(DBChunk, DBDocument)
+                .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
+                .where(DBChunk.chunk_id.in_(top_chunk_ids))
+            )
+            model_rows = self.db.execute(final_stmt).all()
+
+            # Preserve score order
+            model_map = {row[0].chunk_id: row for row in model_rows}
+            ordered_results = []
+            for cid in top_chunk_ids:
+                if cid in model_map:
+                    ordered_results.append(model_map[cid])
+            return ordered_results
+        else:
+            stmt = (
+                select(DBChunk, DBDocument)
+                .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
+            )
+            if filters:
+                stmt = stmt.where(*filters)
+            stmt = stmt.order_by(DBChunk.embedding.cosine_distance(query_embedding)).limit(limit)
+            return self.db.execute(stmt).all()
 
     def _get_fts_config(self) -> str:
         """Check if Czech language configuration exists in database catalogs safely."""
@@ -152,7 +221,7 @@ class VectorRetriever(BaseRetriever):
             return "simple"
 
     def _get_fts_candidates(self, query_text: str, limit: int, context: QueryContext) -> List[Any]:
-        """Execute PostgreSQL Full-Text Search query and select rank value as a column."""
+        """Execute Full-Text Search query and select rank value as a column."""
         # Clean punctuation and split into individual search keywords
         clean_text = query_text
         for char in "?.,!;:()[]{}":
@@ -162,31 +231,55 @@ class VectorRetriever(BaseRetriever):
         if not words:
             return []
 
-        fts_query = " | ".join(words)
-        cfg = self._get_fts_config()
-        
-        # Select rank explicitly as a column so we can use it in score_addition
-        rank_expression = f"ts_rank_cd(to_tsvector('{cfg}', chunks.content), to_tsquery('{cfg}', :q))"
-        filters = self._build_sql_filters(context)
-        
-        stmt = (
-            select(
-                DBChunk, 
-                DBDocument, 
-                text(f"{rank_expression} as fts_rank")
+        if settings.USE_AZURE_SQL or self.db.bind.dialect.name != "postgresql":
+            # Azure SQL / MS SQL keyword search using ILIKE / LIKE matching
+            from sqlalchemy import or_
+            like_filters = [DBChunk.content.ilike(f"%{w}%") for w in words]
+            filters = self._build_sql_filters(context)
+            stmt = (
+                select(DBChunk, DBDocument)
+                .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
+                .where(or_(*like_filters))
             )
-            .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
-            .where(
-                text(f"to_tsvector('{cfg}', chunks.content) @@ to_tsquery('{cfg}', :q)")
-            )
-        )
-        if filters:
-            stmt = stmt.where(*filters)
+            if filters:
+                stmt = stmt.where(*filters)
             
-        stmt = stmt.order_by(
-            text(f"{rank_expression} DESC")
-        ).limit(limit)
-        return self.db.execute(stmt, {"q": fts_query}).all()
+            rows = self.db.execute(stmt).all()
+            scored_rows = []
+            for row in rows:
+                chunk = row[0]
+                doc = row[1]
+                content_lower = chunk.content.lower()
+                matches = sum(content_lower.count(w.lower()) for w in words)
+                scored_rows.append((chunk, doc, float(matches)))
+            scored_rows.sort(key=lambda x: x[2], reverse=True)
+            return scored_rows[:limit]
+        else:
+            fts_query = " | ".join(words)
+            cfg = self._get_fts_config()
+            
+            # Select rank explicitly as a column so we can use it in score_addition
+            rank_expression = f"ts_rank_cd(to_tsvector('{cfg}', chunks.content), to_tsquery('{cfg}', :q))"
+            filters = self._build_sql_filters(context)
+            
+            stmt = (
+                select(
+                    DBChunk, 
+                    DBDocument, 
+                    text(f"{rank_expression} as fts_rank")
+                )
+                .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
+                .where(
+                    text(f"to_tsvector('{cfg}', chunks.content) @@ to_tsquery('{cfg}', :q)")
+                )
+            )
+            if filters:
+                stmt = stmt.where(*filters)
+                
+            stmt = stmt.order_by(
+                text(f"{rank_expression} DESC")
+            ).limit(limit)
+            return self.db.execute(stmt, {"q": fts_query}).all()
 
     def _apply_filters(
         self,

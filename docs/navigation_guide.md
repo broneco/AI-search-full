@@ -52,6 +52,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `README.md` — Úvodní popis struktury a použití složky .agents.
   - 📁 `inbox/` — Složka obsahující instrukční soubory pro manuální úkony v Azure.
     - 📄 `2026-06-08-dolphin-consulting-db-storage-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (2026-06-08-dolphin-consulting-db-storage-handoff.md).
+    - 📄 `2026-08-18-azure-sql-manual-setup-handoff.md` — Handoff soubor s pokyny pro manuální zřízení Azure SQL Serveru a Databáze (2026-08-18-azure-sql-manual-setup-handoff.md).
     - 📄 `azure-openai-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-openai-handoff.md).
     - 📄 `azure-postgres-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-postgres-handoff.md).
     - 📄 `azure-storage-blob-setup-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-storage-blob-setup-handoff.md).
@@ -235,6 +236,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `ADR-0013-hybrid-search-fusion-strategies.md` — Záznam architektonického rozhodnutí: ADR-0013-hybrid-search-fusion-strategies.md.
     - 📄 `ADR-0014-context-expansion-strategies.md` — Záznam architektonického rozhodnutí: ADR-0014-context-expansion-strategies.md.
     - 📄 `ADR-0015-multi-environment-dev-prod-architecture.md` — Záznam architektonického rozhodnutí: ADR-0015-multi-environment-dev-prod-architecture.md.
+    - 📄 `ADR-0016-azure-sql-database-migration.md` — Záznam architektonického rozhodnutí: ADR-0016-azure-sql-database-migration.md.
   - 📁 `architecture/` — Složka s podkladovými nemocničními směrnicemi a řády (architecture).
     - 📄 `app_database_usage_info_dump.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (app_database_usage_info_dump.md).
   - 📁 `deployments/` — Složka s návody a prameny pro nasazení do Azure cloudu.

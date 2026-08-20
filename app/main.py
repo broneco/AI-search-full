@@ -16,10 +16,18 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up FastAPI application...")
-    try:
-        init_db()
-    except Exception as e:
-        logger.error(f"Database initialization failed on startup: {e}")
+    for attempt in range(1, 4):
+        try:
+            init_db()
+            logger.info("Database initialization successful.")
+            break
+        except Exception as e:
+            logger.warning(f"Database initialization attempt {attempt}/3 failed: {e}")
+            if attempt < 3:
+                import asyncio
+                await asyncio.sleep(2)
+            else:
+                logger.error(f"Database initialization failed after 3 attempts: {e}")
     yield
     logger.info("Shutting down FastAPI application...")
 
