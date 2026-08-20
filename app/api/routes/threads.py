@@ -84,16 +84,15 @@ async def list_threads(
     result = []
     for t in threads:
         msg_count = db.query(DBChatMessage).filter(DBChatMessage.thread_id == t.thread_id).count()
-        if msg_count > 0:
-            result.append(
-                ThreadResponse(
-                    thread_id=str(t.thread_id),
-                    title=t.title,
-                    created_at=t.created_at.isoformat(),
-                    updated_at=t.updated_at.isoformat(),
-                    message_count=msg_count,
-                )
+        result.append(
+            ThreadResponse(
+                thread_id=str(t.thread_id),
+                title=t.title,
+                created_at=t.created_at.isoformat(),
+                updated_at=t.updated_at.isoformat(),
+                message_count=msg_count,
             )
+        )
     return result
 
 
