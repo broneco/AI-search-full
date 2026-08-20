@@ -118,12 +118,12 @@ if ([string]::IsNullOrWhiteSpace($appExists)) {
       --registry-server $RegistryServer `
       --registry-username $AcrUser `
       --registry-password $AcrPass `
-      --env-vars "APP_ENV=${EnvClean}" "POSTGRES_DB=${PostgresDbName}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}"
+      --env-vars "APP_ENV=${EnvClean}" "POSTGRES_DB=${PostgresDbName}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=dolphin-ai-search-sql.database.windows.net" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=dolphin-ai-search-sqldb" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_PASSWORD=BULVER4v68rTzf4X" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server"
 } else {
     Write-Info "Container App '$ContainerAppName' jiz existuje. Provadim rolling update..."
     az containerapp update --resource-group $ResourceGroup --name $ContainerAppName `
       --image "${RegistryServer}/${ContainerAppName}:${ImageTag}" `
-      --set-env-vars "APP_ENV=${EnvClean}" "POSTGRES_DB=${PostgresDbName}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}"
+      --set-env-vars "APP_ENV=${EnvClean}" "POSTGRES_DB=${PostgresDbName}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=dolphin-ai-search-sql.database.windows.net" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=dolphin-ai-search-sqldb" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_PASSWORD=BULVER4v68rTzf4X" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server"
 }
 
 if ($LASTEXITCODE -ne 0) {
