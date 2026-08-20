@@ -1,12 +1,5 @@
-import logging
-from typing import Generator
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, Session
-from app.core.config import settings
 
-logger = logging.getLogger(__name__)
-
-# Connection string
+import time
 import logging
 import urllib.parse
 from typing import Generator
