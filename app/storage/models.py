@@ -49,7 +49,7 @@ class DBDocument(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    tenant_id: Mapped[str] = mapped_column(String(255), default="dolphin", index=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(255), default=lambda: settings.TENANT_ID, index=True, nullable=False)
     source_type: Mapped[str] = mapped_column(String(255), nullable=False)
     source_uri: Mapped[str] = mapped_column(String(2048), nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -145,7 +145,7 @@ class DBChatThread(Base):
     thread_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    tenant_id: Mapped[str] = mapped_column(String(255), default="dolphin", index=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(255), default=lambda: settings.TENANT_ID, index=True, nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
