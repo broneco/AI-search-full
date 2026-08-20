@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy import ForeignKey, String, DateTime, Integer, Date, JSON, Uuid, Text
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from app.core.config import settings
 
 
 class UniversalVector(TypeDecorator):
