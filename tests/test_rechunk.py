@@ -50,8 +50,8 @@ def test_fast_reindex_task(db_setup):
     os.makedirs(data_dir, exist_ok=True)
     temp_txt_path = os.path.join(data_dir, "temp_rechunk_test.txt")
     
-    # 500 characters of text
-    sample_text = "This is a long sample sentence for rechunking test. " * 10
+    # 1500 characters of text
+    sample_text = "This is a long sample sentence for rechunking test. " * 30
     with open(temp_txt_path, "w", encoding="utf-8") as f:
         f.write(sample_text)
 
