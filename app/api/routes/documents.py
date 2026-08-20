@@ -774,7 +774,7 @@ async def run_reindex_full_task():
     logger.info("Starting background full re-indexing of all documents...")
     import os
     import datetime
-    from app.storage.db import SessionLocal, init_db, clear_db
+    from app.storage.db import SessionLocal, init_db, clear_document_data
     from app.ingestion.loaders.local import list_local_files
     from app.ingestion.pipeline import IngestionPipeline
     from app.ingestion.tagger import MetadataTagger

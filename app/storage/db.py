@@ -235,14 +235,30 @@ def init_db() -> None:
         logger.warning(f"Could not seed demo user: {e}")
 
 
-def clear_db() -> None:
-    """Wipe database schemas and drop all registered tables."""
-    from app.storage.models import Base
+def clear_db(preserve_users: bool = True) -> None:
+    """Clear database tables. By default, preserves user accounts, credentials, and security roles."""
+    from app.storage.models import DBChunk, DBDocument, DBChatMessage, DBChatThread, DBUser
 
-    logger.info("Wiping database tables clean...")
-    with engine.begin() as conn:
-        Base.metadata.drop_all(bind=conn)
-    logger.info("Database wiped clean.")
+    logger.info("Clearing document data from database...")
+    for attempt in range(1, 4):
+        try:
+            with SessionLocal() as db_session:
+                db_session.query(DBChunk).delete()
+                db_session.query(DBDocument).delete()
+                if not preserve_users:
+                    logger.warning("EXPLICIT HARD RESET: Deleting chat messages, chat threads, and user accounts...")
+                    db_session.query(DBChatMessage).delete()
+                    db_session.query(DBChatThread).delete()
+                    db_session.query(DBUser).delete()
+                db_session.commit()
+            logger.info("Database cleanup completed. User accounts preserved." if preserve_users else "Hard reset completed.")
+            return
+        except Exception as e:
+            logger.warning(f"Database cleanup attempt {attempt}/3 failed: {e}")
+            if attempt < 3:
+                time.sleep(5)
+            else:
+                raise e
 
 
 def clear_document_data() -> None:
