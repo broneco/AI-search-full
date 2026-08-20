@@ -66,6 +66,28 @@ export const CLIENT_THEMES: Record<string, ClientTheme> = {
       badgeText: "#38bdf8",
     },
   },
+  jhu: {
+    id: "jhu",
+    name: "Jihočeská Univerzita v Českých Budějovicích",
+    appName: "Jihočeská Univerzita AI Search",
+    appTagline: "AI vyhledávač ve studijních řádech, opatřeních a předpisech JČU",
+    logoUrl: "/logos/logo-JHU.webp",
+    logoHeight: 36,
+    colors: {
+      primary: "#c8102e",
+      primaryHover: "#9b001c",
+      secondary: "#e10600",
+      gradient: "linear-gradient(135deg, #c8102e 0%, #9b001c 100%)",
+      topBarBg: "#18181b",
+      sidebarBg: "#18181b",
+      cardBg: "#27272a",
+      userBubbleBg: "#c8102e",
+      userBubbleText: "#ffffff",
+      aiBubbleBg: "#18181b",
+      badgeBg: "rgba(200, 16, 46, 0.2)",
+      badgeText: "#f87171",
+    },
+  },
 };
 
-export const DEFAULT_THEME_ID = "dolphin";
+export const DEFAULT_THEME_ID = "jhu";

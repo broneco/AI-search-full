@@ -41,7 +41,7 @@ export default function UserSearchPage() {
   const [drawerZoom, setDrawerZoom] = useState<number>(100);
 
   // Client Theme State
-  const [currentThemeId, setCurrentThemeId] = useState<string>("dolphin");
+  const [currentThemeId, setCurrentThemeId] = useState<string>("jhu");
 
   // Read saved theme on mount
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function UserSearchPage() {
     }
   }, []);
 
-  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.dolphin;
+  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.jhu;
 
   // Apply dynamic CSS variables when theme changes
   useEffect(() => {

@@ -31,6 +31,40 @@ Aplikace podporuje kompletní izolaci vývojového a produkčního prostředí:
 
 ---
 
+## 🏛️ Konfigurace Tenantů (Víceklientové prostředí)
+
+Aplikace podporuje rychlé přepínání tenantů pro více firem a institucí:
+- **`dolphin`**: Dolphin Consulting (Podnikový vyhledávač znalostí s přesnými citacemi)
+- **`alzbeta`**: Nemocnice sv. Alžběty (Vyhledávání v lékařských směrnicích a SOP)
+- **`jhu`**: Jihočeská Univerzita v Českých Budějovicích (Vyhledávání ve studijních řádech a předpisech JČU) — ***Výchozí tenant pro lokální experimenty!***
+
+### ⚙️ Kde nastavit tenant pro lokální spuštění:
+
+1. **Backend (`TENANT_ID`)**: V souboru **`.env`** (nebo `.env.dev`) nastavte proměnnou `TENANT_ID`:
+   ```env
+   TENANT_ID=jhu-dev
+   ```
+   *(Dostupné hodnoty: `jhu-dev`, `dolphin-dev`, `alzbeta-dev`)*
+
+2. **Frontend (`NEXT_PUBLIC_CLIENT_THEME`)**: V prostředí nebo `.env` pro frontend můžete nastavit vizuální téma:
+   ```env
+   NEXT_PUBLIC_CLIENT_THEME=jhu
+   ```
+   *(Kód aplikací `frontend-user` i `frontend-admin` má výchozí vizuální téma nastaveno na **`jhu`**)*
+
+3. **Loga a vizuální prvky:** Všechna loga tenantů jsou přehledně umístěna ve složkách:
+   - `frontend-user/public/logos/`
+   - `frontend-admin/public/logos/`
+   *(Obsahuje soubory `logo-JHU.webp`, `logo-dolphin-symbol.png`, `logo-nemocnice-alzbeta-2023.png`)*
+
+4. **Složky s dokumenty tenantů:** Dokumentové podklady jsou organizovány ve složce `data - full backup/`:
+   - `data - full backup/jhu/`
+   - `data - full backup/dolphin/`
+   - `data - full backup/alzbeta/`
+   *(Tato složka i veškerý její obsah je automaticky ignorována verzovacím systémem Git skrze `.gitignore`)*
+
+---
+
 ## 🚀 Jak aplikaci spustit lokálně
 
 ### 1. Spuštění backendu (FastAPI)

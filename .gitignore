@@ -8,6 +8,8 @@
 
 # Local data and PDFs
 data/
+data - full backup/
+data-full backup/
 
 # Python
 __pycache__/

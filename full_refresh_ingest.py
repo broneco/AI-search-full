@@ -37,19 +37,42 @@ async def main():
     tagger = MetadataTagger(db_session=db)
     config = await tagger.load_config()
 
-    # 3. Scan data directory for PDFs
-    data_dir = os.path.abspath("data")
-    if not os.path.exists(data_dir):
-        logger.info(f"Creating local directory {data_dir}. Place your PDFs here!")
-        os.makedirs(data_dir, exist_ok=True)
+    import argparse
+    parser = argparse.ArgumentParser(description="Full-Refresh Document Ingestion script.")
+    parser.add_argument("--tenant", type=str, default=None, help="Tenant ID (e.g. dolphin, alzbeta, jhu)")
+    parser.add_argument("--data-dir", type=str, default=None, help="Explicit directory path to scan for documents")
+    args, _ = parser.parse_known_args()
+
+    from app.core.config import settings
+    raw_tenant = args.tenant or os.getenv("TENANT_ID") or settings.TENANT_ID or "dolphin"
+    tenant_id = raw_tenant.lower().split("-")[0]
+
+    # 3. Scan data directory for PDFs/TXTs
+    data_dir = None
+    if args.data_dir and os.path.exists(args.data_dir):
+        data_dir = os.path.abspath(args.data_dir)
+    else:
+        candidates = [
+            os.path.abspath(os.path.join("data - full backup", tenant_id)),
+            os.path.abspath(os.path.join("data-full backup", tenant_id)),
+            os.path.abspath(os.path.join("data", tenant_id)),
+            os.path.abspath("data"),
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                data_dir = candidate
+                break
+
+    if not data_dir or not os.path.exists(data_dir):
+        logger.warning(f"No valid data directory found for tenant '{tenant_id}'. Ingestion skipped.")
         db.close()
         return
 
-    logger.info(f"Scanning directory: {data_dir}")
+    logger.info(f"Scanning document directory for tenant '{tenant_id}': {data_dir}")
     files = list_local_files(data_dir, extensions=[".pdf", ".txt"])
 
     if not files:
-        logger.info("No matching PDF or TXT files found in the data/ directory.")
+        logger.info(f"No matching PDF or TXT files found in '{data_dir}'. Ingestion skipped.")
         db.close()
         return
 

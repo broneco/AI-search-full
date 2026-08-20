@@ -259,7 +259,7 @@ const Tooltip = ({ text }: { text?: string }) => {
 
 export default function Home() {
   // Client Theme State
-  const [currentThemeId, setCurrentThemeId] = useState<string>("dolphin");
+  const [currentThemeId, setCurrentThemeId] = useState<string>("jhu");
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("dolphin_client_theme") || process.env.NEXT_PUBLIC_CLIENT_THEME || DEFAULT_THEME_ID;
@@ -268,7 +268,7 @@ export default function Home() {
     }
   }, []);
 
-  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.dolphin;
+  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.jhu;
 
   useEffect(() => {
     if (currentTheme) {

@@ -151,6 +151,27 @@ if ($LASTEXITCODE -ne 0) {
 $AppUrl = az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query properties.configuration.ingress.fqdn --output tsv
 Write-Header "Nasazeni backendu ($ClientClean / $EnvClean) dokonceno!"
 Write-Success "Aplikace bezi na adrese: https://$AppUrl"
+
+# 9. Optional Full Refresh Document Ingestion for Client Tenant
+Write-Header "[4/4] Spusteni Full Refresh Ingestu pro tenant '$ClientClean' (pokud existuji podklady)..."
+try {
+    $IngestScript = "full_refresh_ingest.py"
+    if (Test-Path $IngestScript) {
+        Write-Info "Spustam ingestacni skript full_refresh_ingest.py pro tenant '$ClientClean'..."
+        $pythonCmd = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
+        & $pythonCmd $IngestScript --tenant $ClientClean
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Full refresh ingest dokoncene uspesne pro tenant '$ClientClean'."
+        } else {
+            Write-WarningMsg "Ingestacni skript skoncil s kodem $LASTEXITCODE. Nasazeni aplikace pokracuje bez preruseni."
+        }
+    } else {
+        Write-Info "Ingestacni skript $IngestScript nenalezen. Preskakuji automaticky ingest."
+    }
+} catch {
+    Write-WarningMsg "Pri provadeni automatickeho ingestu doslo k vyjimce: $_. Nasazeni aplikace pokracuje bez preruseni."
+}
+
 Write-Info "Pro sledovani zivych logu v realnem case spust:"
 Write-Host "az containerapp logs show --resource-group $ResourceGroup --name $ContainerAppName --follow" -ForegroundColor DarkCyan
 Write-Host ""
