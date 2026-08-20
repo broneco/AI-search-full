@@ -208,32 +208,6 @@ def init_db() -> None:
 
     logger.info("Database initialization complete.")
 
-    # Seed demo user for tenant if missing
-    try:
-        import hashlib
-        from app.storage.models import DBUser
-        with SessionLocal() as db_session:
-            demo_email = "user@dolphin.cz"
-            existing = db_session.query(DBUser).filter(
-                DBUser.tenant_id == settings.TENANT_ID,
-                DBUser.email == demo_email
-            ).first()
-            if not existing:
-                logger.info(f"Seeding demo user '{demo_email}' for tenant '{settings.TENANT_ID}'...")
-                hashed = hashlib.sha256(f"password123:{settings.JWT_SECRET}".encode("utf-8")).hexdigest()
-                demo_user = DBUser(
-                    tenant_id=settings.TENANT_ID,
-                    email=demo_email,
-                    username="Dolphin Demo Uživatel",
-                    password_hash=hashed,
-                    role="User",
-                    groups=["User", "Management", "Admin"],
-                )
-                db_session.add(demo_user)
-                db_session.commit()
-    except Exception as e:
-        logger.warning(f"Could not seed demo user: {e}")
-
 
 def clear_db(preserve_users: bool = True) -> None:
     """Clear database tables. By default, preserves user accounts, credentials, and security roles."""
