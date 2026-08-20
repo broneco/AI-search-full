@@ -12,6 +12,22 @@ client = TestClient(app)
 @pytest.fixture(scope="module", autouse=True)
 def db_setup():
     init_db()
+    import hashlib
+    from app.core.config import settings
+    from app.storage.models import DBUser
+    with SessionLocal() as db_session:
+        hashed = hashlib.sha256(f"password123:{settings.JWT_SECRET}".encode("utf-8")).hexdigest()
+        demo_user = DBUser(
+            tenant_id=settings.TENANT_ID,
+            email="user@dolphin.cz",
+            username="Dolphin Demo Uživatel",
+            password_hash=hashed,
+            role="User",
+            groups=["User", "Management", "Admin"],
+        )
+        db_session.add(demo_user)
+        db_session.commit()
+
     db = SessionLocal()
     try:
         yield db
