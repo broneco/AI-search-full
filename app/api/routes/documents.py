@@ -805,18 +805,26 @@ async def run_reindex_full_task():
         tagger = MetadataTagger(db_session=db)
         config = await tagger.load_config()
 
-        # 3. Scan data directory
+        # 3. Scan data directories
         reindex_progress["phase"] = "scanning_files"
-        data_dir = os.path.abspath("data")
-        if not os.path.exists(data_dir):
-            logger.info("Data directory not found. Re-indexing completed with 0 files.")
-            reindex_progress["status"] = "completed"
-            reindex_progress["phase"] = None
-            return
+        tenant_id = settings.TENANT_ID.lower().split("-")[0]
+        search_dirs = [
+            os.path.abspath("data"),
+            os.path.abspath(os.path.join("data - full backup", tenant_id)),
+            os.path.abspath(os.path.join("data-full backup", tenant_id)),
+            os.path.abspath(os.path.join("data", tenant_id)),
+        ]
+        files = []
+        seen = set()
+        for d in search_dirs:
+            if os.path.exists(d):
+                for f in list_local_files(d, extensions=[".pdf", ".txt"]):
+                    if f not in seen:
+                        seen.add(f)
+                        files.append(f)
 
-        files = list_local_files(data_dir, extensions=[".pdf", ".txt"])
         if not files:
-            logger.info("No documents found in data directory for re-indexing.")
+            logger.info("No documents found in data directories for re-indexing.")
             reindex_progress["status"] = "completed"
             reindex_progress["phase"] = None
             return
