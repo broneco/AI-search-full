@@ -104,7 +104,8 @@ class VectorRetriever(BaseRetriever):
     def _build_sql_filters(self, context: QueryContext) -> List[Any]:
         """Build SQLAlchemy expression filters for ACL, freshness, and tenant isolation."""
         tenant_base = settings.TENANT_ID.split("-")[0]
-        filters = [DBDocument.tenant_id.in_([settings.TENANT_ID, tenant_base])]
+        tenant_variants = list(set([settings.TENANT_ID, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
+        filters = [DBDocument.tenant_id.in_(tenant_variants)]
         
         # 1. ACL pre-filtering
         if "Management" not in context.acl_groups:

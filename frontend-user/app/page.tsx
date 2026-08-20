@@ -284,17 +284,15 @@ export default function UserSearchPage() {
   // Delete Thread
   const handleDeleteThread = async (threadId: string) => {
     if (!authToken) return;
+    setThreads((prev) => prev.filter((t) => t.thread_id !== threadId));
+    if (activeThreadId === threadId) {
+      handleNewThread();
+    }
     try {
-      const res = await fetch(`${BACKEND_URL}/api/threads/${threadId}`, {
+      await fetch(`${BACKEND_URL}/api/threads/${threadId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      if (res.ok) {
-        setThreads((prev) => prev.filter((t) => t.thread_id !== threadId));
-        if (activeThreadId === threadId) {
-          handleNewThread();
-        }
-      }
     } catch (err) {
       console.error(err);
     }

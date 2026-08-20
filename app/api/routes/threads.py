@@ -71,10 +71,12 @@ async def list_threads(
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """List all chat threads belonging to the authenticated user in current TENANT_ID."""
+    tenant_base = settings.TENANT_ID.split("-")[0]
+    tenant_variants = list(set([settings.TENANT_ID, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
     threads = (
         db.query(DBChatThread)
         .filter(
-            DBChatThread.tenant_id == settings.TENANT_ID,
+            DBChatThread.tenant_id.in_(tenant_variants),
             DBChatThread.user_id == user_id,
         )
         .order_by(DBChatThread.updated_at.desc())
@@ -137,7 +139,6 @@ async def get_thread_detail(
     thread = (
         db.query(DBChatThread)
         .filter(
-            DBChatThread.tenant_id == settings.TENANT_ID,
             DBChatThread.thread_id == t_uuid,
             DBChatThread.user_id == user_id,
         )
@@ -190,7 +191,6 @@ async def update_thread(
     thread = (
         db.query(DBChatThread)
         .filter(
-            DBChatThread.tenant_id == settings.TENANT_ID,
             DBChatThread.thread_id == t_uuid,
             DBChatThread.user_id == user_id,
         )
@@ -229,7 +229,6 @@ async def delete_thread(
     thread = (
         db.query(DBChatThread)
         .filter(
-            DBChatThread.tenant_id == settings.TENANT_ID,
             DBChatThread.thread_id == t_uuid,
             DBChatThread.user_id == user_id,
         )
