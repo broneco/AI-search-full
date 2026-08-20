@@ -8,7 +8,7 @@ param (
     [string]$Client = "dolphin",
     [string]$Environment = "dev",
     [string]$AppType = "user", # 'user' or 'admin'
-    [string]$ClientTheme = "alzbeta", # 'alzbeta' or 'dolphin'
+    [string]$ClientTheme = "", # 'alzbeta' or 'dolphin' (defaults to $Client)
     [string]$ResourceGroup = "DOLPHIN_DS",
     [string]$BackendUrl = ""
 )
@@ -18,6 +18,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ClientClean = $Client.ToLower()
 $EnvClean = $Environment.ToLower()
+if ([string]::IsNullOrWhiteSpace($ClientTheme)) {
+    $ClientTheme = $ClientClean
+}
 $ContainerAppName = "$ClientClean-ai-search-backend-$EnvClean"
 $SwaName = if ($AppType -eq "admin") { "swa-$ClientClean-admin-$EnvClean" } else { "swa-$ClientClean-$EnvClean" }
 $AppDir = if ($AppType -eq "admin") { "frontend-admin" } else { "frontend-user" }

@@ -68,4 +68,4 @@ export const CLIENT_THEMES: Record<string, ClientTheme> = {
   },
 };
 
-export const DEFAULT_THEME_ID = "alzbeta";
+export const DEFAULT_THEME_ID = "dolphin";

@@ -137,9 +137,18 @@ def init_db() -> None:
 
     if settings.USE_AZURE_SQL:
         logger.info("Initializing Azure SQL Database tables...")
-        with engine.begin() as conn:
-            Base.metadata.create_all(bind=conn)
-        logger.info("Azure SQL base tables initialized successfully.")
+        for attempt in range(1, 4):
+            try:
+                with engine.begin() as conn:
+                    Base.metadata.create_all(bind=conn)
+                logger.info("Azure SQL base tables initialized successfully.")
+                break
+            except Exception as e:
+                logger.warning(f"Azure SQL table creation attempt {attempt}/3 failed: {e}")
+                if attempt < 3:
+                    time.sleep(5)
+                else:
+                    raise e
 
         # Attempt to create T-SQL Full-Text Search Catalog & Index
         try:
@@ -241,8 +250,17 @@ def clear_document_data() -> None:
     from app.storage.models import DBChunk, DBDocument
 
     logger.info("Clearing document chunks and document metadata from database...")
-    with SessionLocal() as db_session:
-        db_session.query(DBChunk).delete()
-        db_session.query(DBDocument).delete()
-        db_session.commit()
-    logger.info("Document chunks and document metadata cleared. User accounts preserved.")
+    for attempt in range(1, 4):
+        try:
+            with SessionLocal() as db_session:
+                db_session.query(DBChunk).delete()
+                db_session.query(DBDocument).delete()
+                db_session.commit()
+            logger.info("Document chunks and document metadata cleared. User accounts preserved.")
+            return
+        except Exception as e:
+            logger.warning(f"Clear document data attempt {attempt}/3 failed: {e}")
+            if attempt < 3:
+                time.sleep(5)
+            else:
+                raise e

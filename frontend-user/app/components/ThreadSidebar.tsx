@@ -199,7 +199,7 @@ export const ThreadSidebar: React.FC<ThreadSidebarProps> = ({
 
                     {/* Actions Icons */}
                     {!isEditing && (
-                      <div className="hidden group-hover:flex items-center gap-1 shrink-0">
+                      <div className={`items-center gap-1 shrink-0 ${isActive ? "flex" : "hidden group-hover:flex"}`}>
                         <button
                           onClick={(e) => handleStartRename(t, e)}
                           className="p-1 text-zinc-400 hover:text-indigo-300 text-xs transition-colors cursor-pointer"

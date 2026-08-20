@@ -41,7 +41,7 @@ export default function UserSearchPage() {
   const [drawerZoom, setDrawerZoom] = useState<number>(100);
 
   // Client Theme State
-  const [currentThemeId, setCurrentThemeId] = useState<string>("alzbeta");
+  const [currentThemeId, setCurrentThemeId] = useState<string>("dolphin");
 
   // Read saved theme on mount
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function UserSearchPage() {
     }
   }, []);
 
-  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.alzbeta;
+  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.dolphin;
 
   // Apply dynamic CSS variables when theme changes
   useEffect(() => {
@@ -249,8 +249,8 @@ export default function UserSearchPage() {
     }
   };
 
-  // Create New Chat Thread
-  const handleNewThread = async () => {
+  // Create New Chat (Reset local state lazily without DB auto-creation)
+  const handleNewThread = () => {
     setActiveThreadId(null);
     setActiveSource(null);
     setMessages([
@@ -259,26 +259,6 @@ export default function UserSearchPage() {
         content: TRANSLATIONS[appLanguage].initialGreeting,
       },
     ]);
-
-    if (authToken) {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/threads`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({ title: "Nová konverzace" }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setActiveThreadId(data.thread_id);
-          fetchUserThreads(authToken);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
   };
 
   // Rename Thread Title
@@ -310,10 +290,10 @@ export default function UserSearchPage() {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (res.ok) {
+        setThreads((prev) => prev.filter((t) => t.thread_id !== threadId));
         if (activeThreadId === threadId) {
           handleNewThread();
         }
-        fetchUserThreads(authToken);
       }
     } catch (err) {
       console.error(err);
