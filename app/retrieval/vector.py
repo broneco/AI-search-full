@@ -552,6 +552,12 @@ class VectorRetriever(BaseRetriever):
         expanded_results = []
         for item in results:
             doc_id = item.document_id
+            if isinstance(doc_id, str):
+                try:
+                    doc_id = uuid.UUID(doc_id)
+                except ValueError:
+                    pass
+
             chunk_idx = item.metadata.get("chunk_index")
             page_no = item.page_number
             sect_title = item.section_title
