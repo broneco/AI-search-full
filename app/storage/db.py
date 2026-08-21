@@ -199,6 +199,37 @@ def init_db() -> None:
         except Exception as e:
             logger.error(f"Failed to create GIN full-text index: {e}")
 
+    # Seed default demo users if current TENANT_ID has no users yet
+    try:
+        from app.storage.models import DBUser
+        import hashlib
+        with SessionLocal() as db_session:
+            user_count = db_session.query(DBUser).filter(DBUser.tenant_id == settings.TENANT_ID).count()
+            if user_count == 0:
+                logger.info(f"Seeding default demo users for tenant '{settings.TENANT_ID}'...")
+                hashed = hashlib.sha256(f"password123:{settings.JWT_SECRET}".encode("utf-8")).hexdigest()
+                demo1 = DBUser(
+                    tenant_id=settings.TENANT_ID,
+                    email="user@dolphin.cz",
+                    username="Dolphin Demo Uživatel",
+                    password_hash=hashed,
+                    role="User",
+                    groups=["User", "Management", "Admin"],
+                )
+                demo2 = DBUser(
+                    tenant_id=settings.TENANT_ID,
+                    email="user@dolphinconsulting.cz",
+                    username="Dolphin Demo Uživatel",
+                    password_hash=hashed,
+                    role="User",
+                    groups=["User", "Management", "Admin"],
+                )
+                db_session.add_all([demo1, demo2])
+                db_session.commit()
+                logger.info(f"Default demo users seeded for tenant '{settings.TENANT_ID}'.")
+    except Exception as e:
+        logger.warning(f"Could not seed default demo user: {e}")
+
     logger.info("Database initialization complete.")
 
 
