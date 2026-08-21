@@ -1,14 +1,46 @@
 {
   "categories": [
     {
-      "key": "REPLACEMENT_CAT_UUID",
-      "label": "Replacement Cat",
-      "description": "Allowed group for replacements",
+      "key": "Management",
+      "label": "Management",
+      "description": "Dokumenty pro vedení",
       "allowed_groups": [
-        "ReplacementGroup"
+        "Management"
       ],
-      "role_name": "ReplacementRole"
+      "role_name": "Management"
+    },
+    {
+      "key": "HR",
+      "label": "HR",
+      "description": "Dokumenty pro HR",
+      "allowed_groups": [
+        "Management",
+        "HR"
+      ],
+      "role_name": "HR"
+    },
+    {
+      "key": "Finance",
+      "label": "IT",
+      "description": "Dokumenty pro IT",
+      "allowed_groups": [
+        "Management",
+        "IT"
+      ],
+      "role_name": "IT"
+    },
+    {
+      "key": "User",
+      "label": "User",
+      "description": "Dokumenty pro User",
+      "allowed_groups": [
+        "Management",
+        "HR",
+        "IT",
+        "User"
+      ],
+      "role_name": "User"
     }
   ],
-  "analysis_rules": "Test migration rules"
+  "analysis_rules": "Test rules"
 }

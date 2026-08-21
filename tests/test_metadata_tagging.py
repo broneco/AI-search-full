@@ -152,10 +152,9 @@ def test_categories_api_endpoints():
     client.post("/api/documents/categories", json=original_config)
 
 
-@pytest.mark.anyio
 @patch("app.providers.azure_openai.AzureOpenAIProvider.generate")
 @patch("app.ingestion.extraction.DocumentExtractor.extract")
-async def test_analyze_draft_api_endpoint(mock_extract, mock_generate, db_setup, tmp_path):
+def test_analyze_draft_api_endpoint(mock_extract, mock_generate, db_setup, tmp_path):
     from unittest.mock import MagicMock
     from app.ingestion.extraction import ExtractedPage
 
@@ -190,9 +189,8 @@ async def test_analyze_draft_api_endpoint(mock_extract, mock_generate, db_setup,
         os.remove(data["temp_file_path"])
 
 
-@pytest.mark.anyio
 @patch("app.providers.azure_openai.AzureOpenAIEmbeddingProvider.embed_documents")
-async def test_ingest_confirmed_with_archival(mock_embed, db_setup, tmp_path):
+def test_ingest_confirmed_with_archival(mock_embed, db_setup, tmp_path):
     db = db_setup
     mock_embed.return_value = [[0.1] * 1536]
 
@@ -268,8 +266,7 @@ async def test_ingest_confirmed_with_archival(mock_embed, db_setup, tmp_path):
     assert "User" not in new_doc.security_acl["allowed_groups"]
 
 
-@pytest.mark.anyio
-async def test_category_migration_api_endpoint(db_setup):
+def test_category_migration_api_endpoint(db_setup):
     db = db_setup
 
     # 1. Fetch current config to restore it later
@@ -347,9 +344,8 @@ async def test_category_migration_api_endpoint(db_setup):
         db.commit()
 
 
-@pytest.mark.anyio
 @patch("app.providers.azure_openai.AzureOpenAIEmbeddingProvider.embed_documents")
-async def test_ingest_confirmed_updates_existing_doc(mock_embed, db_setup, tmp_path):
+def test_ingest_confirmed_updates_existing_doc(mock_embed, db_setup, tmp_path):
     db = db_setup
     mock_embed.return_value = [[0.15] * 1536]
 
@@ -407,8 +403,7 @@ async def test_ingest_confirmed_updates_existing_doc(mock_embed, db_setup, tmp_p
     db.commit()
 
 
-@pytest.mark.anyio
-async def test_category_allowed_groups_propagation(db_setup):
+def test_category_allowed_groups_propagation(db_setup):
     import copy
     db = db_setup
 
@@ -469,8 +464,7 @@ async def test_category_allowed_groups_propagation(db_setup):
         db.commit()
 
 
-@pytest.mark.anyio
-async def test_category_role_rename_propagation(db_setup):
+def test_category_role_rename_propagation(db_setup):
     import copy
     db = db_setup
 
@@ -592,8 +586,7 @@ async def test_category_role_rename_propagation(db_setup):
         db.commit()
 
 
-@pytest.mark.anyio
-async def test_update_document_metadata_api_endpoint(db_setup):
+def test_update_document_metadata_api_endpoint(db_setup):
     db = db_setup
 
     # 1. Seed a document and chunk in HR category
