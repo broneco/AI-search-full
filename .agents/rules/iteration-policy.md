@@ -37,6 +37,13 @@ If the task is larger, split it and implement only the first coherent slice.
 - adding abstractions without a first real implementation
 - leaving TODOs instead of creating a clear follow-up slice
 
+## Git Commit Policy
+
+Do NOT perform frequent incremental Git commits or pushes to GitHub after small edits.
+Only commit to Git when:
+1. The user explicitly requests a commit, or
+2. A major feature milestone is completed AND approved by the user.
+
 ## Required output
 
 At the end of each slice, recommend exactly one next slice.

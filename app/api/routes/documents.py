@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.api.dependencies import get_db_session
+from app.api.routes.auth import decode_token
+from app.core.config import settings
 from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
 from app.schemas.documents import DocumentIngestRequest, DocumentIngestResponse, CategoryConfigRequest, DocumentConfirmedIngestRequest
 from app.storage.models import DBDocument, DBChunk
@@ -100,10 +102,31 @@ async def list_documents(
 ):
     """List all ingested documents and their chunk counts, respecting security ACL allowed groups."""
     try:
-        user_groups_str = x_user_groups or "User"
-        acl_groups = [g.strip() for g in user_groups_str.split(",") if g.strip()]
+        user_groups_str = x_user_groups
+        if not user_groups_str:
+            auth_header = http_request.headers.get("Authorization") or http_request.headers.get("authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+                try:
+                    payload = decode_token(token)
+                    groups_list = payload.get("groups", [])
+                    if groups_list:
+                        user_groups_str = ",".join(groups_list)
+                except Exception as token_err:
+                    logger.debug(f"Could not decode token for groups extraction: {token_err}")
 
-        docs = db.query(DBDocument).order_by(DBDocument.ingested_at.desc()).all()
+        user_groups_str = user_groups_str or "User"
+        acl_groups = [g.strip() for g in user_groups_str.split(",") if g.strip()]
+        tenant_id = (settings.TENANT_ID or "dolphin").lower()
+        tenant_base = tenant_id.split("-")[0]
+        tenant_variants = list(set([tenant_id, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
+
+        docs = (
+            db.query(DBDocument)
+            .filter(DBDocument.tenant_id.in_(tenant_variants))
+            .order_by(DBDocument.ingested_at.desc())
+            .all()
+        )
         result = []
         for doc in docs:
             # Enforce Management bypass and allowed groups filters

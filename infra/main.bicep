@@ -1,61 +1,67 @@
 targetScope = 'resourceGroup'
 
-@description('Client Name (e.g. dolphin, university)')
+@description('Client / Tenant Name (e.g. dolphin, alzbeta, showcase)')
 param clientName string = 'dolphin'
 
-@description('Environment (dev or prod)')
-@allowed(['dev', 'prod'])
+@description('Environment (dev, prod, showcase)')
 param environment string = 'dev'
 
 @description('Azure Region')
 param location string = 'northeurope'
 
-// Conditional Resource Provisioning Toggles
-@description('Set true to create a new Azure Database for PostgreSQL Flexible Server.')
-param provisionPostgres bool = true
-param existingPostgresHost string = ''
-param postgresAdminUser string = 'pgadmin'
+// Database Provisioning Parameters (Azure SQL DTU Model)
+@description('Set true to create a new Azure SQL Server and Database in DTU mode.')
+param provisionAzureSql bool = true
+param existingSqlHost string = ''
+param sqlAdminUser string = 'sqladmin'
 @secure()
-param postgresAdminPassword string = ''
+param sqlAdminPassword string = ''
+param dtuSkuName string = 'Basic'
+param dtuTier string = 'Basic'
+param dtus int = 5
 
+// OpenAI Provisioning Parameters
 @description('Set true to create a new Azure OpenAI resource.')
 param provisionOpenAI bool = true
 param existingOpenAiEndpoint string = ''
 @secure()
 param existingOpenAiKey string = ''
 
+// Storage Account Provisioning Parameters
 @description('Set true to create a new Azure Storage Account.')
 param provisionStorage bool = true
 param existingStorageAccountName string = ''
 @secure()
 param existingStorageConnectionString string = ''
 
+// Container Registry Parameters
 @description('Set true to create a new Azure Container Registry.')
 param provisionACR bool = true
-param existingACRName string = 'dolphinds'
+param existingACRName string = 'craisearchdev'
 
+// Frontend Provisioning Parameters
 @description('Set true to create Azure Static Web Apps for frontends.')
 param provisionFrontends bool = true
 
-// Computed resource names
+// Computed resource names according to Naming Convention Standard
 var cleanClient = toLower(clientName)
 var cleanEnv = toLower(environment)
 var baseName = '${cleanClient}-${cleanEnv}'
 
-var workspaceName = 'log-${baseName}'
-var appInsightsName = 'appins-${baseName}'
-var storageName = provisionStorage ? 'st${cleanClient}${cleanEnv}${uniqueString(resourceGroup().id)}' : existingStorageAccountName
+var workspaceName = 'log-aisearch-${cleanEnv}'
+var appInsightsName = 'appi-aisearch-${cleanEnv}'
+var storageName = provisionStorage ? 'staisearch${cleanEnv}' : existingStorageAccountName
 var originalsContainerName = '${cleanClient}-originals-${cleanEnv}'
 var artifactsContainerName = '${cleanClient}-artifacts-${cleanEnv}'
 
-var postgresServerName = 'psql-${baseName}-${uniqueString(resourceGroup().id)}'
-var dbName = '${cleanClient}_ai_search_${cleanEnv}'
+var sqlServerName = 'sql-aisearch-${cleanEnv}'
+var dbName = 'sqldb-${cleanClient}-${cleanEnv}'
 
-var openAiName = 'oai-${baseName}-${uniqueString(resourceGroup().id)}'
-var acrName = provisionACR ? 'acr${cleanClient}${cleanEnv}${uniqueString(resourceGroup().id)}' : existingACRName
+var openAiName = 'oai-aisearch-${cleanEnv}'
+var acrName = provisionACR ? 'craisearch${cleanEnv}' : existingACRName
 
-var containerEnvName = 'env-${baseName}'
-var containerAppName = '${cleanClient}-ai-search-backend-${cleanEnv}'
+var containerEnvName = 'cae-aisearch-${cleanEnv}'
+var containerAppName = 'ca-aisearch-${cleanClient}-${cleanEnv}'
 
 // 1. Observability Module
 module logAnalytics 'modules/log_analytics.bicep' = {
@@ -78,14 +84,17 @@ module storageModule 'modules/storage.bicep' = if (provisionStorage) {
   }
 }
 
-// 3. PostgreSQL Module (Conditional)
-module postgresModule 'modules/postgres.bicep' = if (provisionPostgres) {
-  name: 'postgresModuleDeployment'
+// 3. Azure SQL Database Module (DTU Model) (Conditional)
+module azureSqlModule 'modules/azuresql.bicep' = if (provisionAzureSql) {
+  name: 'azureSqlModuleDeployment'
   params: {
-    serverName: postgresServerName
+    serverName: sqlServerName
     databaseName: dbName
-    adminUser: postgresAdminUser
-    adminPassword: postgresAdminPassword
+    adminUser: sqlAdminUser
+    adminPassword: sqlAdminPassword
+    dtuSkuName: dtuSkuName
+    dtuTier: dtuTier
+    dtus: dtus
     location: location
   }
 }
@@ -109,7 +118,7 @@ module acrModule 'modules/acr.bicep' = if (provisionACR) {
 }
 
 // Resolved connection values
-var resolvedPostgresHost = provisionPostgres ? postgresModule.outputs.fqdn : existingPostgresHost
+var resolvedSqlHost = provisionAzureSql ? azureSqlModule.outputs.fqdn : existingSqlHost
 var resolvedOpenAiEndpoint = provisionOpenAI ? openAiModule.outputs.endpoint : existingOpenAiEndpoint
 var resolvedOpenAiKey = provisionOpenAI ? openAiModule.outputs.apiKey : existingOpenAiKey
 var resolvedStorageConnStr = provisionStorage ? storageModule.outputs.connectionString : existingStorageConnectionString
@@ -125,10 +134,10 @@ module containerAppModule 'modules/containerapp.bicep' = {
     logWorkspaceCustomerId: logAnalytics.outputs.workspaceCustomerId
     logWorkspaceSharedKey: ''
     imageName: imageName
-    postgresHost: resolvedPostgresHost
+    postgresHost: resolvedSqlHost
     postgresDb: dbName
-    postgresUser: postgresAdminUser
-    postgresPassword: postgresAdminPassword
+    postgresUser: sqlAdminUser
+    postgresPassword: sqlAdminPassword
     openAiEndpoint: resolvedOpenAiEndpoint
     openAiKey: resolvedOpenAiKey
     storageConnectionString: resolvedStorageConnStr
@@ -143,7 +152,7 @@ module containerAppModule 'modules/containerapp.bicep' = {
 module userFrontend 'modules/staticwebapp.bicep' = if (provisionFrontends) {
   name: 'userFrontendDeployment'
   params: {
-    appName: 'swa-${cleanClient}-user-${cleanEnv}'
+    appName: 'swa-aisearch-${cleanClient}-user-${cleanEnv}'
     location: location
   }
 }
@@ -151,7 +160,7 @@ module userFrontend 'modules/staticwebapp.bicep' = if (provisionFrontends) {
 module adminFrontend 'modules/staticwebapp.bicep' = if (provisionFrontends) {
   name: 'adminFrontendDeployment'
   params: {
-    appName: 'swa-${cleanClient}-admin-${cleanEnv}'
+    appName: 'swa-aisearch-${cleanClient}-admin-${cleanEnv}'
     location: location
   }
 }
@@ -160,5 +169,5 @@ module adminFrontend 'modules/staticwebapp.bicep' = if (provisionFrontends) {
 output backendFqdn string = containerAppModule.outputs.fqdn
 output userFrontendUrl string = provisionFrontends ? userFrontend.outputs.defaultHostname : ''
 output adminFrontendUrl string = provisionFrontends ? adminFrontend.outputs.defaultHostname : ''
-output databaseHost string = resolvedPostgresHost
+output databaseHost string = resolvedSqlHost
 output storageAccountName string = storageName

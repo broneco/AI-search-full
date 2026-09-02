@@ -1,14 +1,14 @@
 # One-Command Client Infrastructure Provisioning Script (Azure Bicep)
 # Usage:
 #   .\infra\deploy_infra.ps1 -Client dolphin -Environment dev
-#   .\infra\deploy_infra.ps1 -Client university -Environment prod -ResourceGroup "UNIVERSITY_RG"
+#   .\infra\deploy_infra.ps1 -Client dolphin -Environment prod
+#   .\infra\deploy_infra.ps1 -Client showcase -Environment dev
 
 param (
     [string]$Client = "dolphin",
     [string]$Environment = "dev",
-    [string]$ResourceGroup = "DOLPHIN_DS",
-    [string]$Location = "northeurope",
-    [string]$ParameterFile = "infra/main.bicepparam"
+    [string]$ResourceGroup = "",
+    [string]$Location = "northeurope"
 )
 
 $ErrorActionPreference = "Continue"
@@ -16,6 +16,17 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ClientClean = $Client.ToLower()
 $EnvClean = $Environment.ToLower()
+
+# Map default Resource Group if not specified
+if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
+    if ($ClientClean -eq "showcase") {
+        $ResourceGroup = "ai-search-showcase-rg-dev"
+    } elseif ($EnvClean -eq "prod") {
+        $ResourceGroup = "ai-search-rg-prod"
+    } else {
+        $ResourceGroup = "ai-search-rg-dev"
+    }
+}
 
 Write-Host ""
 Write-Host "==== Dolphin AI Search - Client Infrastructure Provisioning ====" -ForegroundColor Cyan
@@ -42,7 +53,7 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($azAccount)) {
 }
 Write-Host "[OK] Logged in to Azure. Subscription: $azAccount" -ForegroundColor Green
 
-# 3. Create Resource Group if it doesn't exist
+# 3. Verify Resource Group existence
 Write-Host "[1/2] Overuju existenci Resource Group '$ResourceGroup'..." -ForegroundColor Yellow
 $rgExists = az group exists --name $ResourceGroup
 if ($rgExists -eq "false") {

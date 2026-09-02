@@ -49,18 +49,32 @@ async def chat_interaction(
     elif session_header:
         token = session_header.strip()
 
-    tenant_base = settings.TENANT_ID.split("-")[0]
-    valid_tenants = [settings.TENANT_ID, tenant_base]
+    tenant_base = (settings.TENANT_ID or "dolphin").split("-")[0]
+    valid_tenants = list(set([settings.TENANT_ID, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
 
     if token:
         try:
             from app.api.routes.auth import decode_token
             from app.storage.models import DBUser
             payload = decode_token(token)
+            # 1. Try matching user_id for current tenant variants
             current_db_user = db.query(DBUser).filter(
                 DBUser.tenant_id.in_(valid_tenants),
                 DBUser.user_id == uuid.UUID(payload["sub"])
             ).first()
+            
+            # 2. Fallback: match by email for current tenant variants
+            if not current_db_user and payload.get("email"):
+                current_db_user = db.query(DBUser).filter(
+                    DBUser.tenant_id.in_(valid_tenants),
+                    DBUser.email == payload["email"].strip().lower()
+                ).first()
+
+            # 3. Fallback: match by user_id globally
+            if not current_db_user:
+                current_db_user = db.query(DBUser).filter(
+                    DBUser.user_id == uuid.UUID(payload["sub"])
+                ).first()
         except Exception:
             pass
 
@@ -68,7 +82,6 @@ async def chat_interaction(
         try:
             from app.storage.models import DBUser
             current_db_user = db.query(DBUser).filter(
-                DBUser.tenant_id.in_(valid_tenants),
                 DBUser.user_id == uuid.UUID(x_user_id)
             ).first()
         except Exception:

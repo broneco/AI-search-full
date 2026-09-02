@@ -2,7 +2,7 @@
 import time
 import logging
 import urllib.parse
-from typing import Generator
+from typing import Generator, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.core.config import settings
@@ -208,13 +208,22 @@ def init_db() -> None:
             if user_count == 0:
                 logger.info(f"Seeding default demo users for tenant '{settings.TENANT_ID}'...")
                 hashed = hashlib.sha256(f"password123:{settings.JWT_SECRET}".encode("utf-8")).hexdigest()
+                admin_hashed = hashlib.sha256(f"DolphinAdmin26:{settings.JWT_SECRET}".encode("utf-8")).hexdigest()
+                admin = DBUser(
+                    tenant_id=settings.TENANT_ID,
+                    email="admin@dolphin.cz",
+                    username="Dolphin Admin",
+                    password_hash=admin_hashed,
+                    role="Admin",
+                    groups=["Management", "HR", "IT", "User", "Admin"],
+                )
                 demo1 = DBUser(
                     tenant_id=settings.TENANT_ID,
                     email="user@dolphin.cz",
                     username="Dolphin Demo Uživatel",
                     password_hash=hashed,
                     role="User",
-                    groups=["User", "Management", "Admin"],
+                    groups=["User"],
                 )
                 demo2 = DBUser(
                     tenant_id=settings.TENANT_ID,
@@ -222,9 +231,9 @@ def init_db() -> None:
                     username="Dolphin Demo Uživatel",
                     password_hash=hashed,
                     role="User",
-                    groups=["User", "Management", "Admin"],
+                    groups=["User"],
                 )
-                db_session.add_all([demo1, demo2])
+                db_session.add_all([admin, demo1, demo2])
                 db_session.commit()
                 logger.info(f"Default demo users seeded for tenant '{settings.TENANT_ID}'.")
     except Exception as e:
@@ -259,18 +268,28 @@ def clear_db(preserve_users: bool = True) -> None:
                 raise e
 
 
-def clear_document_data() -> None:
-    """Clear chunks and documents data without dropping tables or user accounts."""
+def clear_document_data(tenant_id: Optional[str] = None) -> None:
+    """Clear chunks and documents data without dropping tables or user accounts.
+    If tenant_id is supplied, only document data belonging to that tenant scope is cleared.
+    """
     from app.storage.models import DBChunk, DBDocument
 
-    logger.info("Clearing document chunks and document metadata from database...")
+    logger.info(f"Clearing document chunks and document metadata for tenant '{tenant_id or 'all'}'...")
     for attempt in range(1, 4):
         try:
             with SessionLocal() as db_session:
-                db_session.query(DBChunk).delete()
-                db_session.query(DBDocument).delete()
+                if tenant_id:
+                    tenant_base = tenant_id.lower().split("-")[0]
+                    tenant_variants = list(set([tenant_id, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
+                    
+                    subq = db_session.query(DBDocument.document_id).filter(DBDocument.tenant_id.in_(tenant_variants)).subquery()
+                    db_session.query(DBChunk).filter(DBChunk.document_id.in_(subq)).delete(synchronize_session=False)
+                    db_session.query(DBDocument).filter(DBDocument.tenant_id.in_(tenant_variants)).delete(synchronize_session=False)
+                else:
+                    db_session.query(DBChunk).delete()
+                    db_session.query(DBDocument).delete()
                 db_session.commit()
-            logger.info("Document chunks and document metadata cleared. User accounts preserved.")
+            logger.info(f"Document chunks and document metadata cleared for '{tenant_id or 'all'}'. User accounts preserved.")
             return
         except Exception as e:
             logger.warning(f"Clear document data attempt {attempt}/3 failed: {e}")

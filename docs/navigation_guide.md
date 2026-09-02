@@ -53,6 +53,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📁 `inbox/` — Složka obsahující instrukční soubory pro manuální úkony v Azure.
     - 📄 `2026-06-08-dolphin-consulting-db-storage-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (2026-06-08-dolphin-consulting-db-storage-handoff.md).
     - 📄 `2026-08-18-azure-sql-manual-setup-handoff.md` — Handoff soubor s pokyny pro manuální zřízení Azure SQL Serveru a Databáze (2026-08-18-azure-sql-manual-setup-handoff.md).
+    - 📄 `2026-09-02-azure-resource-deployment-handoff.md` — Handoff soubor s pokyny pro ruční nastavení Azure zdrojů ve 3 Resource Group a DTU módu (2026-09-02-azure-resource-deployment-handoff.md).
     - 📄 `azure-openai-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-openai-handoff.md).
     - 📄 `azure-postgres-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-postgres-handoff.md).
     - 📄 `azure-storage-blob-setup-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-storage-blob-setup-handoff.md).
@@ -209,6 +210,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `main.json` — Soubor infrastruktury Azure Bicep (main.json).
   - 📁 `modules/` — Složka s Bicep moduly pro jednotlivé Azure zdroje (Postgres, Storage, ACA, OpenAI).
     - 📄 `acr.bicep` — Bicep modul pro nasazení Azure zdroje (acr.bicep).
+    - 📄 `azuresql.bicep` — Bicep modul pro nasazení Azure SQL Serveru a Databáze v DTU módu (azuresql.bicep).
     - 📄 `containerapp.bicep` — Bicep modul pro nasazení Azure zdroje (containerapp.bicep).
     - 📄 `log_analytics.bicep` — Bicep modul pro nasazení Azure zdroje (log_analytics.bicep).
     - 📄 `openai.bicep` — Bicep modul pro nasazení Azure zdroje (openai.bicep).
@@ -237,6 +239,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `ADR-0014-context-expansion-strategies.md` — Záznam architektonického rozhodnutí: ADR-0014-context-expansion-strategies.md.
     - 📄 `ADR-0015-multi-environment-dev-prod-architecture.md` — Záznam architektonického rozhodnutí: ADR-0015-multi-environment-dev-prod-architecture.md.
     - 📄 `ADR-0016-azure-sql-database-migration.md` — Záznam architektonického rozhodnutí: ADR-0016-azure-sql-database-migration.md.
+    - 📄 `ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md` — Záznam architektonického rozhodnutí: Přechod na Azure SQL DTU nákupní model a 3-tier Resource Group architekturu (ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md).
   - 📁 `architecture/` — Složka s podkladovými nemocničními směrnicemi a řády (architecture).
     - 📄 `app_database_usage_info_dump.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (app_database_usage_info_dump.md).
   - 📁 `deployments/` — Složka s návody a prameny pro nasazení do Azure cloudu.

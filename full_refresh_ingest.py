@@ -16,9 +16,19 @@ logger = logging.getLogger(__name__)
 async def main():
     logger.info("Starting Full-Refresh Document Ingestion script...")
 
-    # 1. Clear document chunks and document metadata (preserving user accounts & auth)
+    import argparse
+    parser = argparse.ArgumentParser(description="Full-Refresh Document Ingestion script.")
+    parser.add_argument("--tenant", type=str, default=None, help="Tenant ID (e.g. dolphin, alzbeta, jhu)")
+    parser.add_argument("--data-dir", type=str, default=None, help="Explicit directory path to scan for documents")
+    args, _ = parser.parse_known_args()
+
+    from app.core.config import settings
+    raw_tenant = args.tenant or os.getenv("TENANT_ID") or settings.TENANT_ID or "dolphin"
+    tenant_id = raw_tenant.lower().split("-")[0]
+
+    # 1. Clear document chunks and metadata ONLY for the target tenant
     try:
-        clear_document_data()
+        clear_document_data(tenant_id=tenant_id)
     except Exception as e:
         logger.warning(f"Clear document data failed: {e}")
 
@@ -181,6 +191,8 @@ async def main():
             )
             doc.title = title
             doc.created_at = release_date
+            doc.tenant_id = tenant_id
+            db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).update({"tenant_id": tenant_id})
 
             if target_doc:
                 target_doc.metadata_json["replaced_by_document_id"] = str(doc.document_id)

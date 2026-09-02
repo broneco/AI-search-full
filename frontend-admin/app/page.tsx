@@ -262,9 +262,15 @@ export default function Home() {
   const [currentThemeId, setCurrentThemeId] = useState<string>("jhu");
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("dolphin_client_theme") || process.env.NEXT_PUBLIC_CLIENT_THEME || DEFAULT_THEME_ID;
-    if (CLIENT_THEMES[savedTheme]) {
-      setCurrentThemeId(savedTheme);
+    const envTheme = process.env.NEXT_PUBLIC_CLIENT_THEME;
+    const savedTheme = localStorage.getItem("dolphin_client_theme");
+    const themeToUse = (envTheme && CLIENT_THEMES[envTheme])
+      ? envTheme
+      : (savedTheme && CLIENT_THEMES[savedTheme])
+      ? savedTheme
+      : DEFAULT_THEME_ID;
+    if (CLIENT_THEMES[themeToUse]) {
+      setCurrentThemeId(themeToUse);
     }
   }, []);
 

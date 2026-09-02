@@ -1,6 +1,6 @@
 # Project State Memory
 
-Last updated: 2026-07-21
+Last updated: 2026-09-02
 
 ## Product summary
 
@@ -45,6 +45,7 @@ Phase 2/3 Advanced Chunking strategies & localized tooltips decoupling (Semantic
 43: Phase 2/3 Pure Overlap Elimination, Cross-page Overlap toggle & Agentic LLM Execution (Eliminated 100% duplicate overlap chunks, added overlap_cross_page setting, executed custom prompts with AzureOpenAIProvider, added tooltips and pytest coverage) - [x] Completed.
 44: Phase 2/3 Universal AI Summary Enrichment, True Agentic LLM Boundary Splitting & Deferred Preview Calls (Decoupled AI summaries into universal toggle for all strategies, implemented true LLM delimiter splitting with max_context_chars batching, deferred preview AI API calls to 'Znovu vygenerovat' button with warning banner) - [x] Completed.
 45: Phase 2/3 Dedicated End-User Search Application & Embedded Formatted PDF Viewer (Created frontend-user Next.js application, glassmorphic search UI without admin controls, CZ/EN dictionary, ACL role switcher, and PdfViewerModal with dynamic PyMuPDF yellow text highlight overlays) - [x] Completed.
+46: Phase 2/3 Multi-Tenant Azure SQL User Seeding & Document List/Chat Security ACL Fixes (JWT token group extraction, email fallback resolution, multi-tenant seeding for all 6 Azure SQL DB tenants) - [x] Completed.
 46: Phase 2/3 Direct Live PDF Right Inspector Panel & Interactive Citation Document Badges (Embedded live PDF page canvas in right panel drawer with dynamic PyMuPDF yellow text highlight overlays, zoom controls, download links, and interactive document badges in AI answer text) - [x] Completed.
 47: Phase 2/3 Multi-Tenant Data Isolation, Lightweight DB Auth & Saved Chat Threads History (Indexed tenant_id='dolphin' across PostgreSQL tables, DBUser JWT auth, DBChatThread/DBChatMessage CRUD, multi-turn LLM context assembly, collapsible left history sidebar ThreadSidebar.tsx, AuthModal.tsx, and pytest test suite) - [x] Completed.
 48: Phase 2/3 Multi-Environment DEV & PROD Architecture Split (Dynamic .env.dev and .env.prod resolution in app/core/config.py, isolated database targets, isolated Azure Blob Storage containers, frontend env files, parameterized deploy_backend.ps1 and deploy_frontend.ps1 scripts, pytest test suite) - [x] Completed.
@@ -52,8 +53,9 @@ Phase 2/3 Advanced Chunking strategies & localized tooltips decoupling (Semantic
 50: Phase 2/3 Multi-Client White-Label Branding & Theme Engine (Organized public/logos/ directory, brand profiles for Nemocnice sv. Alžběty & Dolphin Consulting, warm gold header #a38244, medical green accent #00965e, dynamic CSS variables, theme switcher dropdown in frontend-user & frontend-admin) - [x] Completed.
 51: Phase 2/3 Live Multi-Environment Azure Cloud Deployment (Deployed 3 Azure Static Web Apps: swa-dolphin-dev, swa-dolphin-prod, swa-alzbeta-prod; and 4 Azure Container App Backends: dolphin-dev, dolphin-prod, alzbeta-dev, alzbeta-prod with isolated PostgreSQL databases and Blob Storage containers) - [x] Completed.
 52: Phase 2/3 Architectural Migration to Azure SQL Database (Microsoft SQL Server) (pyodbc connection engine, universal Uuid/JSON/UniversalVector models, T-SQL FTS catalog & vector distance fusion, Docker msodbcsql18 image update, ADR-0016) - [x] Completed.
+53: Phase 2/3 Three-Tier Resource Group Architecture & Azure SQL DTU Model (Configured Dev ai-search-rg-dev, Prod ai-search-rg-prod, Showcase ai-search-showcase-rg-dev isolation, transitioned to Azure SQL DTU purchasing model, created azuresql.bicep, updated deployment scripts, created ADR-0017 and 2026-09-02-azure-resource-deployment-handoff.md) - [x] Completed.
 
-Next: Phase 2 Productization (integrating user feedback loop collection, SQL query audit logging, and Microsoft Entra ID authentication skeleton).
+Next: Human user provisions resources in Azure according to 2026-09-02-azure-resource-deployment-handoff.md, then run pytest suite.
 
 ## Target roadmap
 

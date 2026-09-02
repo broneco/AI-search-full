@@ -6,7 +6,20 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+### Added
+- **3-Tier Resource Group Architecture & Azure SQL DTU Purchasing Model (`infra/modules/azuresql.bicep`, `infra/main.bicep`, `deploy_backend.ps1`, `deploy_frontend.ps1`, `infra/deploy_infra.ps1`, `docs/adr/ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md`, `.agents/inbox/2026-09-02-azure-resource-deployment-handoff.md`)**:
+  - Reorganized Azure deployment strategy across 3 isolated Resource Groups: Dev (`ai-search-rg-dev`), Prod (`ai-search-rg-prod`), and Showcase (`ai-search-showcase-rg-dev`).
+  - Transitioned Azure SQL Database compute tier to **DTU Purchasing Model** (`Basic` 5 DTU, `Standard S0/S1`), eliminating cold-start auto-pause connection delays.
+  - Created Bicep module `azuresql.bicep` supporting configurable DTU SKUs (`Basic`, `Standard_S0`, `Standard_S1`).
+  - Parameterized `deploy_backend.ps1`, `deploy_frontend.ps1`, and `infra/deploy_infra.ps1` with default target Resource Group mapping and standardized resource naming (`sql-aisearch-{env}`, `sqldb-{tenant}-{env}`, `staisearch{env}`, `cae-aisearch-{env}`, `ca-aisearch-{tenant}-{env}`, `swa-aisearch-{tenant}-{apptype}-{env}`).
+  - Created step-by-step human deployment handoff guide in `.agents/inbox/2026-09-02-azure-resource-deployment-handoff.md` for manual portal setup and PowerShell CLI automation.
+
 ### Fixed
+- **Multi-Tenant User Seeding & Chat/Document Security Fixes (`app/api/routes/documents.py`, `app/api/routes/chat.py`, `app/storage/db.py`, `frontend-user/app/page.tsx`)**:
+  - Updated `list_documents` endpoint in `documents.py` to automatically decode JWT `Authorization: Bearer` tokens and extract user `groups` when `X-User-Groups` header is missing, resolving the issue where `admin@dolphin.cz` only saw 5 documents instead of all 34.
+  - Enhanced chat endpoint user resolution in `chat.py` to fall back by email matching and global user ID, resolving `401 Unauthorized (Přihlášení vyžadováno)` errors when querying across multi-tenant environments (`dolphin-dev`, `jhu-dev`).
+  - Seeded standard accounts (`admin@dolphin.cz`, `user@dolphin.cz`, `user@dolphinconsulting.cz`) across all 6 SQL database tenants (`dolphin`, `dolphin-dev`, `jhu`, `jhu-dev`, `alzbeta`, `alzbeta-dev`).
+  - Updated `frontend-user/app/page.tsx` `fetchDocuments()` to pass `X-User-Groups` header when user profile is loaded.
 - **RAG Hybrid Search Quality & Grounded Retrieval Fixes (`app/retrieval/vector.py`, `app/api/routes/chat.py`, `app/core/search_config.json`, `app/core/classification_config.json`)**:
   - Removed query string pollution from prior thread messages (`retrieval_query = request.query`) so new queries are not corrupted by previous chat history.
   - Added text deduplication to `_fuse_rrf` and `_fuse_union` in `VectorRetriever` to prevent duplicate header/footer page chunks from filling retrieval slots.

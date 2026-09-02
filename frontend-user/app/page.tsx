@@ -43,11 +43,17 @@ export default function UserSearchPage() {
   // Client Theme State
   const [currentThemeId, setCurrentThemeId] = useState<string>("jhu");
 
-  // Read saved theme on mount
+  // Read saved theme on mount: priority to process.env.NEXT_PUBLIC_CLIENT_THEME, then localStorage, then DEFAULT_THEME_ID
   useEffect(() => {
-    const savedTheme = localStorage.getItem("dolphin_client_theme") || process.env.NEXT_PUBLIC_CLIENT_THEME || DEFAULT_THEME_ID;
-    if (CLIENT_THEMES[savedTheme]) {
-      setCurrentThemeId(savedTheme);
+    const envTheme = process.env.NEXT_PUBLIC_CLIENT_THEME;
+    const savedTheme = localStorage.getItem("dolphin_client_theme");
+    const themeToUse = (envTheme && CLIENT_THEMES[envTheme])
+      ? envTheme
+      : (savedTheme && CLIENT_THEMES[savedTheme])
+      ? savedTheme
+      : DEFAULT_THEME_ID;
+    if (CLIENT_THEMES[themeToUse]) {
+      setCurrentThemeId(themeToUse);
     }
   }, []);
 
@@ -150,6 +156,9 @@ export default function UserSearchPage() {
       const headers: Record<string, string> = {};
       const tok = token !== undefined ? token : authToken;
       if (tok) headers["Authorization"] = `Bearer ${tok}`;
+      if (currentUser?.groups?.length) {
+        headers["X-User-Groups"] = currentUser.groups.join(",");
+      }
 
       const res = await fetch(`${BACKEND_URL}/api/documents/list`, { headers });
       if (res.ok) {

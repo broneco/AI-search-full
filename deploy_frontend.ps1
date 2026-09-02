@@ -2,14 +2,14 @@
 # Usage:
 #   .\deploy_frontend.ps1 -Client dolphin -Environment dev -AppType user
 #   .\deploy_frontend.ps1 -Client dolphin -Environment prod -AppType user -ClientTheme dolphin
-#   .\deploy_frontend.ps1 -Client alzbeta -Environment prod -AppType user -ClientTheme alzbeta
+#   .\deploy_frontend.ps1 -Client showcase -Environment dev -AppType user
 
 param (
     [string]$Client = "dolphin",
     [string]$Environment = "dev",
     [string]$AppType = "user", # 'user' or 'admin'
     [string]$ClientTheme = "", # 'alzbeta' or 'dolphin' (defaults to $Client)
-    [string]$ResourceGroup = "DOLPHIN_DS",
+    [string]$ResourceGroup = "",
     [string]$BackendUrl = ""
 )
 
@@ -21,14 +21,26 @@ $EnvClean = $Environment.ToLower()
 if ([string]::IsNullOrWhiteSpace($ClientTheme)) {
     $ClientTheme = $ClientClean
 }
-$ContainerAppName = "$ClientClean-ai-search-backend-$EnvClean"
-$SwaName = if ($AppType -eq "admin") { "swa-$ClientClean-admin-$EnvClean" } else { "swa-$ClientClean-$EnvClean" }
+
+# Map default Resource Group if not provided
+if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
+    if ($ClientClean -eq "showcase") {
+        $ResourceGroup = "ai-search-showcase-rg-dev"
+    } elseif ($EnvClean -eq "prod") {
+        $ResourceGroup = "ai-search-rg-prod"
+    } else {
+        $ResourceGroup = "ai-search-rg-dev"
+    }
+}
+
+$ContainerAppName = "ca-aisearch-$ClientClean-$EnvClean"
+$SwaName = if ($AppType -eq "admin") { "swa-aisearch-$ClientClean-admin-$EnvClean" } else { "swa-aisearch-$ClientClean-user-$EnvClean" }
 $AppDir = if ($AppType -eq "admin") { "frontend-admin" } else { "frontend-user" }
 
 # Determine Backend URL dynamically from Azure Container App if not specified
 if ([string]::IsNullOrWhiteSpace($BackendUrl)) {
     try {
-        Write-Host "[INFO] Zistuji FQDN pro backend container '$ContainerAppName' v Azure..." -ForegroundColor White
+        Write-Host "[INFO] Zistuji FQDN pro backend container '$ContainerAppName' v RG '$ResourceGroup'..." -ForegroundColor White
         $Fqdn = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query properties.configuration.ingress.fqdn --output tsv 2>$null)
         if (-not [string]::IsNullOrWhiteSpace($Fqdn)) {
             $BackendUrl = "https://$Fqdn"
@@ -41,19 +53,20 @@ if ([string]::IsNullOrWhiteSpace($BackendUrl)) {
         if ($EnvClean -eq "dev") {
             $BackendUrl = "http://localhost:8000"
         } else {
-            $BackendUrl = "https://dolphin-ai-search-backend-dev.graysand-c9254ce4.northeurope.azurecontainerapps.io"
+            $BackendUrl = "https://ca-aisearch-dolphin-prod.graysand-c9254ce4.northeurope.azurecontainerapps.io"
         }
     }
 }
 
 Write-Host ""
 Write-Host "==== AI Search - Frontend Build & Deploy ($AppDir) ====" -ForegroundColor Cyan
-Write-Host "[INFO] Client:       $ClientClean" -ForegroundColor White
-Write-Host "[INFO] Environment:  $EnvClean" -ForegroundColor White
-Write-Host "[INFO] App Type:     $AppType" -ForegroundColor White
-Write-Host "[INFO] Client Theme: $ClientTheme" -ForegroundColor White
-Write-Host "[INFO] Backend URL:  $BackendUrl" -ForegroundColor White
-Write-Host "[INFO] SWA Target:   $SwaName" -ForegroundColor White
+Write-Host "[INFO] Client:         $ClientClean" -ForegroundColor White
+Write-Host "[INFO] Environment:    $EnvClean" -ForegroundColor White
+Write-Host "[INFO] App Type:       $AppType" -ForegroundColor White
+Write-Host "[INFO] Client Theme:   $ClientTheme" -ForegroundColor White
+Write-Host "[INFO] Backend URL:    $BackendUrl" -ForegroundColor White
+Write-Host "[INFO] Resource Group: $ResourceGroup" -ForegroundColor White
+Write-Host "[INFO] SWA Target:     $SwaName" -ForegroundColor White
 
 # Set environment variables for Next.js build
 $env:NEXT_PUBLIC_BACKEND_URL = $BackendUrl
@@ -77,7 +90,7 @@ Write-Host "[INFO] Zistuji deployment token pro Static Web App '$SwaName'..." -F
 $DeploymentToken = (az staticwebapp secrets list --name $SwaName --resource-group $ResourceGroup --query properties.apiKey --output tsv 2>$null)
 
 if ([string]::IsNullOrWhiteSpace($DeploymentToken)) {
-    Write-Host "[INFO] Static Web App '$SwaName' neexistuje, vytvarim v Azure..." -ForegroundColor Yellow
+    Write-Host "[INFO] Static Web App '$SwaName' neexistuje v '$ResourceGroup', vytvarim v Azure..." -ForegroundColor Yellow
     az staticwebapp create --name $SwaName --resource-group $ResourceGroup --location westeurope --sku Free
     $DeploymentToken = (az staticwebapp secrets list --name $SwaName --resource-group $ResourceGroup --query properties.apiKey --output tsv 2>$null)
 }

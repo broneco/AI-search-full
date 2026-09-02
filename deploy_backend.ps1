@@ -2,15 +2,14 @@
 # Usage:
 #   .\deploy_backend.ps1 -Client dolphin -Environment dev
 #   .\deploy_backend.ps1 -Client dolphin -Environment prod
-#   .\deploy_backend.ps1 -Client alzbeta -Environment dev
-#   .\deploy_backend.ps1 -Client alzbeta -Environment prod
+#   .\deploy_backend.ps1 -Client showcase -Environment dev -ResourceGroup "ai-search-showcase-rg-dev"
 
 param (
     [string]$Client = "dolphin",
     [string]$Environment = "dev",
-    [string]$ResourceGroup = "DOLPHIN_DS",
-    [string]$RegistryName = "dolphinds",
-    [string]$ContainerEnvName = "dolphinds-ai-container-env",
+    [string]$ResourceGroup = "",
+    [string]$RegistryName = "",
+    [string]$ContainerEnvName = "",
     [string]$Location = "northeurope"
 )
 
@@ -23,11 +22,31 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ClientClean = $Client.ToLower()
 $EnvClean = $Environment.ToLower()
-$ContainerAppName = "$ClientClean-ai-search-backend-$EnvClean"
-$PostgresDbName = "${ClientClean}_ai_search_${EnvClean}"
-$BlobOriginalsContainer = "${ClientClean}-originals-${EnvClean}"
 
-# Write colored messages helper
+# Map default Resource Group if not provided
+if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
+    if ($ClientClean -eq "showcase") {
+        $ResourceGroup = "ai-search-showcase-rg-dev"
+    } elseif ($EnvClean -eq "prod") {
+        $ResourceGroup = "ai-search-rg-prod"
+    } else {
+        $ResourceGroup = "ai-search-rg-dev"
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($RegistryName)) {
+    $RegistryName = "craisearch$EnvClean"
+}
+
+if ([string]::IsNullOrWhiteSpace($ContainerEnvName)) {
+    $ContainerEnvName = "cae-aisearch-$EnvClean"
+}
+
+$ContainerAppName = "ca-aisearch-$ClientClean-$EnvClean"
+$SqlDbName = "sqldb-$ClientClean-$EnvClean"
+$SqlServerHost = "sql-aisearch-$EnvClean.database.windows.net"
+$BlobOriginalsContainer = "$ClientClean-originals-$EnvClean"
+
 function Write-Header ($msg) {
     Write-Host ""
     Write-Host "==== $msg ====" -ForegroundColor Cyan
@@ -49,7 +68,8 @@ Write-Header "AI Search - Automated Multi-Environment Backend Deployment"
 Write-Info "Client:              $ClientClean"
 Write-Info "Environment:         $EnvClean"
 Write-Info "Container App:       $ContainerAppName"
-Write-Info "Database Target:     $PostgresDbName"
+Write-Info "SQL Host Target:     $SqlServerHost"
+Write-Info "SQL DB Target:       $SqlDbName"
 Write-Info "Blob Container:      $BlobOriginalsContainer"
 Write-Info "Resource Group:      $ResourceGroup"
 
@@ -73,14 +93,19 @@ Write-Success "Logged in to Azure. Active Subscription: $azAccount"
 
 # 3. Retrieve ACR Login Server and Credentials dynamically
 Write-Info "Querying Container Registry server URL and credentials..."
-$RegistryServer = (az acr show --name $RegistryName --resource-group $ResourceGroup --query loginServer --output tsv)
+$RegistryServer = (az acr show --name $RegistryName --resource-group $ResourceGroup --query loginServer --output tsv 2>$null)
 if ([string]::IsNullOrWhiteSpace($RegistryServer)) {
-    Write-Error "Failed to retrieve Login Server for registry: $RegistryName in resource group $ResourceGroup"
+    Write-WarningMsg "Registry $RegistryName not found in $ResourceGroup. Attempting global search..."
+    $RegistryServer = (az acr show --name $RegistryName --query loginServer --output tsv 2>$null)
+}
+
+if ([string]::IsNullOrWhiteSpace($RegistryServer)) {
+    Write-Error "Failed to retrieve Login Server for registry: $RegistryName"
     exit 1
 }
 
-$AcrUser = (az acr credential show --name $RegistryName --resource-group $ResourceGroup --query username --output tsv)
-$AcrPass = (az acr credential show --name $RegistryName --resource-group $ResourceGroup --query "passwords[0].value" --output tsv)
+$AcrUser = (az acr credential show --name $RegistryName --query username --output tsv 2>$null)
+$AcrPass = (az acr credential show --name $RegistryName --query "passwords[0].value" --output tsv 2>$null)
 
 Write-Success "Found Registry Server: $RegistryServer"
 
@@ -91,7 +116,7 @@ Write-Info "Generated Image Version Tag: $ImageTag"
 
 # 5. Build Docker Image in the cloud via Azure ACR Tasks
 Write-Header "[1/3] Sestavuji Docker image v cloudu pres Azure ACR Tasks..."
-az acr build --registry $RegistryName --resource-group $ResourceGroup `
+az acr build --registry $RegistryName `
   --image "${ContainerAppName}:${ImageTag}" `
   --image "${ContainerAppName}:latest" . --no-logs
 
@@ -118,12 +143,12 @@ if ([string]::IsNullOrWhiteSpace($appExists)) {
       --registry-server $RegistryServer `
       --registry-username $AcrUser `
       --registry-password $AcrPass `
-      --env-vars "APP_ENV=${EnvClean}" "POSTGRES_DB=${PostgresDbName}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=dolphin-ai-search-sql.database.windows.net" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=dolphin-ai-search-sqldb" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_PASSWORD=BULVER4v68rTzf4X" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server"
+      --env-vars "APP_ENV=${EnvClean}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=${SqlServerHost}" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=${SqlDbName}" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server"
 } else {
     Write-Info "Container App '$ContainerAppName' jiz existuje. Provadim rolling update..."
     az containerapp update --resource-group $ResourceGroup --name $ContainerAppName `
       --image "${RegistryServer}/${ContainerAppName}:${ImageTag}" `
-      --set-env-vars "APP_ENV=${EnvClean}" "POSTGRES_DB=${PostgresDbName}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=dolphin-ai-search-sql.database.windows.net" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=dolphin-ai-search-sqldb" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_PASSWORD=BULVER4v68rTzf4X" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server"
+      --set-env-vars "APP_ENV=${EnvClean}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=${SqlServerHost}" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=${SqlDbName}" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server"
 }
 
 if ($LASTEXITCODE -ne 0) {
