@@ -18,6 +18,6 @@ async def get_health() -> HealthResponse:
     return HealthResponse(
         status="healthy",
         environment=settings.APP_ENV,
-        version="0.1.0",
+        version=settings.APP_VERSION,
         app_name=settings.APP_NAME,
     )

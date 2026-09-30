@@ -259,7 +259,7 @@ const Tooltip = ({ text }: { text?: string }) => {
 
 export default function Home() {
   // Client Theme State
-  const [currentThemeId, setCurrentThemeId] = useState<string>("jhu");
+  const [currentThemeId, setCurrentThemeId] = useState<string>("dolphin");
 
   useEffect(() => {
     const envTheme = process.env.NEXT_PUBLIC_CLIENT_THEME;
@@ -274,7 +274,7 @@ export default function Home() {
     }
   }, []);
 
-  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.jhu;
+  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.dolphin;
 
   useEffect(() => {
     if (currentTheme) {
@@ -1536,9 +1536,14 @@ export default function Home() {
             />
           </div>
           <div>
-            <h1 className="text-base font-extrabold tracking-tight text-white">
-              {currentTheme.appName}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-extrabold tracking-tight text-white">
+                {currentTheme.appName}
+              </h1>
+              <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
+                v0.1.1
+              </span>
+            </div>
             <p className="text-[11px] text-white/80 font-medium">
               {currentTheme.appTagline}
             </p>

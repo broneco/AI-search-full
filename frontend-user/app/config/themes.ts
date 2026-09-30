@@ -90,4 +90,4 @@ export const CLIENT_THEMES: Record<string, ClientTheme> = {
   },
 };
 
-export const DEFAULT_THEME_ID = "jhu";
+export const DEFAULT_THEME_ID = "dolphin";

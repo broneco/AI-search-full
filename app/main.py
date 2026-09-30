@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    version="0.1.0",
+    version=settings.APP_VERSION,
     description="Full-stack AI Search Application API",
     lifespan=lifespan,
 )
@@ -43,7 +43,7 @@ app = FastAPI(
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production requirements later
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,6 +63,6 @@ app.include_router(prompts.router, prefix="/api/prompts", tags=["Prompts"])
 async def root():
     return {
         "message": f"Welcome to {settings.APP_NAME}",
-        "version": "0.1.0",
+        "version": settings.APP_VERSION,
         "health_check": "/health",
     }

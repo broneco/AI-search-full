@@ -282,7 +282,8 @@ def clear_document_data(tenant_id: Optional[str] = None) -> None:
                     tenant_base = tenant_id.lower().split("-")[0]
                     tenant_variants = list(set([tenant_id, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
                     
-                    subq = db_session.query(DBDocument.document_id).filter(DBDocument.tenant_id.in_(tenant_variants)).subquery()
+                    from sqlalchemy import select
+                    subq = select(DBDocument.document_id).where(DBDocument.tenant_id.in_(tenant_variants))
                     db_session.query(DBChunk).filter(DBChunk.document_id.in_(subq)).delete(synchronize_session=False)
                     db_session.query(DBDocument).filter(DBDocument.tenant_id.in_(tenant_variants)).delete(synchronize_session=False)
                 else:

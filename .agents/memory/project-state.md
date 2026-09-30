@@ -1,6 +1,8 @@
 # Project State Memory
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
+31: Multi-Tenant Tenant Isolation & Search Quality Tuning (Multi-tenant JWT token authorization, admin user group resolution, RRF search tuning, score threshold tuning) - [x] Completed.
+32: 3-Tier Resource Group Architecture & Azure SQL DTU Model (`ai-search-rg-dev`, `ai-search-rg-prod`, `ai-search-showcase-rg-dev`, DTU Basic/Standard mode, v0.1.1 versioning, CORS regex fix, `.env.showcase`) - [x] Completed.
 
 ## Product summary
 

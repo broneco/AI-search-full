@@ -41,7 +41,7 @@ export default function UserSearchPage() {
   const [drawerZoom, setDrawerZoom] = useState<number>(100);
 
   // Client Theme State
-  const [currentThemeId, setCurrentThemeId] = useState<string>("jhu");
+  const [currentThemeId, setCurrentThemeId] = useState<string>("dolphin");
 
   // Read saved theme on mount: priority to process.env.NEXT_PUBLIC_CLIENT_THEME, then localStorage, then DEFAULT_THEME_ID
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function UserSearchPage() {
     }
   }, []);
 
-  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.jhu;
+  const currentTheme = CLIENT_THEMES[currentThemeId] || CLIENT_THEMES.dolphin;
 
   // Apply dynamic CSS variables when theme changes
   useEffect(() => {
@@ -156,8 +156,8 @@ export default function UserSearchPage() {
       const headers: Record<string, string> = {};
       const tok = token !== undefined ? token : authToken;
       if (tok) headers["Authorization"] = `Bearer ${tok}`;
-      if (currentUser?.groups?.length) {
-        headers["X-User-Groups"] = currentUser.groups.join(",");
+      if (userProfile?.groups?.length) {
+        headers["X-User-Groups"] = userProfile.groups.join(",");
       }
 
       const res = await fetch(`${BACKEND_URL}/api/documents/list`, { headers });
@@ -753,8 +753,9 @@ export default function UserSearchPage() {
                 <span>{TRANSLATIONS[appLanguage].searchBtn}</span>
               </button>
             </form>
-            <p className="text-[10px] text-zinc-500 text-center mt-2 font-medium">
-              {TRANSLATIONS[appLanguage].disclaimer}
+            <p className="text-[10px] text-zinc-500 text-center mt-2 font-medium flex items-center justify-center gap-2">
+              <span>{TRANSLATIONS[appLanguage].disclaimer}</span>
+              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.1</span>
             </p>
           </div>
         </main>

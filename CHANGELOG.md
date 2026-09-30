@@ -7,6 +7,10 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 ## [Unreleased]
 
 ### Added
+- **Marketingové a Technické Shrnutí Projektu (`docs/ai_search_marketing_summary.md`, `docs/navigation_guide.md`)**:
+  - Vytvořeno podrobné shrnutí projektu v češtině kombinující marketingový přínos (business value, 100% citace s PDF zvýrazněním, multi-tenant white-labeling) s popisem UX designu a hloubkovým rozborem technické architektury (Azure Container Apps, PostgreSQL/pgvector, Hybrid RRF retrieval, Ingestion pipeline).
+- **Rozšíření GitIgnore Pravidel (`.gitignore`)**:
+  - Přidána pravidla pro ignorování dočasných instrukcí (`temp_*`), aplikačních logů (`*.log`), TypeScript build cache (`*.tsbuildinfo`), Python coverage/egg artefaktů a OS souborů.
 - **3-Tier Resource Group Architecture & Azure SQL DTU Purchasing Model (`infra/modules/azuresql.bicep`, `infra/main.bicep`, `deploy_backend.ps1`, `deploy_frontend.ps1`, `infra/deploy_infra.ps1`, `docs/adr/ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md`, `.agents/inbox/2026-09-02-azure-resource-deployment-handoff.md`)**:
   - Reorganized Azure deployment strategy across 3 isolated Resource Groups: Dev (`ai-search-rg-dev`), Prod (`ai-search-rg-prod`), and Showcase (`ai-search-showcase-rg-dev`).
   - Transitioned Azure SQL Database compute tier to **DTU Purchasing Model** (`Basic` 5 DTU, `Standard S0/S1`), eliminating cold-start auto-pause connection delays.
@@ -14,7 +18,16 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
   - Parameterized `deploy_backend.ps1`, `deploy_frontend.ps1`, and `infra/deploy_infra.ps1` with default target Resource Group mapping and standardized resource naming (`sql-aisearch-{env}`, `sqldb-{tenant}-{env}`, `staisearch{env}`, `cae-aisearch-{env}`, `ca-aisearch-{tenant}-{env}`, `swa-aisearch-{tenant}-{apptype}-{env}`).
   - Created step-by-step human deployment handoff guide in `.agents/inbox/2026-09-02-azure-resource-deployment-handoff.md` for manual portal setup and PowerShell CLI automation.
 
+### Added
+- **Azure Key Vault Secret Integration (`app/core/config.py`, `deploy_backend.ps1`, `.env.ju-prod`)**: Added dynamic secret resolution for Azure SQL Password from Azure Key Vault (`ju-ai-search-kv-prod`, secret `ju-ai-search-sql-sqlaccount-password-prod`). Supports automatic CLI resolution during `deploy_backend.ps1` and Python `SecretClient` runtime fallback when `AZURE_SQL_PASSWORD` is omitted in environment files.
+- **Application Versioning v0.1.1 (`app/core/config.py`, `pyproject.toml`, `frontend-user/`, `frontend-admin/`)**: Set explicit version `v0.1.1` across backend config, OpenAPI docs, and visible UI badges in both user and admin frontends.
+- **Dedicated Showcase Tenant Environment Config & Handoff (`.env.showcase`, `.agents/inbox/2026-09-02-azure-showcase-deployment-handoff.md`, `deploy_all.ps1`)**: Created isolated env file and handoff instructions for `ai-search-showcase-rg-dev` following `ai-search-showcase-{prefix}-dev` and `aisearchshowcase{st/cr}dev` naming standards.
+
 ### Fixed
+- **Frontend Local Environment Branding & Theme Config (`frontend-user/.env.local`, `frontend-admin/.env.local`, `frontend-user/app/config/themes.ts`, `frontend-admin/app/config/themes.ts`)**: Updated `NEXT_PUBLIC_CLIENT_THEME` and `NEXT_PUBLIC_TENANT_ID` from `jhu` to `dolphin` across frontend local env files and set `DEFAULT_THEME_ID = "dolphin"`, ensuring Next.js displays Dolphin Consulting branding and logo by default in local environment.
+- **SQLAlchemy Deprecation SAWarning Fix (`app/storage/db.py`)**: Replaced raw `.subquery()` in `clear_document_data()` with explicit `sqlalchemy.select()` construct, resolving SAWarning deprecation notice during document data clearance.
+- **Browser CORS Credential Compatibility Fix (`app/main.py`)**: Replaced `allow_origins=["*"]` with `allow_origin_regex=r".*"` in FastAPI `CORSMiddleware` when `allow_credentials=True`, resolving browser network preflight errors ("Nepodařilo se připojit k autentizačnímu serveru") when accessing backend from Azure Static Web Apps.
+- **Frontend Variable Typo Fix (`frontend-user/app/page.tsx`)**: Fixed state variable reference `currentUser` to `userProfile` in `fetchDocuments`, resolving Next.js production build TypeScript error.
 - **Multi-Tenant User Seeding & Chat/Document Security Fixes (`app/api/routes/documents.py`, `app/api/routes/chat.py`, `app/storage/db.py`, `frontend-user/app/page.tsx`)**:
   - Updated `list_documents` endpoint in `documents.py` to automatically decode JWT `Authorization: Bearer` tokens and extract user `groups` when `X-User-Groups` header is missing, resolving the issue where `admin@dolphin.cz` only saw 5 documents instead of all 34.
   - Enhanced chat endpoint user resolution in `chat.py` to fall back by email matching and global user ID, resolving `401 Unauthorized (Přihlášení vyžadováno)` errors when querying across multi-tenant environments (`dolphin-dev`, `jhu-dev`).

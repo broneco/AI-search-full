@@ -14,9 +14,11 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
 - 📄 `.env` — Soubor lokálních proměnných prostředí a konfigurace přístupů (neverzuje se).
 - 📄 `.env.dev` — Šablona konfiguračních proměnných prostředí pro vývojové prostředí DEV.
 - 📄 `.env.example` — Vzorová šablona proměnných prostředí sloužící jako návod pro lokální nastavení.
+- 📄 `.env.ju-prod` — Konfigurační soubor proměnných prostředí vyhrazený pro produkční tenant JHU (ju-prod) v Azure.
 - 📄 `.env.prod` — Šablona konfiguračních proměnných prostředí pro produkční prostředí PROD.
 - 📁 `.github/` — Složka konfiguračních souborů a pracovních postupů pro GitHub.
 - 📄 `.gitignore` — Konfigurační soubor určující, které soubory a složky má Git ignorovat.
+- 📄 `.env.showcase` — Konfigurační soubor proměnných prostředí vyhrazený pro Showcase tenant v Azure.
 - 📄 `AGENTS.md` — Klíčový dokument definující provozní kontrakt, pravidla a role vývojových AI agentů v repozitáři.
 - 📄 `CHANGELOG.md` — Changelog projektových změn, nových funkcí a oprav chyb strukturovaný dle verzí.
 - 📄 `Dockerfile` — Recept pro sestavení Docker kontejneru backendové FastAPI aplikace.
@@ -26,6 +28,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
 - 📄 `ask.py` — Pomocný CLI skript pro rychlé testování dotazů vůči RAG vyhledávacímu backendu.
 - 📄 `check_diff.py` — Pomocný skript pro porovnání změn a kontrolu konzistence kódu.
 - 📁 `data/` — Složka podkladových zdrojových PDF dokumentů určených k indexaci.
+- 📄 `deploy_all.ps1` — Hlavní master PowerShell skript pro jednorázové nasazení backendu i obou frontendů v jednom kroku.
 - 📄 `deploy_backend.ps1` — PowerShell skript pro automatizované nasazení backendové aplikace do Azure Container Apps.
 - 📄 `deploy_frontend.ps1` — PowerShell skript pro automatizované nasazení frontendových aplikací do Azure Static Web Apps.
 - 📄 `docker-compose.yml` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (docker-compose.yml).
@@ -54,6 +57,8 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `2026-06-08-dolphin-consulting-db-storage-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (2026-06-08-dolphin-consulting-db-storage-handoff.md).
     - 📄 `2026-08-18-azure-sql-manual-setup-handoff.md` — Handoff soubor s pokyny pro manuální zřízení Azure SQL Serveru a Databáze (2026-08-18-azure-sql-manual-setup-handoff.md).
     - 📄 `2026-09-02-azure-resource-deployment-handoff.md` — Handoff soubor s pokyny pro ruční nastavení Azure zdrojů ve 3 Resource Group a DTU módu (2026-09-02-azure-resource-deployment-handoff.md).
+    - 📄 `2026-09-02-azure-showcase-deployment-handoff.md` — Handoff soubor s vyhrazenými pokyny pro manuální zřízení Showcase prostředí v RG ai-search-showcase-rg-dev (2026-09-02-azure-showcase-deployment-handoff.md).
+    - 📄 `2026-09-25-jhu-prod-azure-deployment-handoff.md` — Handoff soubor a registr zdrojů vyhrazený pro produkční tenant JHU v RG ju-ai-search-rg-prod (2026-09-25-jhu-prod-azure-deployment-handoff.md).
     - 📄 `azure-openai-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-openai-handoff.md).
     - 📄 `azure-postgres-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-postgres-handoff.md).
     - 📄 `azure-storage-blob-setup-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-storage-blob-setup-handoff.md).
@@ -204,6 +209,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
 ## 7. Infrastruktura jako kód / IaC Bicep (`infra/`)
 
   - 📄 `README.md` — Soubor infrastruktury Azure Bicep (README.md).
+  - 📄 `create_azure_resources.ps1` — Parametrizovaný skript pro automatické založení všech Azure zdrojů přes Azure CLI.
   - 📄 `deploy_infra.ps1` — Soubor infrastruktury Azure Bicep (deploy_infra.ps1).
   - 📄 `main.bicep` — Soubor infrastruktury Azure Bicep (main.bicep).
   - 📄 `main.bicepparam` — Soubor infrastruktury Azure Bicep (main.bicepparam).
@@ -252,6 +258,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `hybrid_search.md` — Architektonický návrhový dokument: hybrid_search.md.
     - 📄 `metadata_tagging_system.md` — Architektonický návrhový dokument: metadata_tagging_system.md.
   - 📄 `initial_design_doc.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (initial_design_doc.md).
+  - 📄 `ai_search_marketing_summary.md` — Marketingové a technické shrnutí projektu AI Search v češtině.
   - 📄 `navigation_guide.md` — Kompletní průvodce adresářovou strukturou repozitáře a popisem všech souborů.
   - 📁 `runbooks/` — Složka s podkladovými nemocničními směrnicemi a řády (runbooks).
     - 📄 `azure-first-deployment.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (azure-first-deployment.md).

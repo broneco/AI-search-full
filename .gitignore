@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+
 *.pem
 *.key
 *.pfx
@@ -16,22 +17,38 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+*.egg
 .venv/
 venv/
 
-# Node
+# Node & TypeScript
 node_modules/
 .next/
+out/
 dist/
 build/
+*.tsbuildinfo
+.vercel/
+.turbo/
+
+# Logs & Temporary files
+*.log
+temp_*
+*.tmp
+*.bak
 
 # Agent temporary local files
 .agents/inbox/*-local.md
 scratch/
-frontend-user/out/
-frontend-admin/out/
 
 # OS/editor
 .DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 .vscode/
 .idea/

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # General
     APP_ENV: str = _APP_ENV
     APP_NAME: str = "ai-search-app"
+    APP_VERSION: str = "v0.1.1"
     LOG_LEVEL: str = "INFO"
     TENANT_ID: str = "dolphin"
     JWT_SECRET: str = "dolphin-ai-search-secret-key-2026"
@@ -55,11 +56,28 @@ class Settings(BaseSettings):
     AZURE_BLOB_CONTAINER_ORIGINALS: Optional[str] = None
     AZURE_BLOB_CONTAINER_ARTIFACTS: Optional[str] = None
 
+    # Azure Key Vault
+    AZURE_KEY_VAULT_NAME: Optional[str] = None
+    AZURE_KEY_VAULT_SECRET_SQL_PASSWORD: Optional[str] = None
+
     # Observability
     APPLICATIONINSIGHTS_CONNECTION_STRING: Optional[str] = None
 
     @model_validator(mode="after")
     def set_environment_defaults(self):
+        # Dynamically fetch SQL password from Azure Key Vault if configured and password not explicitly set
+        if not self.AZURE_SQL_PASSWORD and self.AZURE_KEY_VAULT_NAME and self.AZURE_KEY_VAULT_SECRET_SQL_PASSWORD:
+            try:
+                from azure.identity import DefaultAzureCredential
+                from azure.keyvault.secrets import SecretClient
+                kv_uri = f"https://{self.AZURE_KEY_VAULT_NAME}.vault.azure.net"
+                credential = DefaultAzureCredential()
+                client = SecretClient(vault_url=kv_uri, credential=credential)
+                secret = client.get_secret(self.AZURE_KEY_VAULT_SECRET_SQL_PASSWORD)
+                self.AZURE_SQL_PASSWORD = secret.value
+            except Exception as e:
+                pass
+
         # Determine if Azure SQL is active
         if self.AZURE_SQL_HOST and self.AZURE_SQL_HOST.strip():
             self.USE_AZURE_SQL = True

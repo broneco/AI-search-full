@@ -46,17 +46,6 @@ async def main():
 
     tagger = MetadataTagger(db_session=db)
     config = await tagger.load_config()
-
-    import argparse
-    parser = argparse.ArgumentParser(description="Full-Refresh Document Ingestion script.")
-    parser.add_argument("--tenant", type=str, default=None, help="Tenant ID (e.g. dolphin, alzbeta, jhu)")
-    parser.add_argument("--data-dir", type=str, default=None, help="Explicit directory path to scan for documents")
-    args, _ = parser.parse_known_args()
-
-    from app.core.config import settings
-    raw_tenant = args.tenant or os.getenv("TENANT_ID") or settings.TENANT_ID or "dolphin"
-    tenant_id = raw_tenant.lower().split("-")[0]
-
     # 3. Scan data directory for PDFs/TXTs
     data_dir = None
     if args.data_dir and os.path.exists(args.data_dir):

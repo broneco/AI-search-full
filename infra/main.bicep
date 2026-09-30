@@ -1,9 +1,9 @@
 targetScope = 'resourceGroup'
 
-@description('Client / Tenant Name (e.g. dolphin, alzbeta, showcase)')
-param clientName string = 'dolphin'
+@description('Client / Tenant Name (e.g. showcase, dolphin, alzbeta)')
+param clientName string = 'showcase'
 
-@description('Environment (dev, prod, showcase)')
+@description('Environment (dev, prod)')
 param environment string = 'dev'
 
 @description('Azure Region')
@@ -37,31 +37,30 @@ param existingStorageConnectionString string = ''
 // Container Registry Parameters
 @description('Set true to create a new Azure Container Registry.')
 param provisionACR bool = true
-param existingACRName string = 'craisearchdev'
+param existingACRName string = 'aisearchshowcasecrdev'
 
 // Frontend Provisioning Parameters
 @description('Set true to create Azure Static Web Apps for frontends.')
 param provisionFrontends bool = true
 
-// Computed resource names according to Naming Convention Standard
+// Computed resource names according to Naming Convention Standard: ai-search-{tenant}-{prefix}-{env}
 var cleanClient = toLower(clientName)
 var cleanEnv = toLower(environment)
-var baseName = '${cleanClient}-${cleanEnv}'
 
-var workspaceName = 'log-aisearch-${cleanEnv}'
-var appInsightsName = 'appi-aisearch-${cleanEnv}'
-var storageName = provisionStorage ? 'staisearch${cleanEnv}' : existingStorageAccountName
+var workspaceName = 'ai-search-${cleanClient}-log-${cleanEnv}'
+var appInsightsName = 'ai-search-${cleanClient}-appi-${cleanEnv}'
+var storageName = provisionStorage ? 'aisearch${cleanClient}st${cleanEnv}' : existingStorageAccountName
 var originalsContainerName = '${cleanClient}-originals-${cleanEnv}'
 var artifactsContainerName = '${cleanClient}-artifacts-${cleanEnv}'
 
-var sqlServerName = 'sql-aisearch-${cleanEnv}'
-var dbName = 'sqldb-${cleanClient}-${cleanEnv}'
+var sqlServerName = 'ai-search-${cleanClient}-sql-${cleanEnv}'
+var dbName = 'ai-search-${cleanClient}-sqldb-${cleanEnv}'
 
-var openAiName = 'oai-aisearch-${cleanEnv}'
-var acrName = provisionACR ? 'craisearch${cleanEnv}' : existingACRName
+var openAiName = 'ai-search-${cleanClient}-aif-${cleanEnv}'
+var acrName = provisionACR ? 'aisearch${cleanClient}cr${cleanEnv}' : existingACRName
 
-var containerEnvName = 'cae-aisearch-${cleanEnv}'
-var containerAppName = 'ca-aisearch-${cleanClient}-${cleanEnv}'
+var containerEnvName = 'ai-search-${cleanClient}-cae-${cleanEnv}'
+var containerAppName = 'ai-search-${cleanClient}-ca-${cleanEnv}'
 
 // 1. Observability Module
 module logAnalytics 'modules/log_analytics.bicep' = {
@@ -152,7 +151,7 @@ module containerAppModule 'modules/containerapp.bicep' = {
 module userFrontend 'modules/staticwebapp.bicep' = if (provisionFrontends) {
   name: 'userFrontendDeployment'
   params: {
-    appName: 'swa-aisearch-${cleanClient}-user-${cleanEnv}'
+    appName: 'ai-search-${cleanClient}-swa-user-${cleanEnv}'
     location: location
   }
 }
@@ -160,7 +159,7 @@ module userFrontend 'modules/staticwebapp.bicep' = if (provisionFrontends) {
 module adminFrontend 'modules/staticwebapp.bicep' = if (provisionFrontends) {
   name: 'adminFrontendDeployment'
   params: {
-    appName: 'swa-aisearch-${cleanClient}-admin-${cleanEnv}'
+    appName: 'ai-search-${cleanClient}-swa-admin-${cleanEnv}'
     location: location
   }
 }
