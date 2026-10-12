@@ -59,6 +59,9 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `2026-09-02-azure-resource-deployment-handoff.md` — Handoff soubor s pokyny pro ruční nastavení Azure zdrojů ve 3 Resource Group a DTU módu (2026-09-02-azure-resource-deployment-handoff.md).
     - 📄 `2026-09-02-azure-showcase-deployment-handoff.md` — Handoff soubor s vyhrazenými pokyny pro manuální zřízení Showcase prostředí v RG ai-search-showcase-rg-dev (2026-09-02-azure-showcase-deployment-handoff.md).
     - 📄 `2026-09-25-jhu-prod-azure-deployment-handoff.md` — Handoff soubor a registr zdrojů vyhrazený pro produkční tenant JHU v RG ju-ai-search-rg-prod (2026-09-25-jhu-prod-azure-deployment-handoff.md).
+    - 📄 `2026-10-05-tenant-env-placeholder-handoff.md` — Handoff soubor s informacemi o 100% paritě tenantových .env souborů a seznamu zavedených placeholderů.
+    - 📄 `2026-10-06-showcase-keyvault-deployment-handoff.md` — Handoff soubor s pokyny pro zřízení Key Vaultu a naplnění secretů pro Showcase tenant.
+    - 📄 `2026-10-07-jhu-keyvault-rbac-handoff.md` — Handoff soubor s návodem pro schválení RBAC role Key Vault Secrets User a naplnění secretů pro JHU PROD tenant.
     - 📄 `azure-openai-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-openai-handoff.md).
     - 📄 `azure-postgres-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-postgres-handoff.md).
     - 📄 `azure-storage-blob-setup-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-storage-blob-setup-handoff.md).
@@ -75,6 +78,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `iteration-policy.md` — Pravidla pro postup v malých testovatelných a reverzibilních krocích.
     - 📄 `retrieval-and-ai-policy.md` — Pravidla pro implementaci RAG vyhledávání a AI orchestrace.
     - 📄 `security-and-secrets.md` — Pravidla pro správu secrets, přístupových práv (ACL) a zabezpečení dat.
+    - 📄 `tenant-configuration-policy.md` — Pravidla pro správa tenant konfigurací, promptů, metaparametrů a grafických podkladů ve složce tenants/.
     - 📄 `testing-policy.md` — Pravidla pro psaní a spouštění automatizovaných testů.
   - 📁 `templates/` — Složka obsahující šablony pro ADR, úkoly a Azure handoff dokumenty.
     - 📄 `adr-template.md` — Šablona pro vytváření nových architektonických rozhodnutí (ADR).
@@ -107,12 +111,11 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
       - 📄 `health.py` — API endpointy pro kontrolu stavu a zdraví aplikace (liveness/readiness).
       - 📄 `prompts.py` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (prompts.py).
       - 📄 `threads.py` — API endpointy pro správu konverzčních vláken a historie rozhovorů.
-  - 📁 `core/` — Složka s jádrem konfigurace, nastavením vyhledávání a klasifikací dokumentů.
-    - 📄 `classification_config.json` — Konfigurační soubor definující kategorie dokumentů a jejich přístupová práva (ACL).
+  - 📁 `core/` — Složka s jádrem konfigurace, nastavením vyhledávání a tenant resolverem.
     - 📄 `config.py` — Hlavní modul proměnných prostředí a nastavení aplikace pomocí Pydantic BaseSettings.
-    - 📄 `prompts.py` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (prompts.py).
-    - 📄 `search_config.json` — Konfigurační soubor parametrů vyhledávání (RRF váhy, limity, práhy skóre).
+    - 📄 `prompts.py` — Modul pro správu a načítání RAG systémových promptů.
     - 📄 `search_config.py` — Modul pro načítání a práci s konfigurací vyhledávání.
+    - 📄 `tenant_config.py` — Hlavní resolver pro načítání konfigurací tenantů s automatickým fallbackem na tenants/default/.
   - 📁 `ingestion/` — Složka modulů pro zpracování, dělení a indexaci dokumentů.
     - 📄 `chunking.py` — Modul pro dělení textu dokumentů na kontextové pasáže (chunks).
     - 📄 `extraction.py` — Modul pro extrakci textu z PDF dokumentů strana po straně.
@@ -246,6 +249,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `ADR-0015-multi-environment-dev-prod-architecture.md` — Záznam architektonického rozhodnutí: ADR-0015-multi-environment-dev-prod-architecture.md.
     - 📄 `ADR-0016-azure-sql-database-migration.md` — Záznam architektonického rozhodnutí: ADR-0016-azure-sql-database-migration.md.
     - 📄 `ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md` — Záznam architektonického rozhodnutí: Přechod na Azure SQL DTU nákupní model a 3-tier Resource Group architekturu (ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md).
+    - 📄 `ADR-0018-unified-tenant-directory-and-fallback-system.md` — Záznam architektonického rozhodnutí: Sjednocená adresářová struktura tenants/ a souborový fallback systém (ADR-0018-unified-tenant-directory-and-fallback-system.md).
   - 📁 `architecture/` — Složka s podkladovými nemocničními směrnicemi a řády (architecture).
     - 📄 `app_database_usage_info_dump.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (app_database_usage_info_dump.md).
   - 📁 `deployments/` — Složka s návody a prameny pro nasazení do Azure cloudu.
@@ -266,6 +270,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `test_health.md` — Dokumentace s vysvětlením testovacího modulu test_health.md.
     - 📄 `test_hybrid_retrieval.md` — Dokumentace s vysvětlením testovacího modulu test_hybrid_retrieval.md.
     - 📄 `test_ingestion.md` — Dokumentace s vysvětlením testovacího modulu test_ingestion.md.
+    - 📄 `test_keyvault_config.md` — Dokumentace s vysvětlením testovacího modulu test_keyvault_config.py pro Azure Key Vault integraci a 100% paritu klíčů.
     - 📄 `test_metadata_tagging.md` — Dokumentace s vysvětlením testovacího modulu test_metadata_tagging.md.
     - 📄 `test_multi_tenant_auth.md` — Dokumentace s vysvětlením testovacího modulu test_multi_tenant_auth.md.
     - 📄 `test_pdf_annotations.md` — Dokumentace s vysvětlením testovacího modulu test_pdf_annotations.md.
@@ -275,6 +280,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `test_search_config.md` — Dokumentace s vysvětlením testovacího modulu test_search_config.md.
     - 📄 `test_security_freshness.md` — Dokumentace s vysvětlením testovacího modulu test_security_freshness.md.
     - 📄 `test_security_prefilter.md` — Dokumentace s vysvětlením testovacího modulu test_security_prefilter.md.
+    - 📄 `test_tenant_config.md` — Dokumentace s vysvětlením testovacího modulu test_tenant_config.md pro ověření tenant resolveru a fallbacku.
     - 📄 `test_tenant_prompts.md` — Dokumentace s vysvětlením testovacího modulu test_tenant_prompts.md.
     - 📄 `test_vector_db.md` — Dokumentace s vysvětlením testovacího modulu test_vector_db.md.
 
@@ -286,6 +292,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `test_health.py` — Testovací modul pytest ověřující funkčnost test_health.py.
   - 📄 `test_hybrid_retrieval.py` — Testovací modul pytest ověřující funkčnost test_hybrid_retrieval.py.
   - 📄 `test_ingestion.py` — Testovací modul pytest ověřující funkčnost test_ingestion.py.
+  - 📄 `test_keyvault_config.py` — Testovací modul pytest ověřující načítání sekretů z Azure Key Vault a 100% paritu klíčů v tenant environment souborech.
   - 📄 `test_metadata_tagging.py` — Testovací modul pytest ověřující funkčnost test_metadata_tagging.py.
   - 📄 `test_multi_tenant_auth.py` — Testovací modul pytest ověřující funkčnost test_multi_tenant_auth.py.
   - 📄 `test_pdf_annotations.py` — Testovací modul pytest ověřující funkčnost test_pdf_annotations.py.
@@ -295,6 +302,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `test_search_config.py` — Testovací modul pytest ověřující funkčnost test_search_config.py.
   - 📄 `test_security_freshness.py` — Testovací modul pytest ověřující funkčnost test_security_freshness.py.
   - 📄 `test_security_prefilter.py` — Testovací modul pytest ověřující funkčnost test_security_prefilter.py.
+  - 📄 `test_tenant_config.py` — Testovací modul pytest ověřující funkčnost tenant resolveru, rezoluce souborů a fallbacku z default.
   - 📄 `test_tenant_prompts.py` — Testovací modul pytest ověřující funkčnost test_tenant_prompts.py.
   - 📄 `test_vector_db.py` — Testovací modul pytest ověřující funkčnost test_vector_db.py.
 
@@ -307,4 +315,39 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `dependency_links.txt` — Metadatový soubor Python balíčku dependency_links.txt.
   - 📄 `requires.txt` — Metadatový soubor Python balíčku requires.txt.
   - 📄 `top_level.txt` — Metadatový soubor Python balíčku top_level.txt.
+
+---
+
+## 11. Sjednocená složka tenantů (`tenants/`)
+
+  - 📁 `tenants/` — Hlavní kanonický adresář uchovávající konfigurace, RAG prompty, metaparametry, klasifikace, branding a loga jednotlivých klientů.
+    - 📁 `default/` — Povinná podsložka výchozího tenanta s kompletními konfiguracemi sloužící jako záložní zdroj (fallback).
+      - 📄 `branding.json` — Výchozí vizuální branding a barevná paleta.
+      - 📄 `classification_config.json` — Výchozí kategorie dokumentů a ACL přístupové skupiny.
+      - 📄 `logo.png` — Výchozí grafické logo.
+      - 📄 `prompts.json` — Výchozí RAG systémové prompty (CZ a EN).
+      - 📄 `search_config.json` — Výchozí metaparametry dělení textu a vyhledávání.
+    - 📁 `dolphin/` — Podsložka pro tenanta Dolphin Consulting.
+      - 📄 `branding.json` — Vizuální branding a barevná paleta Dolphin Consulting.
+      - 📄 `classification_config.json` — Klasifikační kategorie a ACL skupiny Dolphin Consulting.
+      - 📄 `logo.png` — Grafické logo Dolphin Consulting.
+      - 📄 `prompts.json` — RAG systémové prompty pro Dolphin Consulting.
+      - 📄 `search_config.json` — Metaparametry dělení textu a vyhledávání pro Dolphin Consulting.
+    - 📁 `alzbeta/` — Podsložka pro tenanta Nemocnice sv. Alžběty na Slupi.
+      - 📄 `branding.json` — Vizuální branding a barevná paleta Nemocnice sv. Alžběty.
+      - 📄 `logo.png` — Grafické logo Nemocnice sv. Alžběty.
+      - 📄 `prompts.json` — RAG systémové prompty a pravidla pro zdravotnické směrnice.
+    - 📁 `jhu/` — Podsložka pro tenanta Jihočeská Univerzita v Českých Budějovicích.
+      - 📄 `branding.json` — Vizuální branding a barevná paleta JČU.
+      - 📄 `logo.webp` — Grafické logo JČU v WEBP formátu.
+      - 📄 `prompts.json` — RAG systémové prompty a pravidla pro akademické směrnice.
+    - 📁 `showcase/` — Podsložka pro ukázkového tenanta Showcase AI Search.
+      - 📄 `.env.dev` — Konfigurační soubor proměnných prostředí pro DEV prostředí Showcase tenanta.
+      - 📄 `.env.prod` — Konfigurační soubor proměnných prostředí pro PROD prostředí Showcase tenanta.
+      - 📄 `branding.json` — Vizuální branding a barevné téma Showcase tenanta.
+      - 📄 `classification_config.json` — Klasifikační kategorie a ACL skupiny Showcase tenanta.
+      - 📄 `logo.png` — Grafické logo Showcase tenanta.
+      - 📄 `prompts.json` — RAG systémové prompty pro Showcase tenanta.
+      - 📄 `search_config.json` — Metaparametry dělení textu a vyhledávání pro Showcase tenanta.
+
 

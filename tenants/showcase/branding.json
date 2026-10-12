@@ -1,0 +1,28 @@
+{
+  "id": "showcase",
+  "name": "Showcase AI Search",
+  "appName": "Showcase AI Search",
+  "appTitle": "Showcase AI Search",
+  "appTagline": "Ukázkový vyhledávač znalostí s přesnými citacemi",
+  "appDescription": "Ukázkový vyhledávač znalostí v firemních dokumentech",
+  "tenantScope": "Showcase Tenant Scope",
+  "loginTitle": "Showcase AI Search - Přihlášení",
+  "loginAdminTitle": "Showcase Admin Konzole - Přihlášení",
+  "demoEmail": "user@showcase.cz",
+  "logoUrl": "/logos/logo-dolphin-symbol.png",
+  "logoHeight": 32,
+  "colors": {
+    "primary": "#6366f1",
+    "primaryHover": "#4f46e5",
+    "secondary": "#06b6d4",
+    "gradient": "linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)",
+    "topBarBg": "#0f172a",
+    "sidebarBg": "#0f172a",
+    "cardBg": "#1e293b",
+    "userBubbleBg": "#4f46e5",
+    "userBubbleText": "#ffffff",
+    "aiBubbleBg": "#0f172a",
+    "badgeBg": "rgba(99, 102, 241, 0.2)",
+    "badgeText": "#818cf8"
+  }
+}

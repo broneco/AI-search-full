@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { ClientTheme } from "../config/themes";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface AuthModalProps {
   onSuccess: (token: string, user: any) => void;
   backendUrl: string;
   language: "cs" | "en";
+  currentTheme?: ClientTheme;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -16,6 +18,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSuccess,
   backendUrl,
   language,
+  currentTheme,
 }) => {
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -51,6 +54,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const modalTitle = currentTheme?.loginTitle || (language === "cs" ? "Přihlášení do AI Search" : "Sign in to AI Search");
+  const modalScope = currentTheme?.tenantScope || (language === "cs" ? "Zadejte své firemní přihlašovací údaje" : "Enter your corporate credentials");
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <div className="relative w-full max-w-md glass-panel bg-[#0d1322] border border-white/10 p-6 shadow-2xl rounded-2xl">
@@ -58,13 +64,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
           <div className="flex items-center gap-2.5">
-            <span className="text-2xl">🔐</span>
+            {currentTheme?.logoUrl ? (
+              <img
+                src={currentTheme.logoUrl}
+                alt={currentTheme.name}
+                className="h-7 w-auto object-contain max-w-[120px]"
+                style={{ maxHeight: `${currentTheme.logoHeight || 32}px` }}
+              />
+            ) : (
+              <span className="text-2xl">🔐</span>
+            )}
             <div>
               <h2 className="text-base font-extrabold text-white">
-                {language === "cs" ? "Přihlášení do AI Search" : "Sign in to AI Search"}
+                {modalTitle}
               </h2>
               <p className="text-[11px] text-zinc-400">
-                {language === "cs" ? "Zadejte své firemní přihlašovací údaje" : "Enter your corporate credentials"}
+                {modalScope}
               </p>
             </div>
           </div>
@@ -93,7 +108,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               onChange={(e) => setEmail(e.target.value)}
               required
               className="w-full bg-black/50 border border-white/15 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-medium"
-              placeholder="vas.email@firma.cz"
+              placeholder={currentTheme?.demoEmail || "vas.email@domain.cz"}
             />
           </div>
 

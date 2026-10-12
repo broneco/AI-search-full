@@ -6,7 +6,60 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+## [v0.1.3] - 2026-10-12
+
 ### Added
+- **Navýšení Verze na v0.1.3 (`pyproject.toml`, `app/core/config.py`, `frontend-user/`, `frontend-admin/`, `tenants/*/.env*`)**:
+  - Povýšena verze na `v0.1.3` napříč backendem, Pydantic konfigurací, package.json obou frontendů a viditelnými UI badge v rozhraní.
+  - Zachována 100% strukturální parita klíčů ve všech 10 tenant souborech `.env.dev` a `.env.prod`.
+- **Oprava Zobrazování PDF Originálů v Náhledu Dokumentů (`/api/documents/view/{id}`, `deploy_backend.ps1`, `ju-ai-search-kv-prod`)**:
+  - Vyřešena chyba `404: PDF document file not found in Blob storage or local disk` při otevírání dokumentů z pravého panelu / citací.
+  - V Azure Key Vault `ju-ai-search-kv-prod` byl vytvořen chybějící secret `ju-ai-search-storage-connection-string-prod` obsahující připojovací řetězec k úložišti `juaisearchstprod`.
+  - V produkční Container App `ju-ai-search-ca-prod` byly nastaveny environment proměnné `AZURE_STORAGE_ACCOUNT=juaisearchstprod` a `AZURE_STORAGE_CONNECTION_STRING` (čímž byla nahrazena nesprávná výchozí fallback hodnota `juaisearchblob`).
+  - Skript `deploy_backend.ps1` byl upraven tak, aby automaticky četl a předával `AZURE_STORAGE_ACCOUNT` a `AZURE_STORAGE_CONNECTION_STRING` do všech budoucích nasazení Container App.
+  - Ověřeno živým stažením dokumentu `R_582_annexe-no-2.pdf` (vrací HTTP 200 OK a 972 917 bajtů PDF).
+- **Kompletní Full-Refresh Ingestace JHU Dokumentů do Produkční Azure Databáze (`full_refresh_ingest.py`, `scratch/run_jhu_prod_ingest.ps1`, `tenants/jhu/.env.prod`)**:
+  - Vyčištěna stará testovací data v produkční databázi a úspěšně provedena kompletní reindexace 430 JHU dokumentů (opatření rektora, směrnice, přílohy) z balíku `data - full backup/jhu`.
+  - Všechny dokumenty byly zanalyzovány LLM (vyextrahována metadata, data platnosti, klasifikace dle kategorií a ACL skupin), vygenerovány 3072-dimenzionální vektorové embeddingy (`text-embedding-3-large`) a uloženy do Azure SQL DB (`ju-ai-search-sqldb-prod`).
+  - Originály PDF/TXT dokumentů nahrány do Azure Blob Storage kontejneru `ju-originals-prod`.
+  - Vytvořeno pravidlo ve firewallu Azure SQL Serveru (`AllowLocalDevPC`) pro IP adresu vývojáře umožňující bezpečný přímý přenos.
+  - Ověřeno živým testováním RAG vyhledávání nad reálnými opatřeními JHU (např. pravidla pro AI ve studentských pracích `R_567`, ubytování studentů `R_628` atd.).
+- **Dynamický Multi-Tenant Frontend Branding & JCU Přihlašovací Okna (`tenants/*/branding.json`, `frontend-admin/`, `frontend-user/`, `tests/test_tenant_config.py`)**:
+  - Rozšířen `branding.json` o parametry `appTitle`, `appDescription`, `tenantScope`, `loginTitle`, `loginAdminTitle` a `demoEmail` se 100% paritou klíčů napříč všemi 5 tenanty (`default`, `dolphin`, `alzbeta`, `jhu`, `showcase`).
+  - Pro tenanta JHU (`jhu`) nahrazeny nechtěné zmínky Dolphin za JCU (`appName: "JCU AI Search"`, `demoEmail: "user@jcu.cz"`, `tenantScope: "JCU Tenant Scope"`).
+  - V `AuthModal.tsx` v obou frontendových aplikacích (`frontend-admin` i `frontend-user`) odstraněno pevně zakódované logo delfína 🐬 a nahrazeno dynamickým vykreslováním tenantového loga (`logoUrl`), titulku, rozsahu působnosti i demo e-mailové adresy.
+  - V `page.tsx` obou frontendů zavedeno dynamické nastavování titulku záložky prohlížeče (`document.title = currentTheme.appTitle`) podle aktivního tenanta.
+  - Přidán unit test `test_tenant_branding_key_parity_and_jhu` v `tests/test_tenant_config.py` ověřující 100% paritu klíčů `branding.json` a JCU hodnoty.
+- **Úspěšné Nasazení Backendu JHU PROD do Azure Container Apps & Povolení ACR Admin Usera (`deploy_backend.ps1`, `tenants/jhu/.env.prod`, `.agents/inbox/2026-10-07-jhu-keyvault-rbac-handoff.md`)**:
+  - Nasazena produkční backendová aplikace JHU v Azure Container Apps (`ju-ai-search-ca-prod`) v prostředí `ju-ai-search-rg-prod` dostupné na živé URL `https://ju-ai-search-ca-prod.mangosky-3e5a7049.swedencentral.azurecontainerapps.io`.
+  - Zapnuta **System-Assigned Managed Identity** pro Container App s generovaným Principal ID `ccacbf26-dcd6-4f7b-af7b-e3e769137de8`.
+  - Povolena autentizace v Azure Container Registry (`juaisearchcrprod`) nastavením `adminUserEnabled: true`.
+  - Vylepšen PowerShell skript `deploy_backend.ps1`: přidán příznak `--no-logs` pro zamezení chybám s kódováním znaků (cp1250 Unicode) v CLI na Windows, automatické čekací smyčky pro stavy `Deleting`/`InProgress` v Azure ARM, a automatické odstraňování/vytváření u neošetřených quickstart kontejnerů.
+  - Vytvořen předávací dokument v `.agents/inbox/2026-10-07-jhu-keyvault-rbac-handoff.md` s podrobným návodem v češtině i angličtině pro schválení RBAC role `Key Vault Secrets User` v Azure Portálu a uložení produkčních secretů.
+- **Rozšíření Azure Key Vault Integrace & Konfigurace Showcase Tenanta (`app/core/config.py`, `deploy_backend.ps1`, `tenants/showcase/`, `tests/test_keyvault_config.py`, `.agents/inbox/2026-10-06-showcase-keyvault-deployment-handoff.md`)**:
+  - Rozšířeno dynamické načítání sekretů z Azure Key Vault v `app/core/config.py` pro `AZURE_SQL_PASSWORD`, `AZURE_OPENAI_API_KEY`, `AZURE_STORAGE_CONNECTION_STRING` a `POSTGRES_PASSWORD` při prázdných hodnotách v `.env` přes `DefaultAzureCredential` a `SecretClient`.
+  - Aktualizován PowerShell nasazovací skript `deploy_backend.ps1` pro dynamickou rezoluci secretů přes Azure CLI (`az keyvault secret show`).
+  - Doplněna kompletní konfigurační sada souborů pro ukázkového tenanta Showcase (`tenants/showcase/branding.json`, `prompts.json`, `search_config.json`, `classification_config.json`, `logo.png`).
+  - Zachována 100% strukturální parita klíčů ve všech 10 tenant `.env` souborech v `tenants/` (rozšířeno na 38 unikátních klíčů).
+  - Přidána sada unit testů `tests/test_keyvault_config.py`, jejich vysvětlení `docs/tests_explained/test_keyvault_config_explained.md` a předávací dokument v `.agents/inbox/2026-10-06-showcase-keyvault-deployment-handoff.md`.
+- **Explicitní Konfigurace Azure Infrastruktury v Tenant `.env` souborech (`tenants/<tenant>/.env.<env>`, `deploy_backend.ps1`, `deploy_frontend.ps1`, `app/core/config.py`)**:
+  - Přidány proměnné `AZURE_RESOURCE_GROUP`, `AZURE_CONTAINER_REGISTRY` a `AZURE_CONTAINER_APP_NAME` přímo do konfiguračních souborů tenantů v `tenants/<tenant>/.env.<env>`.
+  - Zavedeno pravidlo **Tenant File Parity Rule** ukládající povinnost udržovat 100% identickou strukturu a klíče ve všech souborech `.env.dev` a `.env.prod` napříč všemi tenanty (`default`, `dolphin`, `alzbeta`, `jhu`, `showcase`).
+  - Odstraněn příznak `--no-logs` z `az acr build` v `deploy_backend.ps1`, díky čemuž se při nasazení zobrazují živé kroky sestavování (Docker build steps, stahování vrstev a časovač sestavení) pro 100% transparentnost.
+  - Pravidla zapsána do `.agents/AGENTS.md` (Definition of Done) i `.agents/rules/tenant-configuration-policy.md`.
+  - Vytvořen předávací dokument `.agents/inbox/2026-10-05-tenant-env-placeholder-handoff.md` obsahující seznam zavedených placeholderů a doporučených Azure hodnot pro správa tenantů.
+
+## [v0.1.2] - 2026-09-30
+
+### Added
+- **Navýšení Verze na v0.1.2 & Správa Tenant `.env` souborů (`pyproject.toml`, `app/core/config.py`, `frontend-user/`, `frontend-admin/`, `.gitignore`)**:
+  - Zvýšena verze aplikace na `v0.1.2` v backendovém nastavení, Pydantic `config.py` i viditelných UI badges obou frontendů.
+  - Přidána podpora načítání `.env` souborů přímo ze složek tenantů `tenants/<tenant_id>/.env.<app_env>` s pravidlem ignorování v `.gitignore` (`tenants/*/.env*`).
+- **Sjednocená adresářová struktura Tenantů a Souborový Fallback Systém (`tenants/`, `app/core/tenant_config.py`, `.agents/rules/tenant-configuration-policy.md`, `docs/adr/ADR-0018-unified-tenant-directory-and-fallback-system.md`, `tests/test_tenant_config.py`)**:
+  - Vytvořena sjednocená kanonická složka `tenants/` v kořeni repozitáře s podsložkami pro jednotlivé tenanty (`tenants/default/`, `tenants/dolphin/`, `tenants/alzbeta/`, `tenants/jhu/`).
+  - Každý tenant uchovává své RAG prompty (`prompts.json`), metaparametry dělení a vyhledávání (`search_config.json`), klasifikační pravidla (`classification_config.json`), vizuální branding a barevnou paletu (`branding.json`) a grafické logo (`logo.*`).
+  - Vytvořen backendový resolver `TenantConfigResolver` (`app/core/tenant_config.py`), který zaručuje automatický souborový fallback z `tenants/default/`, pokud pro daného tenanta chybí jakýkoliv konfigurační soubor.
+  - Vytvořeno agentní pravidlo `.agents/rules/tenant-configuration-policy.md`, architektonický záznam `ADR-0018`, sada automatizovaných testů `tests/test_tenant_config.py` a dokumentace v `docs/tests_explained/test_tenant_config.md`.
 - **Marketingové a Technické Shrnutí Projektu (`docs/ai_search_marketing_summary.md`, `docs/navigation_guide.md`)**:
   - Vytvořeno podrobné shrnutí projektu v češtině kombinující marketingový přínos (business value, 100% citace s PDF zvýrazněním, multi-tenant white-labeling) s popisem UX designu a hloubkovým rozborem technické architektury (Azure Container Apps, PostgreSQL/pgvector, Hybrid RRF retrieval, Ingestion pipeline).
 - **Rozšíření GitIgnore Pravidel (`.gitignore`)**:

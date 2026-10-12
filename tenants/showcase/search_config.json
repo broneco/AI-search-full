@@ -1,0 +1,53 @@
+{
+  "search_strategy": "hybrid",
+  "hybrid_strategy": "score_addition",
+  "vector_weight": 0.6,
+  "keyword_weight": 0.4,
+  "rrf_k": 60,
+  "vector_limit": 30,
+  "keyword_limit": 10,
+  "final_limit": 5,
+  "vector_final_limit": 10,
+  "keyword_final_limit": 2,
+  "score_threshold": 0.2,
+  "freshness_boost": 0.2,
+  "context_expansion": "page",
+  "context_expansion_size": 2,
+  "chunk_size": 1000,
+  "chunk_overlap": 250,
+  "chunk_cross_page": false,
+  "overlap_cross_page": true,
+  "chunk_splitter_type": "recursive",
+  "context_max_tokens": 20000,
+  "enrich_with_summary": false,
+  "summary_custom_prompt": "",
+  "chunking_strategy": "standard",
+  "semantic_params": {
+    "threshold_type": "percentile",
+    "threshold_value": 95.0,
+    "sentence_splitter": "nltk",
+    "buffer_size": 1,
+    "max_size": 3000
+  },
+  "structure_params": {
+    "parser_type": "markdown",
+    "preserve_tables": true,
+    "preserve_lists": true,
+    "heading_levels": [
+      "h1",
+      "h2",
+      "h3"
+    ],
+    "max_size": 4000
+  },
+  "token_params": {
+    "tokenizer_type": "cl100k_base",
+    "size_tokens": 512,
+    "overlap_tokens": 64
+  },
+  "agentic_params": {
+    "model_name": "gpt-4o-mini",
+    "custom_prompt": "",
+    "max_context_chars": 4000
+  }
+}

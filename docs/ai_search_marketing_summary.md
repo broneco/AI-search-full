@@ -61,10 +61,7 @@ graph TD
 - **Živý vizualizér chunkování:** Simulátor dělící dokumenty na fragmenty v reálném čase s barevným odlišením překryvů (*overlaps*) a možností testovat 5 různých algoritmů dělení.
 
 ### 🎨 White-Label Theme Engine
-Aplikace podporuje dynamickou změnu designu a vizuální identity podle klienta:
-- **Dolphin Consulting:** Elegantní námořní modř a teplé zlaté akcenty (`#a38244`).
-- **Nemocnice sv. Alžběty:** Lékařská uklidňující zelená (`#00965e`).
-- **Jihočeská Univerzita:** Akademická modř a reprezentativní heraldické prvky.
+Aplikace lze plně vizuálně měnit podle klienta.
 
 ---
 
@@ -92,14 +89,12 @@ Tradiční vektorové vyhledávání selhává u specifických kódů, zkratek a
 
 ```mermaid
 flowchart TD
-    Q["🔍 Dotaz uživatele"] --> V["1. Vektorové sémantické hledání<br/>(pgvector Cosine Distance)"]
-    Q --> F["2. Plnotextové klíčové hledání<br/>(PostgreSQL FTS / Czech tsvector)"]
-
+    Q["🔍 Dotaz uživatele"] --> ACL["🛡️ ACL & Freshness filtr<br/>(Práva uživatele & Platnost)"]
+    ACL --> V["1. Vektorové sémantické hledání<br/>(pgvector Cosine Distance)"]
+    ACL --> F["2. Plnotextové klíčové hledání<br/>(PostgreSQL FTS / Czech tsvector)"]
     V --> RRF["🔀 Weighted Reciprocal Rank Fusion (RRF)<br/>Sloučení a přepočet skóre"]
     F --> RRF
-
-    RRF --> ACL["🛡️ ACL & Freshness filtr<br/>(Práva uživatele & Platnost)"]
-    ACL --> CEX["📖 Outward Context Expansion<br/>(Načtení sousedních fragmentů)"]
+    RRF --> CEX["📖 Outward Context Expansion<br/>(Načtení sousedních fragmentů)"]
     CEX --> LLM["🤖 Azure OpenAI LLM<br/>Generování odpovědi s citacemi"]
 ```
 
@@ -122,11 +117,11 @@ Kvalita RAG systému přímo závisí na kvalitě dělení dokumentů. Platforma
 
 ---
 
-### 🛡️ Bezpečnost, Tenant Isolation & Správa prostředí
+### 🛡️ Bezpečnost & Správa prostředí
 
-- **Striktní Multi-Tenancy:** Všechny databázové tabulky a vektorové indexy obsahují striktní klíč `tenant_id`. Data mezi klienty jsou neprostupně oddělena.
+- **Row level security:** Bezpečnost je dělaná na úrovni databáze. AI model dostane pouze data, ke kterým má uživatel přístup.
 - **JWT & Entra ID Autentizace:** Uživatelé se přihlašují přes firemní účty Microsoft 365 / Entra ID. Uživatelské role a skupiny jsou předávány v JWT tokenu a automaticky aplikovány při vyhledávání.
-- **Izolace DEV / PROD:** Plná separace vývojových a produkčních databází, Azure Blob containerů i backendových Container Apps.
+- **Kontejnerizace** Všechny hlavní elementy jsou rozděleny a poskytovány formou samostatně konfigurovatelných API, Azure Blob containerů i backendových Container Apps.
 
 ---
 
@@ -143,4 +138,4 @@ Kvalita RAG systému přímo závisí na kvalitě dělení dokumentů. Platforma
 | **Bezpečnost** | Chybí řízení přístupu | **ACL filtry a integrace s Microsoft Entra ID** |
 
 ---
-*Dokument vygenerován pro projekt AI Search (Dolphin Consulting).*
+*Dokument vystaven pro projekt AI Search (Dolphin Consulting).*

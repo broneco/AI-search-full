@@ -1,0 +1,28 @@
+{
+  "id": "jhu",
+  "name": "Jihočeská Univerzita v Českých Budějovicích",
+  "appName": "JCU AI Search",
+  "appTitle": "JCU AI Search",
+  "appTagline": "AI vyhledávač ve studijních řádech, opatřeních a předpisech JČU",
+  "appDescription": "Inteligentní vyhledávání ve studijních řádech a předpisech JCU s podloženými citacemi",
+  "tenantScope": "JCU Tenant Scope",
+  "loginTitle": "JCU AI Search - Přihlášení",
+  "loginAdminTitle": "JCU Administrativní Konzole - Přihlášení",
+  "demoEmail": "user@jcu.cz",
+  "logoUrl": "/logos/logo-JHU.webp",
+  "logoHeight": 36,
+  "colors": {
+    "primary": "#c8102e",
+    "primaryHover": "#9b001c",
+    "secondary": "#e10600",
+    "gradient": "linear-gradient(135deg, #c8102e 0%, #9b001c 100%)",
+    "topBarBg": "#18181b",
+    "sidebarBg": "#18181b",
+    "cardBg": "#27272a",
+    "userBubbleBg": "#c8102e",
+    "userBubbleText": "#ffffff",
+    "aiBubbleBg": "#18181b",
+    "badgeBg": "rgba(200, 16, 46, 0.2)",
+    "badgeText": "#f87171"
+  }
+}

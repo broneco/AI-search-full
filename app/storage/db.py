@@ -9,6 +9,9 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Ensure Key Vault and default settings are resolved before database engine initialization
+settings.set_environment_defaults()
+
 # Connection string setup
 if settings.USE_AZURE_SQL:
     logger.info(f"Connecting to Azure SQL Database at {settings.AZURE_SQL_HOST}/{settings.AZURE_SQL_DB}...")
@@ -52,19 +55,21 @@ if settings.USE_AZURE_SQL:
         DATABASE_URL = f"mssql+pyodbc:///?odbc_connect={params}"
         from azure.identity import DefaultAzureCredential
         import struct
+        from sqlalchemy import event
 
         credential = DefaultAzureCredential()
-
-        def _get_azure_sql_token():
-            raw_token = credential.get_token("https://database.windows.net/.default").token.encode("utf-16-le")
-            return struct.pack(f"<I{len(raw_token)}s", len(raw_token), raw_token)
 
         engine = create_engine(
             DATABASE_URL,
             pool_pre_ping=True,
-            connect_args={"attrs_before": {1256: _get_azure_sql_token}},
             fast_executemany=True,
         )
+
+        @event.listens_for(engine, "do_connect")
+        def provide_token(dialect, conn_rec, cargs, cparams):
+            raw_token = credential.get_token("https://database.windows.net/.default").token.encode("utf-16-le")
+            token_bytes = struct.pack(f"<I{len(raw_token)}s", len(raw_token), raw_token)
+            cparams["attrs_before"] = {1256: token_bytes}
 else:
     DATABASE_URL = (
         f"postgresql+psycopg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"

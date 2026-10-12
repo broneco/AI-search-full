@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { ClientTheme } from "../config/themes";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface AuthModalProps {
   onSuccess: (token: string, user: any) => void;
   backendUrl: string;
   language: "cs" | "en";
+  currentTheme?: ClientTheme;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -16,9 +18,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSuccess,
   backendUrl,
   language,
+  currentTheme,
 }) => {
+  const defaultEmail = currentTheme?.demoEmail || "user@dolphin.cz";
   const [tab, setTab] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState<string>("user@dolphin.cz");
+  const [email, setEmail] = useState<string>(defaultEmail);
   const [password, setPassword] = useState<string>("password123");
   const [username, setUsername] = useState<string>("");
   const [role, setRole] = useState<string>("Admin");
@@ -50,17 +54,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose();
       } else {
         const errData = await res.json().catch(() => ({}));
-        setError(errData.detail || "Chyba přihlášení.");
+        setError(errData.detail || (language === "cs" ? "Chyba přihlášení." : "Login error."));
       }
     } catch {
-      setError("Nepodařilo se připojit k autentizačnímu serveru.");
+      setError(language === "cs" ? "Nepodařilo se připojit k autentizačnímu serveru." : "Failed to connect to authentication server.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDemoLogin = async () => {
-    setEmail("user@dolphin.cz");
+    const demoEmailToUse = currentTheme?.demoEmail || "user@dolphin.cz";
+    setEmail(demoEmailToUse);
     setPassword("password123");
     setError("");
     setLoading(true);
@@ -69,7 +74,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const res = await fetch(`${backendUrl}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "user@dolphin.cz", password: "password123" }),
+        body: JSON.stringify({ email: demoEmailToUse, password: "password123" }),
       });
 
       if (res.ok) {
@@ -78,14 +83,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose();
       } else {
         const errData = await res.json().catch(() => ({}));
-        setError(errData.detail || "Demo účet nebyl nalezen.");
+        setError(errData.detail || (language === "cs" ? "Demo účet nebyl nalezen." : "Demo account not found."));
       }
     } catch {
-      setError("Chyba přihlášení k demo účtu.");
+      setError(language === "cs" ? "Chyba přihlášení k demo účtu." : "Demo login error.");
     } finally {
       setLoading(false);
     }
   };
+
+  const modalTitle = currentTheme?.loginAdminTitle || (language === "cs" ? "Administrativní Konzole - Přihlášení" : "Admin Console - Sign In");
+  const modalScope = currentTheme?.tenantScope || (language === "cs" ? "Firemní Tenant Scope" : "Corporate Tenant Scope");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -94,13 +102,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
           <div className="flex items-center gap-2.5">
-            <span className="text-2xl">🐬</span>
+            {currentTheme?.logoUrl ? (
+              <img
+                src={currentTheme.logoUrl}
+                alt={currentTheme.name}
+                className="h-7 w-auto object-contain max-w-[120px]"
+                style={{ maxHeight: `${currentTheme.logoHeight || 32}px` }}
+              />
+            ) : (
+              <span className="text-2xl">🔐</span>
+            )}
             <div>
               <h2 className="text-base font-extrabold text-white">
-                {language === "cs" ? "Administrativní Konzole - Přihlášení" : "Admin Console - Sign In"}
+                {modalTitle}
               </h2>
               <p className="text-[11px] text-zinc-400">
-                Dolphin Consulting Tenant Scope
+                {modalScope}
               </p>
             </div>
           </div>
@@ -149,7 +166,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               onChange={(e) => setEmail(e.target.value)}
               required
               className="w-full bg-black/50 border border-white/15 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-medium"
-              placeholder="user@dolphin.cz"
+              placeholder={currentTheme?.demoEmail || "user@domain.cz"}
             />
           </div>
 

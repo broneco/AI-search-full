@@ -1,8 +1,11 @@
 # Project State Memory
 
-Last updated: 2026-09-03
+Last updated: 2026-10-12
 31: Multi-Tenant Tenant Isolation & Search Quality Tuning (Multi-tenant JWT token authorization, admin user group resolution, RRF search tuning, score threshold tuning) - [x] Completed.
 32: 3-Tier Resource Group Architecture & Azure SQL DTU Model (`ai-search-rg-dev`, `ai-search-rg-prod`, `ai-search-showcase-rg-dev`, DTU Basic/Standard mode, v0.1.1 versioning, CORS regex fix, `.env.showcase`) - [x] Completed.
+33: Unified Tenant Directory & File-Level Fallback System (`tenants/` root directory, `tenants/default/` fallback tenant, `TenantConfigResolver` in `app/core/tenant_config.py`, `.agents/rules/tenant-configuration-policy.md`, ADR-0018) - [x] Completed.
+34: Full-Refresh Production Document Ingestion for Tenant JHU (`full_refresh_ingest.py`, `scratch/run_jhu_prod_ingest.ps1`, 430 JHU documents ingested into Azure SQL DB `ju-ai-search-sqldb-prod` and Blob Storage `ju-originals-prod`) - [x] Completed.
+35: Azure Blob Storage Connection Fix for Document View Preview (`ju-ai-search-ca-prod`, `deploy_backend.ps1`, `ju-ai-search-kv-prod`, resolved 404 in PDF preview panel) - [x] Completed.
 
 ## Product summary
 
@@ -56,8 +59,12 @@ Phase 2/3 Advanced Chunking strategies & localized tooltips decoupling (Semantic
 51: Phase 2/3 Live Multi-Environment Azure Cloud Deployment (Deployed 3 Azure Static Web Apps: swa-dolphin-dev, swa-dolphin-prod, swa-alzbeta-prod; and 4 Azure Container App Backends: dolphin-dev, dolphin-prod, alzbeta-dev, alzbeta-prod with isolated PostgreSQL databases and Blob Storage containers) - [x] Completed.
 52: Phase 2/3 Architectural Migration to Azure SQL Database (Microsoft SQL Server) (pyodbc connection engine, universal Uuid/JSON/UniversalVector models, T-SQL FTS catalog & vector distance fusion, Docker msodbcsql18 image update, ADR-0016) - [x] Completed.
 53: Phase 2/3 Three-Tier Resource Group Architecture & Azure SQL DTU Model (Configured Dev ai-search-rg-dev, Prod ai-search-rg-prod, Showcase ai-search-showcase-rg-dev isolation, transitioned to Azure SQL DTU purchasing model, created azuresql.bicep, updated deployment scripts, created ADR-0017 and 2026-09-02-azure-resource-deployment-handoff.md) - [x] Completed.
+54: Phase 2/3 Unified Tenant Infrastructure Configuration & Version v0.1.2 (`tenants/<tenant>/.env.<env>` explicit `AZURE_RESOURCE_GROUP`, `AZURE_CONTAINER_REGISTRY`, `AZURE_CONTAINER_APP_NAME`, updated `deploy_backend.ps1` and `deploy_frontend.ps1`, `app/core/config.py`, ADR-0018, pytest suite) - [x] Completed.
+55: Phase 2/3 Azure Key Vault Secret Management & JHU PROD Container App Live Deployment (Dynamic Key Vault fetching in `app/core/config.py`, updated `deploy_backend.ps1` with Windows Unicode cp1250 fix `--no-logs`, provisioningState wait loops, ACR `adminUserEnabled: true`, deployed `ju-ai-search-ca-prod` with System-Assigned Managed Identity `ccacbf26-dcd6-4f7b-af7b-e3e769137de8`, created `.agents/inbox/2026-10-07-jhu-keyvault-rbac-handoff.md`) - [x] Completed.
+55: Phase 2/3 Azure Key Vault Secret Management & Showcase Tenant Onboarding (`app/core/config.py`, `deploy_backend.ps1`, `tenants/showcase/` configuration files, 100% 38-key tenant `.env` structural parity, `tests/test_keyvault_config.py`, `.agents/inbox/2026-10-06-showcase-keyvault-deployment-handoff.md`) - [x] Completed.
+56: Phase 2/3 Dynamic Multi-Tenant Frontend Branding & JCU Login Fixes (`tenants/*/branding.json`, `frontend-admin/`, `frontend-user/`, `AuthModal.tsx`, `page.tsx`, `test_tenant_config.py`) - [x] Completed.
 
-Next: Human user provisions resources in Azure according to 2026-09-02-azure-resource-deployment-handoff.md, then run pytest suite.
+Next: Human operator provisions `showcase-ai-search-kv-dev` Azure Key Vault using handoff file and runs deployment via `.\deploy_backend.ps1 -Client showcase -Environment dev`.
 
 ## Target roadmap
 

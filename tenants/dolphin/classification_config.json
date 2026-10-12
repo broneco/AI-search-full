@@ -1,0 +1,47 @@
+{
+  "categories": [
+    {
+      "key": "Management",
+      "label": "Management",
+      "description": "Dokumenty pro vedení",
+      "allowed_groups": [
+        "Management"
+      ],
+      "role_name": "Management"
+    },
+    {
+      "key": "HR",
+      "label": "HR",
+      "description": "Dokumenty pro HR",
+      "allowed_groups": [
+        "Management",
+        "HR",
+        "User"
+      ],
+      "role_name": "HR"
+    },
+    {
+      "key": "Finance",
+      "label": "IT",
+      "description": "Dokumenty pro IT",
+      "allowed_groups": [
+        "Management",
+        "IT"
+      ],
+      "role_name": "IT"
+    },
+    {
+      "key": "User",
+      "label": "User",
+      "description": "Dokumenty pro User",
+      "allowed_groups": [
+        "Management",
+        "HR",
+        "IT",
+        "User"
+      ],
+      "role_name": "User"
+    }
+  ],
+  "analysis_rules": "Klasifikační pravidla pro Dolphin Consulting"
+}

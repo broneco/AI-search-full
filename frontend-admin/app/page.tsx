@@ -278,6 +278,7 @@ export default function Home() {
 
   useEffect(() => {
     if (currentTheme) {
+      document.title = currentTheme.appTitle || currentTheme.appName;
       document.documentElement.style.setProperty("--brand-primary", currentTheme.colors.primary);
       document.documentElement.style.setProperty("--brand-primary-hover", currentTheme.colors.primaryHover);
       document.documentElement.style.setProperty("--brand-secondary", currentTheme.colors.secondary);
@@ -1541,7 +1542,7 @@ export default function Home() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.1
+                v0.1.3
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -4195,6 +4196,7 @@ export default function Home() {
         onSuccess={handleAuthSuccess}
         backendUrl={BACKEND_URL}
         language={appLanguage}
+        currentTheme={currentTheme}
       />
     </div>
   );

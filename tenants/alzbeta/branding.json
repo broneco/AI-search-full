@@ -1,0 +1,28 @@
+{
+  "id": "alzbeta",
+  "name": "Nemocnice sv. Alžběty",
+  "appName": "Nemocnice sv. Alžběty AI Search",
+  "appTitle": "Nemocnice sv. Alžběty AI Search",
+  "appTagline": "AI vyhledávač ve zdravotnických směrnicích a SOP",
+  "appDescription": "AI vyhledávač ve zdravotnických směrnicích a SOP Nemocnice sv. Alžběty",
+  "tenantScope": "Nemocnice sv. Alžběty Tenant Scope",
+  "loginTitle": "Nemocnice sv. Alžběty - Přihlášení",
+  "loginAdminTitle": "Nemocnice sv. Alžběty Konzole - Přihlášení",
+  "demoEmail": "user@alzbeta.cz",
+  "logoUrl": "/logos/logo-nemocnice-alzbeta-2023.png",
+  "logoHeight": 38,
+  "colors": {
+    "primary": "#00965e",
+    "primaryHover": "#007a4c",
+    "secondary": "#b59659",
+    "gradient": "linear-gradient(135deg, #00965e 0%, #a38244 100%)",
+    "topBarBg": "#a38244",
+    "sidebarBg": "#17231c",
+    "cardBg": "#1e2c24",
+    "userBubbleBg": "#007a4c",
+    "userBubbleText": "#ffffff",
+    "aiBubbleBg": "#16231b",
+    "badgeBg": "rgba(0, 150, 94, 0.2)",
+    "badgeText": "#4ade80"
+  }
+}

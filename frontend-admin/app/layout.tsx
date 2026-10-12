@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Dolphin AI Search",
-  description: "Firemní vyhledávací asistent v dokumentech Dolphin Consulting",
+  title: "AI Search Assistant",
+  description: "Podnikový vyhledávací asistent v dokumentech",
 };
 
 export default function RootLayout({
@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="cs"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >

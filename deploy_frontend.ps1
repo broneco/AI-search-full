@@ -16,63 +16,91 @@ $ErrorActionPreference = "Continue"
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ClientClean = $Client.ToLower()
+if ($ClientClean -eq "ju") { $ClientClean = "jhu" }
 $EnvClean = $Environment.ToLower()
 if ([string]::IsNullOrWhiteSpace($ClientTheme)) {
     $ClientTheme = $ClientClean
 }
 
-# 1. Load tenant environment file if present (e.g. .env.ju-prod)
-$TenantEnvFile = ".env.${ClientClean}-${EnvClean}"
+# 1. Load tenant environment file if present (e.g. tenants/dolphin/.env.dev, tenants/jhu/.env.prod, or root .env.ju-prod)
+$TenantEnvFile = "tenants/${ClientClean}/.env.${EnvClean}"
+if (-not (Test-Path $TenantEnvFile)) {
+    $TenantEnvFile = "tenants/${ClientClean}/.env"
+}
+if (-not (Test-Path $TenantEnvFile)) {
+    $TenantEnvFile = ".env.${ClientClean}-${EnvClean}"
+}
 if (-not (Test-Path $TenantEnvFile)) {
     $TenantEnvFile = ".env.${ClientClean}"
 }
 if (Test-Path $TenantEnvFile) {
+    Write-Host "[INFO] Nactena konfigurace z $TenantEnvFile" -ForegroundColor Cyan
     Get-Content $TenantEnvFile | ForEach-Object {
         $line = $_.Trim()
         if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
             $key, $val = $line.Split("=", 2)
-            [Environment]::SetEnvironmentVariable($key.Trim(), $val.Trim())
+            $cleanVal = $val.Trim().Trim('"').Trim("'")
+            [Environment]::SetEnvironmentVariable($key.Trim(), $cleanVal)
         }
     }
 }
 
-# 2. Resolve Resource Group dynamically
+# 2. Resolve Resource Group dynamically in logged-in Azure account
 if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
-    $rgCand1 = "$ClientClean-ai-search-rg-$EnvClean"
-    $rgCand2 = "ai-search-$ClientClean-rg-$EnvClean"
-    
-    $check1 = (az group show --name $rgCand1 --query name --output tsv 2>$null)
-    if (-not [string]::IsNullOrWhiteSpace($check1)) {
-        $ResourceGroup = $rgCand1
+    if (-not [string]::IsNullOrWhiteSpace($env:AZURE_RESOURCE_GROUP)) {
+        $ResourceGroup = $env:AZURE_RESOURCE_GROUP
     } else {
-        $check2 = (az group show --name $rgCand2 --query name --output tsv 2>$null)
-        if (-not [string]::IsNullOrWhiteSpace($check2)) {
-            $ResourceGroup = $rgCand2
-        } else {
-            $ResourceGroup = $rgCand1
+        $candidates = @("ai-search-$ClientClean-rg-$EnvClean", "ai-search-rg-$EnvClean", "$ClientClean-ai-search-rg-$EnvClean")
+        foreach ($cand in $candidates) {
+            $check = (az group show --name $cand --query name --output tsv 2>$null)
+            if (-not [string]::IsNullOrWhiteSpace($check)) {
+                $ResourceGroup = $cand
+                break
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
+            $ResourceGroup = "ai-search-rg-$EnvClean"
         }
     }
 }
 
 # Resolve Container App Name
-$ContainerAppName = "$ClientClean-ai-search-ca-$EnvClean"
-$caCheck = (az containerapp show --name $ContainerAppName --resource-group $ResourceGroup --query name --output tsv 2>$null)
-if ([string]::IsNullOrWhiteSpace($caCheck)) {
-    $altCa = "ai-search-$ClientClean-ca-$EnvClean"
-    $altCheck = (az containerapp show --name $altCa --resource-group $ResourceGroup --query name --output tsv 2>$null)
-    if (-not [string]::IsNullOrWhiteSpace($altCheck)) {
-        $ContainerAppName = $altCa
+if (-not [string]::IsNullOrWhiteSpace($env:AZURE_CONTAINER_APP_NAME)) {
+    $ContainerAppName = $env:AZURE_CONTAINER_APP_NAME
+} else {
+    $ContainerAppName = "$ClientClean-ai-search-ca-$EnvClean"
+    $caCheck = (az containerapp show --name $ContainerAppName --resource-group $ResourceGroup --query name --output tsv 2>$null)
+    if ([string]::IsNullOrWhiteSpace($caCheck)) {
+        $altCa = "ai-search-$ClientClean-ca-$EnvClean"
+        $altCheck = (az containerapp show --name $altCa --resource-group $ResourceGroup --query name --output tsv 2>$null)
+        if (-not [string]::IsNullOrWhiteSpace($altCheck)) {
+            $ContainerAppName = $altCa
+        }
     }
 }
 
-# Resolve Static Web App Name
-$SwaName = if ($AppType -eq "admin") { "$ClientClean-ai-search-swa-admin-$EnvClean" } else { "$ClientClean-ai-search-swa-user-$EnvClean" }
-$swaCheck = (az staticwebapp show --name $SwaName --resource-group $ResourceGroup --query name --output tsv 2>$null)
-if ([string]::IsNullOrWhiteSpace($swaCheck)) {
-    $altSwa = if ($AppType -eq "admin") { "ai-search-$ClientClean-swa-admin-$EnvClean" } else { "ai-search-$ClientClean-swa-user-$EnvClean" }
-    $altSwaCheck = (az staticwebapp show --name $altSwa --resource-group $ResourceGroup --query name --output tsv 2>$null)
-    if (-not [string]::IsNullOrWhiteSpace($altSwaCheck)) {
-        $SwaName = $altSwa
+# Resolve Static Web App Name (prioritize explicit env var from tenant .env.<env>)
+$envSwaName = if ($AppType -eq "admin") { $env:AZURE_SWA_ADMIN_NAME } else { $env:AZURE_SWA_USER_NAME }
+
+if (-not [string]::IsNullOrWhiteSpace($envSwaName)) {
+    $SwaName = $envSwaName
+} else {
+    $swaCandidates = if ($AppType -eq "admin") {
+        @("swa-$ClientClean-admin-$EnvClean", "$ClientClean-ai-search-swa-admin-$EnvClean", "ai-search-$ClientClean-swa-admin-$EnvClean")
+    } else {
+        @("swa-$ClientClean-$EnvClean", "$ClientClean-ai-search-swa-user-$EnvClean", "ai-search-$ClientClean-swa-user-$EnvClean")
+    }
+
+    $SwaName = ""
+    foreach ($cand in $swaCandidates) {
+        $check = (az staticwebapp show --name $cand --resource-group $ResourceGroup --query name --output tsv 2>$null)
+        if (-not [string]::IsNullOrWhiteSpace($check)) {
+            $SwaName = $cand
+            break
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($SwaName)) {
+        $SwaName = $swaCandidates[0]
     }
 }
 

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Firemní AI Vyhledávač | Dolphin Consulting",
-  description: "Inteligentní firemní vyhledávání v dokumentech Dolphin Consulting s podloženými citacemi",
+  title: "Firemní AI Vyhledávač",
+  description: "Inteligentní firemní vyhledávání v dokumentech s podloženými citacemi",
 };
 
 export default function RootLayout({

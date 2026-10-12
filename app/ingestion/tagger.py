@@ -17,6 +17,8 @@ from app.storage.models import DBDocument
 from app.storage.db import SessionLocal
 from app.providers.blob_storage import BlobStorageProvider
 
+from app.core.tenant_config import load_tenant_json, save_tenant_json
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,12 +30,9 @@ class MetadataTagger:
         self.extractor = DocumentExtractor()
         self.llm = AzureOpenAIProvider()
         self.blob_provider = BlobStorageProvider()
-        self.config_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "core", "classification_config.json"
-        )
 
     async def load_config(self) -> Dict[str, Any]:
-        """Load the classification configuration from Blob Storage or local disk."""
+        """Load the classification configuration from Blob Storage or local tenant folder (with fallback to default)."""
         config_data = None
         if self.blob_provider.is_configured():
             try:
@@ -46,52 +45,45 @@ class MetadataTagger:
                 logger.warning(f"Failed to load config from Azure Blob, falling back to local file: {e}")
         
         if config_data is None:
-            if os.path.exists(self.config_path):
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    config_data = json.load(f)
-            else:
-                logger.warning(f"Config file not found at {self.config_path}. Using fallback defaults.")
-                config_data = {
-                    "categories": [
-                        {
-                            "key": "3f6b7c5e-8e9d-4c3a-8b2f-7a1b3c5e7d9f",
-                            "label": "Vedení (Management)",
-                            "description": "Vedení společnosti, strategická rozhodnutí, zápisy z porad vedení.",
-                            "role_name": "Management",
-                            "allowed_groups": ["Management"]
-                        },
-                        {
-                            "key": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
-                            "label": "Personální (HR)",
-                            "description": "Lidské zdroje, nábor zaměstnanců, pracovní smlouvy, mzdová politika.",
-                            "role_name": "HR",
-                            "allowed_groups": ["Management", "HR"]
-                        },
-                        {
-                            "key": "f7e6d5c4-b3a2-1e0f-9d8c-7b6a5e4d3c2b",
-                            "label": "Finanční (Finance)",
-                            "description": "Finance, účetní směrnice, rozpočty, fakturační procesy.",
-                            "role_name": "Finance",
-                            "allowed_groups": ["Management", "Finance"]
-                        },
-                        {
-                            "key": "c9b8a7d6-e5f4-3c2b-1a0d-9e8f7a6b5c4d",
-                            "label": "Zaměstnanecké (User)",
-                            "description": "Obecné vnitřní předpisy, bezpečnost práce, docházkové systémy.",
-                            "role_name": "User",
-                            "allowed_groups": ["Management", "HR", "Finance", "User"]
-                        }
-                    ],
-                    "analysis_rules": "Zaměř se na vyhledávání důležitých názvů, čísel a dat."
-                }
+            config_data = load_tenant_json(settings.TENANT_ID, "classification_config.json", default_data={
+                "categories": [
+                    {
+                        "key": "3f6b7c5e-8e9d-4c3a-8b2f-7a1b3c5e7d9f",
+                        "label": "Vedení (Management)",
+                        "description": "Vedení společnosti, strategická rozhodnutí, zápisy z porad vedení.",
+                        "role_name": "Management",
+                        "allowed_groups": ["Management"]
+                    },
+                    {
+                        "key": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+                        "label": "Personální (HR)",
+                        "description": "Lidské zdroje, nábor zaměstnanců, pracovní smlouvy, mzdová politika.",
+                        "role_name": "HR",
+                        "allowed_groups": ["Management", "HR"]
+                    },
+                    {
+                        "key": "f7e6d5c4-b3a2-1e0f-9d8c-7b6a5e4d3c2b",
+                        "label": "Finanční (Finance)",
+                        "description": "Finance, účetní směrnice, rozpočty, fakturační procesy.",
+                        "role_name": "Finance",
+                        "allowed_groups": ["Management", "Finance"]
+                    },
+                    {
+                        "key": "c9b8a7d6-e5f4-3c2b-1a0d-9e8f7a6b5c4d",
+                        "label": "Zaměstnanecké (User)",
+                        "description": "Obecné vnitřní předpisy, bezpečnost práce, docházkové systémy.",
+                        "role_name": "User",
+                        "allowed_groups": ["Management", "HR", "Finance", "User"]
+                    }
+                ],
+                "analysis_rules": "Zaměř se na vyhledávání důležitých názvů, čísel a dat."
+            })
         return config_data
 
     async def save_config(self, config_data: Dict[str, Any]) -> None:
-        """Save the classification configuration to Blob Storage and local disk."""
-        # First save locally
-        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, ensure_ascii=False, indent=2)
+        """Save the classification configuration to Blob Storage and local tenant folder."""
+        # First save locally in tenants/<tenant_id>/classification_config.json
+        save_tenant_json(settings.TENANT_ID, "classification_config.json", config_data)
             
         # Then upload to Azure Blob if configured
         if self.blob_provider.is_configured():

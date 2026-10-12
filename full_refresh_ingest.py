@@ -25,6 +25,11 @@ async def main():
     from app.core.config import settings
     raw_tenant = args.tenant or os.getenv("TENANT_ID") or settings.TENANT_ID or "dolphin"
     tenant_id = raw_tenant.lower().split("-")[0]
+    settings.TENANT_ID = raw_tenant
+    if os.getenv("AZURE_BLOB_CONTAINER_ORIGINALS"):
+        settings.AZURE_BLOB_CONTAINER_ORIGINALS = os.getenv("AZURE_BLOB_CONTAINER_ORIGINALS")
+    elif settings.APP_ENV == "prod":
+        settings.AZURE_BLOB_CONTAINER_ORIGINALS = f"{tenant_id}-originals-prod"
 
     # 1. Clear document chunks and metadata ONLY for the target tenant
     try:

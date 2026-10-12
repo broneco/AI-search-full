@@ -61,7 +61,8 @@ A task is not done until:
 - relevant tests are added or updated
 - relevant tests are run, or the reason they could not run is stated
 - configuration changes are documented
-- any required Azure manual action is captured in `.agents/inbox/`
+- any required Azure manual action or placeholder configuration is captured in `.agents/inbox/`
+- if any tenant environment file or configuration is created or modified, 100% structural key parity is maintained across all tenant `.env` files in `tenants/`
 - `CHANGELOG.md` is updated when behavior, architecture, dependencies, or agent instructions change
 - an ADR is created or updated when an architectural decision is made or changed
 - if test files are added, removed, or modified, their corresponding markdown explanations in [**`docs/tests_explained/`**](file:///c:/Users/ondrej.bronec/OneDrive - dolphinconsulting.cz/Documents/Projekty/AI Search Full/docs/tests_explained/) are created or updated with clear high/low technical level details

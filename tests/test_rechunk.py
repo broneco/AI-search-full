@@ -92,9 +92,8 @@ def test_fast_reindex_task(db_setup):
         cfg["chunk_overlap"] = 0
         
         # Save temporary search config to disk so pipeline loads it
-        import json
-        with open(config_mgr.config_path, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
+        from app.core.tenant_config import save_tenant_json
+        save_tenant_json("default", "search_config.json", cfg)
 
         # 4. Trigger fast re-indexing task
         anyio.run(run_reindex_all_task, backend="asyncio")
@@ -121,8 +120,7 @@ def test_fast_reindex_task(db_setup):
         # Restore original config
         cfg["chunk_size"] = original_size
         cfg["chunk_overlap"] = original_overlap
-        with open(config_mgr.config_path, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
+        save_tenant_json("default", "search_config.json", cfg)
             
         # Clean up temporary test file
         if os.path.exists(temp_txt_path):

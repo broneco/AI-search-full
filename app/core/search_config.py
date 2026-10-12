@@ -66,15 +66,21 @@ class SearchConfigSchema(BaseModel):
     agentic_params: AgenticChunkingParams = Field(default_factory=AgenticChunkingParams)
 
 
+from app.core.tenant_config import resolve_tenant_file_path, save_tenant_json, load_tenant_json
+
+logger = logging.getLogger(__name__)
+
+
 class SearchConfigManager:
     def __init__(self) -> None:
         self.blob_provider = BlobStorageProvider()
-        self.config_path = os.path.join(
-            os.path.dirname(__file__), "search_config.json"
-        )
+
+    def get_local_config_path(self) -> str:
+        file_path, _ = resolve_tenant_file_path(settings.TENANT_ID, "search_config.json")
+        return file_path
 
     async def load_config(self) -> Dict[str, Any]:
-        """Load search config from Azure Blob Storage or local disk."""
+        """Load search config from Azure Blob Storage or local tenants disk (with fallback to default)."""
         config_data = None
         if self.blob_provider.is_configured():
             try:
@@ -87,37 +93,20 @@ class SearchConfigManager:
                 logger.warning(f"Failed to load search config from Azure Blob, falling back to local file: {e}")
 
         if config_data is None:
-            if os.path.exists(self.config_path):
-                try:
-                    with open(self.config_path, "r", encoding="utf-8") as f:
-                        config_data = json.load(f)
-                except Exception as e:
-                    logger.error(f"Error reading local search config file: {e}")
-                    config_data = self.get_defaults()
-            else:
-                logger.warning(f"Search config file not found at {self.config_path}. Using defaults.")
-                config_data = self.get_defaults()
+            config_data = load_tenant_json(settings.TENANT_ID, "search_config.json", default_data=self.get_defaults())
         return config_data
 
     def load_config_sync(self) -> Dict[str, Any]:
-        """Synchronous configuration load (for sync retrieval contexts, falling back to local)."""
-        if os.path.exists(self.config_path):
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"Error reading local search config: {e}")
-        return self.get_defaults()
+        """Synchronous configuration load (for sync retrieval contexts, falling back to tenants/default/search_config.json)."""
+        return load_tenant_json(settings.TENANT_ID, "search_config.json", default_data=self.get_defaults())
 
     async def save_config(self, config_data: Dict[str, Any]) -> None:
-        """Save search config to local disk and upload to Azure Blob Storage."""
+        """Save search config to local tenant folder and upload to Azure Blob Storage."""
         # Validate using Pydantic schema
         validated_config = SearchConfigSchema(**config_data).model_dump()
 
-        # Save locally
-        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(validated_config, f, ensure_ascii=False, indent=2)
+        # Save locally in tenants/<tenant_id>/search_config.json
+        save_tenant_json(settings.TENANT_ID, "search_config.json", validated_config)
 
         # Upload to Azure Blob if configured
         if self.blob_provider.is_configured():

@@ -21,10 +21,17 @@ $env:PYTHONUTF8 = "1"
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ClientClean = $Client.ToLower()
+if ($ClientClean -eq "ju") { $ClientClean = "jhu" }
 $EnvClean = $Environment.ToLower()
 
-# 1. Load tenant environment file if present (e.g. .env.ju-prod, .env.showcase)
-$TenantEnvFile = ".env.${ClientClean}-${EnvClean}"
+# 1. Load tenant environment file if present (e.g. tenants/dolphin/.env.dev, tenants/jhu/.env.prod, or root .env.ju-prod)
+$TenantEnvFile = "tenants/${ClientClean}/.env.${EnvClean}"
+if (-not (Test-Path $TenantEnvFile)) {
+    $TenantEnvFile = "tenants/${ClientClean}/.env"
+}
+if (-not (Test-Path $TenantEnvFile)) {
+    $TenantEnvFile = ".env.${ClientClean}-${EnvClean}"
+}
 if (-not (Test-Path $TenantEnvFile)) {
     $TenantEnvFile = ".env.${ClientClean}"
 }
@@ -34,7 +41,8 @@ if (Test-Path $TenantEnvFile) {
         $line = $_.Trim()
         if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
             $key, $val = $line.Split("=", 2)
-            [Environment]::SetEnvironmentVariable($key.Trim(), $val.Trim())
+            $cleanVal = $val.Trim().Trim('"').Trim("'")
+            [Environment]::SetEnvironmentVariable($key.Trim(), $cleanVal)
         }
     }
 }
@@ -70,31 +78,27 @@ try {
 Write-Info "Overuji prihlaseni k Azure CLI..."
 $azAccount = (az account show --query name --output tsv 2>$null)
 
-if ($ForceLogin -or [string]::IsNullOrWhiteSpace($azAccount)) {
-    if ($ForceLogin) {
-        Write-WarningMsg "Pouzit parametr -ForceLogin. Otviram Azure prihlasovaci obrazovku..."
-    } else {
-        Write-WarningMsg "Nejste prihlaseni k Azure CLI. Spoustam 'az login'..."
-    }
-    az login
-    $azAccount = (az account show --query name --output tsv 2>$null)
+if ([string]::IsNullOrWhiteSpace($azAccount)) {
+    Write-Error "Nejste prihlaseni k Azure CLI. Spustte prosim 'az login' ve vasem PowerShell terminalu a zkuste to znovu."
+    exit 1
 }
 Write-Success "Prihlaseno k Azure (Aktivni ucet / Subscription: $azAccount)"
 
-# 4. Resolve Resource Group dynamically AFTER Azure Login
+# 4. Resolve Resource Group in current logged in Azure subscription
 if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
-    $rgCand1 = "$ClientClean-ai-search-rg-$EnvClean"
-    $rgCand2 = "ai-search-$ClientClean-rg-$EnvClean"
-    
-    $check1 = (az group show --name $rgCand1 --query name --output tsv 2>$null)
-    if (-not [string]::IsNullOrWhiteSpace($check1)) {
-        $ResourceGroup = $rgCand1
+    if (-not [string]::IsNullOrWhiteSpace($env:AZURE_RESOURCE_GROUP)) {
+        $ResourceGroup = $env:AZURE_RESOURCE_GROUP
     } else {
-        $check2 = (az group show --name $rgCand2 --query name --output tsv 2>$null)
-        if (-not [string]::IsNullOrWhiteSpace($check2)) {
-            $ResourceGroup = $rgCand2
-        } else {
-            $ResourceGroup = $rgCand1
+        $candidates = @("ai-search-$ClientClean-rg-$EnvClean", "ai-search-rg-$EnvClean", "$ClientClean-ai-search-rg-$EnvClean")
+        foreach ($cand in $candidates) {
+            $check = (az group show --name $cand --query name --output tsv 2>$null)
+            if (-not [string]::IsNullOrWhiteSpace($check)) {
+                $ResourceGroup = $cand
+                break
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
+            $ResourceGroup = "ai-search-rg-$EnvClean"
         }
     }
 }
@@ -102,25 +106,32 @@ if ([string]::IsNullOrWhiteSpace($ResourceGroup)) {
 # Verify access to target Resource Group
 $rgAccess = (az group show --name $ResourceGroup --query name --output tsv 2>$null)
 if ([string]::IsNullOrWhiteSpace($rgAccess)) {
-    Write-WarningMsg "Resource Group '$ResourceGroup' nebylo v prihlasenem uctu nalezeno. Spoustam 'az login' pro vyber spravneho uctu..."
-    az login
-    $azAccount = (az account show --query name --output tsv 2>$null)
-    $rgAccess = (az group show --name $ResourceGroup --query name --output tsv 2>$null)
-    if ([string]::IsNullOrWhiteSpace($rgAccess)) {
-        Write-Error "Prihlaseny Azure ucet nema pristup k Resource Group '$ResourceGroup' ani '$ClientClean-ai-search-rg-$EnvClean'. Zkontrolujte tenant a subscription."
-        exit 1
-    }
+    Write-Error "Resource Group '$ResourceGroup' nebylo v prihlasenem Azure uctu '$azAccount' nalezeno. Ujistete se, ze jste prihlaseni ke spravnemu uctu a subscription pomoci 'az login'."
+    exit 1
 }
 Write-Success "Resource Group overena: $ResourceGroup"
 
+# 5. Resolve Container Registry Name dynamically (check env, RG first, then global)
 if ([string]::IsNullOrWhiteSpace($RegistryName)) {
-    $crCand1 = "${ClientClean}aisearchcr${EnvClean}"
-    $crCand2 = "aisearch${ClientClean}cr${EnvClean}"
-    $checkCr1 = (az acr show --name $crCand1 --resource-group $ResourceGroup --query name --output tsv 2>$null)
-    if (-not [string]::IsNullOrWhiteSpace($checkCr1)) {
-        $RegistryName = $crCand1
+    if (-not [string]::IsNullOrWhiteSpace($env:AZURE_CONTAINER_REGISTRY)) {
+        $RegistryName = $env:AZURE_CONTAINER_REGISTRY
     } else {
-        $RegistryName = $crCand2
+        $rgAcrs = (az acr list --resource-group $ResourceGroup --query "[].name" --output tsv 2>$null)
+        if (-not [string]::IsNullOrWhiteSpace($rgAcrs)) {
+            $RegistryName = ($rgAcrs -split "\s+")[0]
+        } else {
+            $crCandidates = @("aisearch${ClientClean}cr${EnvClean}", "${ClientClean}aisearchcr${EnvClean}", "aisearchshowcasecrdev", "craisearchdev")
+            foreach ($cand in $crCandidates) {
+                $testAcr = (az acr show --name $cand --query name --output tsv 2>$null)
+                if (-not [string]::IsNullOrWhiteSpace($testAcr)) {
+                    $RegistryName = $cand
+                    break
+                }
+            }
+            if ([string]::IsNullOrWhiteSpace($RegistryName)) {
+                $RegistryName = "aisearch${ClientClean}cr${EnvClean}"
+            }
+        }
     }
 }
 
@@ -136,41 +147,39 @@ if ([string]::IsNullOrWhiteSpace($ContainerEnvName)) {
     }
 }
 
-$ContainerAppName = "$ClientClean-ai-search-ca-$EnvClean"
-$caCheck = (az containerapp show --name $ContainerAppName --resource-group $ResourceGroup --query name --output tsv 2>$null)
-if ([string]::IsNullOrWhiteSpace($caCheck)) {
-    $altCa = "ai-search-$ClientClean-ca-$EnvClean"
-    $altCheck = (az containerapp show --name $altCa --resource-group $ResourceGroup --query name --output tsv 2>$null)
-    if (-not [string]::IsNullOrWhiteSpace($altCheck)) {
-        $ContainerAppName = $altCa
+if (-not [string]::IsNullOrWhiteSpace($env:AZURE_CONTAINER_APP_NAME)) {
+    $ContainerAppName = $env:AZURE_CONTAINER_APP_NAME
+} else {
+    $ContainerAppName = "$ClientClean-ai-search-ca-$EnvClean"
+    $caCheck = (az containerapp show --name $ContainerAppName --resource-group $ResourceGroup --query name --output tsv 2>$null)
+    if ([string]::IsNullOrWhiteSpace($caCheck)) {
+        $altCa = "ai-search-$ClientClean-ca-$EnvClean"
+        $altCheck = (az containerapp show --name $altCa --resource-group $ResourceGroup --query name --output tsv 2>$null)
+        if (-not [string]::IsNullOrWhiteSpace($altCheck)) {
+            $ContainerAppName = $altCa
+        }
     }
 }
 
-$SqlDbName = "$ClientClean-ai-search-sqldb-$EnvClean"
-$SqlServerHost = "$ClientClean-ai-search-sql-$EnvClean.database.windows.net"
-$BlobOriginalsContainer = "$ClientClean-originals-$EnvClean"
+$SqlServerHost = if (-not [string]::IsNullOrWhiteSpace($env:AZURE_SQL_HOST)) { $env:AZURE_SQL_HOST } else { "$ClientClean-ai-search-sql-$EnvClean.database.windows.net" }
+$SqlDbName = if (-not [string]::IsNullOrWhiteSpace($env:AZURE_SQL_DB)) { $env:AZURE_SQL_DB } else { "$ClientClean-ai-search-sqldb-$EnvClean" }
+$BlobOriginalsContainer = if (-not [string]::IsNullOrWhiteSpace($env:AZURE_BLOB_CONTAINER_ORIGINALS)) { $env:AZURE_BLOB_CONTAINER_ORIGINALS } else { "$ClientClean-originals-$EnvClean" }
+
+# Ensure Container Registry exists in Azure
+$RegistryServer = (az acr show --name $RegistryName --query loginServer --output tsv 2>$null)
+if ([string]::IsNullOrWhiteSpace($RegistryServer)) {
+    Write-Error "Container Registry '$RegistryName' nebylo v prihlasenem Azure uctu nalezeno. Zkontrolujte nazev ACR v Azure Portalu a pridejte ho pripadne jako parametr -RegistryName <nazev_acr>."
+    exit 1
+}
 
 Write-Info "Client / Tenant:     $ClientClean"
 Write-Info "Environment:         $EnvClean"
 Write-Info "Resource Group:      $ResourceGroup"
-Write-Info "Container Registry:  $RegistryName"
+Write-Info "Container Registry:  $RegistryName ($RegistryServer)"
 Write-Info "Container App:       $ContainerAppName"
 Write-Info "SQL Host Target:     $SqlServerHost"
 Write-Info "SQL DB Target:       $SqlDbName"
 Write-Info "Blob Container:      $BlobOriginalsContainer"
-
-# 5. Retrieve ACR Login Server and Credentials dynamically
-Write-Info "Querying Container Registry server URL and credentials..."
-$RegistryServer = (az acr show --name $RegistryName --resource-group $ResourceGroup --query loginServer --output tsv 2>$null)
-if ([string]::IsNullOrWhiteSpace($RegistryServer)) {
-    Write-WarningMsg "Registry $RegistryName not found in $ResourceGroup. Attempting global search..."
-    $RegistryServer = (az acr show --name $RegistryName --query loginServer --output tsv 2>$null)
-}
-
-if ([string]::IsNullOrWhiteSpace($RegistryServer)) {
-    Write-Error "Failed to retrieve Login Server for registry: $RegistryName"
-    exit 1
-}
 
 $AcrUser = (az acr credential show --name $RegistryName --query username --output tsv 2>$null)
 $AcrPass = (az acr credential show --name $RegistryName --query "passwords[0].value" --output tsv 2>$null)
@@ -184,23 +193,33 @@ Write-Info "Generated Image Version Tag: $ImageTag"
 
 # 7. Build Docker Image in the cloud via Azure ACR Tasks
 Write-Header "[1/3] Sestavuji Docker image v cloudu pres Azure ACR Tasks..."
+Write-Info "Spoustam zive sestaveni Docker obrazku v Azure ACR '$RegistryName'..."
+Write-Info "Sledujte zive kroky sestavovani (Step 1/12, download vrstev, kompilace) nize:"
+Write-Host ""
+
+$BuildStartTime = Get-Date
 az acr build --registry $RegistryName `
   --image "${ContainerAppName}:${ImageTag}" `
-  --image "${ContainerAppName}:latest" . --no-logs
+  --image "${ContainerAppName}:latest" --no-logs .
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "ACR Build failed."
     exit 1
 }
-Write-Success "Docker image successfully built in ACR: ${RegistryServer}/${ContainerAppName}:${ImageTag}"
+$BuildDuration = New-TimeSpan -Start $BuildStartTime -End (Get-Date)
+$FormattedDuration = "{0:D2}:{1:D2}" -f $BuildDuration.Minutes, $BuildDuration.Seconds
+Write-Success "Docker image successfully built in ACR: ${RegistryServer}/${ContainerAppName}:${ImageTag} (Celkovy cas sestaveni: $FormattedDuration)"
 
-# 8. Retrieve SQL Password dynamically from Azure Key Vault if required
-$KvName = if ($env:AZURE_KEY_VAULT_NAME) { $env:AZURE_KEY_VAULT_NAME } else { "$ClientClean-ai-search-kv-$EnvClean" }
-$KvSecretName = if ($env:AZURE_KEY_VAULT_SECRET_SQL_PASSWORD) { $env:AZURE_KEY_VAULT_SECRET_SQL_PASSWORD } else { "$ClientClean-ai-search-sql-sqlaccount-password-$EnvClean" }
+# 8. Retrieve secrets dynamically from Azure Key Vault if required
+$KvName = if (-not [string]::IsNullOrWhiteSpace($env:AZURE_KEY_VAULT_NAME)) { $env:AZURE_KEY_VAULT_NAME } else { "$ClientClean-ai-search-kv-$EnvClean" }
+$KvSecretSqlName = if ($env:AZURE_KEY_VAULT_SECRET_SQL_PASSWORD) { $env:AZURE_KEY_VAULT_SECRET_SQL_PASSWORD } else { "$ClientClean-ai-search-sql-sqlaccount-password-$EnvClean" }
+$KvSecretOpenAiName = if ($env:AZURE_KEY_VAULT_SECRET_OPENAI_KEY) { $env:AZURE_KEY_VAULT_SECRET_OPENAI_KEY } else { "$ClientClean-ai-search-openai-api-key-$EnvClean" }
+$KvSecretStorageName = if ($env:AZURE_KEY_VAULT_SECRET_STORAGE_CONNSTR) { $env:AZURE_KEY_VAULT_SECRET_STORAGE_CONNSTR } else { "$ClientClean-ai-search-storage-connection-string-$EnvClean" }
+$KvSecretPostgresName = if ($env:AZURE_KEY_VAULT_SECRET_POSTGRES_PASSWORD) { $env:AZURE_KEY_VAULT_SECRET_POSTGRES_PASSWORD } else { "$ClientClean-ai-search-postgres-password-$EnvClean" }
 
 if ([string]::IsNullOrWhiteSpace($env:AZURE_SQL_PASSWORD)) {
-    Write-Info "Nacitam heslo pro SQL z Azure Key Vault '$KvName' (Secret: '$KvSecretName')..."
-    $fetchedPass = (az keyvault secret show --name $KvSecretName --vault-name $KvName --query value --output tsv 2>$null)
+    Write-Info "Nacitam heslo pro SQL z Azure Key Vault '$KvName' (Secret: '$KvSecretSqlName')..."
+    $fetchedPass = (az keyvault secret show --name $KvSecretSqlName --vault-name $KvName --query value --output tsv 2>$null)
     if (-not [string]::IsNullOrWhiteSpace($fetchedPass)) {
         $env:AZURE_SQL_PASSWORD = $fetchedPass
         Write-Success "SQL heslo bylo uspesne ziskane z Key Vault '$KvName'!"
@@ -210,44 +229,69 @@ if ([string]::IsNullOrWhiteSpace($env:AZURE_SQL_PASSWORD)) {
 }
 
 $SqlPassEnv = if ($env:AZURE_SQL_PASSWORD) { $env:AZURE_SQL_PASSWORD } else { "" }
+$StorageAccountEnv = if ($env:AZURE_STORAGE_ACCOUNT) { $env:AZURE_STORAGE_ACCOUNT } else { "" }
+$StorageConnStrEnv = if ($env:AZURE_STORAGE_CONNECTION_STRING) { $env:AZURE_STORAGE_CONNECTION_STRING } else { "" }
+
+if ([string]::IsNullOrWhiteSpace($StorageConnStrEnv)) {
+    $fetchedStorage = (az keyvault secret show --name $KvSecretStorageName --vault-name $KvName --query value --output tsv 2>$null)
+    if (-not [string]::IsNullOrWhiteSpace($fetchedStorage)) {
+        $StorageConnStrEnv = $fetchedStorage
+        Write-Success "Storage connection string byl uspesne ziskan z Key Vault '$KvName'!"
+    }
+}
 
 # 9. Check if Container App exists; Create if missing, Update if exists
 Write-Header "[2/3] Nasazuji novou verzi a konfiguraci do Azure Container App..."
-$appExists = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query name --output tsv 2>$null)
 
-if ([string]::IsNullOrWhiteSpace($appExists)) {
-    Write-Info "Container App '$ContainerAppName' dosud neexistuje. Vytvarim novou Container App..."
-    az containerapp create `
-      --resource-group $ResourceGroup `
-      --name $ContainerAppName `
-      --environment $ContainerEnvName `
-      --image "${RegistryServer}/${ContainerAppName}:${ImageTag}" `
-      --target-port 8000 `
-      --ingress external `
-      --min-replicas 1 `
-      --max-replicas 3 `
-      --registry-server $RegistryServer `
-      --registry-username $AcrUser `
-      --registry-password $AcrPass `
-      --env-vars "APP_ENV=${EnvClean}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=${SqlServerHost}" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=${SqlDbName}" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server" "AZURE_SQL_PASSWORD=${SqlPassEnv}" "AZURE_KEY_VAULT_NAME=${KvName}" "AZURE_KEY_VAULT_SECRET_SQL_PASSWORD=${KvSecretName}"
-} else {
-    Write-Info "Container App '$ContainerAppName' jiz existuje. Registruji ACR autentizaci pro '$RegistryServer'..."
-    az containerapp registry set --resource-group $ResourceGroup --name $ContainerAppName --server $RegistryServer --username $AcrUser --password $AcrPass
-    az containerapp ingress update --resource-group $ResourceGroup --name $ContainerAppName --target-port 8000 --type external
-    
-    $existingContainerName = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query "properties.template.containers[0].name" --output tsv 2>$null)
-    if ([string]::IsNullOrWhiteSpace($existingContainerName)) {
-        $existingContainerName = $ContainerAppName
+$provState = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query "properties.provisioningState" --output tsv 2>$null)
+while ($provState -and $provState -ne "Succeeded" -and $provState -ne "Failed") {
+    Write-Info "Cekam na dokonceni probihajici Azure operace '$provState' pro Container App '$ContainerAppName'..."
+    Start-Sleep -Seconds 5
+    $provState = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query "properties.provisioningState" --output tsv 2>$null)
+}
+
+$appExists = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query name --output tsv 2>$null)
+$existingContainerName = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query "properties.template.containers[0].name" --output tsv 2>$null)
+$existingImage = (az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query "properties.template.containers[0].image" --output tsv 2>$null)
+$isQuickstart = ($existingImage -like "*quickstart*") -or ($existingContainerName -eq "simple-hello-world-container")
+
+if ([string]::IsNullOrWhiteSpace($appExists) -or [string]::IsNullOrWhiteSpace($existingContainerName) -or $isQuickstart) {
+    if (-not [string]::IsNullOrWhiteSpace($appExists)) {
+        Write-Info "Container App '$ContainerAppName' vyzaduje novou inicializaci (Quickstart/Stara schranka). Odstranuji stary zdroj v Azure..."
+        az containerapp delete --resource-group $ResourceGroup --name $ContainerAppName --yes 2>$null
+        while (-not [string]::IsNullOrWhiteSpace((az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query name --output tsv 2>$null))) {
+            Start-Sleep -Seconds 5
+        }
     }
+    Write-Info "Vytvarim novou Container App '$ContainerAppName' s obrazem ${RegistryServer}/${ContainerAppName}:${ImageTag}..."
+    $createArgs = @(
+      "--resource-group", $ResourceGroup,
+      "--name", $ContainerAppName,
+      "--environment", $ContainerEnvName,
+      "--image", "${RegistryServer}/${ContainerAppName}:${ImageTag}",
+      "--target-port", "8000",
+      "--ingress", "external",
+      "--min-replicas", "1",
+      "--max-replicas", "3",
+      "--system-assigned"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($AcrUser) -and -not [string]::IsNullOrWhiteSpace($AcrPass)) {
+        $createArgs += @("--registry-server", $RegistryServer, "--registry-username", $AcrUser, "--registry-password", $AcrPass)
+    }
+    az containerapp create @createArgs --env-vars "APP_ENV=${EnvClean}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=${SqlServerHost}" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=${SqlDbName}" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server" "AZURE_SQL_PASSWORD=${SqlPassEnv}" "AZURE_KEY_VAULT_NAME=${KvName}" "AZURE_KEY_VAULT_SECRET_SQL_PASSWORD=${KvSecretSqlName}" "AZURE_KEY_VAULT_SECRET_OPENAI_KEY=${KvSecretOpenAiName}" "AZURE_KEY_VAULT_SECRET_STORAGE_CONNSTR=${KvSecretStorageName}" "AZURE_KEY_VAULT_SECRET_POSTGRES_PASSWORD=${KvSecretPostgresName}" "AZURE_STORAGE_ACCOUNT=${StorageAccountEnv}" "AZURE_STORAGE_CONNECTION_STRING=${StorageConnStrEnv}"
+} else {
+    if (-not [string]::IsNullOrWhiteSpace($AcrUser) -and -not [string]::IsNullOrWhiteSpace($AcrPass)) {
+        Write-Info "Registruji ACR autentizaci pro '$RegistryServer'..."
+        az containerapp registry set --resource-group $ResourceGroup --name $ContainerAppName --server $RegistryServer --username $AcrUser --password $AcrPass 2>$null
+    }
+    az containerapp ingress update --resource-group $ResourceGroup --name $ContainerAppName --target-port 8000 --type external 2>$null
+    az containerapp identity assign --resource-group $ResourceGroup --name $ContainerAppName --system-assigned 2>$null
 
     Write-Info "Provadim rolling update kontejneru '$existingContainerName' na novy Docker image ${RegistryServer}/${ContainerAppName}:${ImageTag}..."
     az containerapp update --resource-group $ResourceGroup --name $ContainerAppName `
       --container-name $existingContainerName `
       --image "${RegistryServer}/${ContainerAppName}:${ImageTag}" `
-      --registry-server $RegistryServer `
-      --registry-username $AcrUser `
-      --registry-password $AcrPass `
-      --set-env-vars "APP_ENV=${EnvClean}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=${SqlServerHost}" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=${SqlDbName}" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server" "AZURE_SQL_PASSWORD=${SqlPassEnv}" "AZURE_KEY_VAULT_NAME=${KvName}" "AZURE_KEY_VAULT_SECRET_SQL_PASSWORD=${KvSecretName}"
+      --set-env-vars "APP_ENV=${EnvClean}" "AZURE_BLOB_CONTAINER_ORIGINALS=${BlobOriginalsContainer}" "TENANT_ID=${ClientClean}-${EnvClean}" "AZURE_SQL_HOST=${SqlServerHost}" "AZURE_SQL_PORT=1433" "AZURE_SQL_DB=${SqlDbName}" "AZURE_SQL_USER=sqladmin" "AZURE_SQL_DRIVER=ODBC Driver 18 for SQL Server" "AZURE_SQL_PASSWORD=${SqlPassEnv}" "AZURE_KEY_VAULT_NAME=${KvName}" "AZURE_KEY_VAULT_SECRET_SQL_PASSWORD=${KvSecretSqlName}" "AZURE_KEY_VAULT_SECRET_OPENAI_KEY=${KvSecretOpenAiName}" "AZURE_KEY_VAULT_SECRET_STORAGE_CONNSTR=${KvSecretStorageName}" "AZURE_KEY_VAULT_SECRET_POSTGRES_PASSWORD=${KvSecretPostgresName}" "AZURE_STORAGE_ACCOUNT=${StorageAccountEnv}" "AZURE_STORAGE_CONNECTION_STRING=${StorageConnStrEnv}"
 }
 
 if ($LASTEXITCODE -ne 0) {

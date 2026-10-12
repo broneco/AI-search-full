@@ -18,6 +18,7 @@ class BlobStorageProvider:
         self.client: Optional[BlobServiceClient] = None
 
         if self.connection_string:
+            self.connection_string = self.connection_string.strip().strip('"').strip("'")
             try:
                 self.client = BlobServiceClient.from_connection_string(self.connection_string)
                 logger.info("Successfully initialized Azure Blob Storage client from connection string.")

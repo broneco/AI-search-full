@@ -230,7 +230,7 @@ export const TRANSLATIONS = {
   },
   en: {
     title: "Corporate AI Search",
-    subtitle: "Intelligent search in Dolphin Consulting documents with citations",
+    subtitle: "Intelligent search in corporate documents with citations",
     searchTab: "💬 Search",
     ingestTab: "📁 File Management",
     categoriesTab: "📂 Categories",
