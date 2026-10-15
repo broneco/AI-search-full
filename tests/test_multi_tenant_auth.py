@@ -64,8 +64,8 @@ def test_auth_register_new_user():
     assert response.status_code == 200
     data = response.json()
     assert data["user"]["email"] == unique_email
-    assert data["user"]["role"] == "Management"
-    assert "Management" in data["user"]["groups"]
+    assert data["user"]["role"] == "User"
+    assert data["user"]["groups"] == ["User"]
 
 
 def test_threads_crud_workflow():

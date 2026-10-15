@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db_session
 from app.api.routes.auth import decode_token
 from app.core.config import settings
+from app.retrieval.filters import exact_value
 from app.storage.models import DBUser, DBChatThread, DBChatMessage
+from app.api.identity import Principal, get_principal
+from app.retrieval.access import authorized_history, saved_citations
 
 router = APIRouter()
 
@@ -44,24 +47,8 @@ class ThreadDetailResponse(BaseModel):
     messages: List[MessageResponse]
 
 
-def get_current_user_id(
-    authorization: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-) -> uuid.UUID:
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.replace("Bearer ", "").strip()
-        payload = decode_token(token)
-        return uuid.UUID(payload["sub"])
-    elif x_user_id:
-        try:
-            return uuid.UUID(x_user_id)
-        except ValueError:
-            pass
-    
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Přihlášení vyžadováno. Prosím přihlaste se k účtu.",
-    )
+def get_current_user_id(principal: Principal = Depends(get_principal)) -> uuid.UUID:
+    return principal.user_id
 
 
 @router.get("", response_model=List[ThreadResponse])
@@ -71,12 +58,10 @@ async def list_threads(
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """List all chat threads belonging to the authenticated user in current TENANT_ID."""
-    tenant_base = settings.TENANT_ID.split("-")[0]
-    tenant_variants = list(set([settings.TENANT_ID, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
     threads = (
         db.query(DBChatThread)
         .filter(
-            DBChatThread.tenant_id.in_(tenant_variants),
+            exact_value(DBChatThread.tenant_id, settings.TENANT_ID, db.bind.dialect.name),
             DBChatThread.user_id == user_id,
         )
         .order_by(DBChatThread.updated_at.desc())
@@ -129,6 +114,7 @@ async def get_thread_detail(
     thread_id: str,
     db: Session = Depends(get_db_session),
     user_id: uuid.UUID = Depends(get_current_user_id),
+    principal: Principal = Depends(get_principal),
 ):
     """Get full message history and citation sources for a specific thread."""
     try:
@@ -140,6 +126,7 @@ async def get_thread_detail(
         db.query(DBChatThread)
         .filter(
             DBChatThread.thread_id == t_uuid,
+            exact_value(DBChatThread.tenant_id, settings.TENANT_ID, db.bind.dialect.name),
             DBChatThread.user_id == user_id,
         )
         .first()
@@ -150,17 +137,18 @@ async def get_thread_detail(
 
     messages = (
         db.query(DBChatMessage)
-        .filter(DBChatMessage.thread_id == t_uuid)
+        .filter(DBChatMessage.thread_id == t_uuid, exact_value(DBChatMessage.tenant_id, settings.TENANT_ID, db.bind.dialect.name))
         .order_by(DBChatMessage.created_at.asc())
         .all()
     )
 
+    visible_ids = {message.message_id for message in authorized_history(db, messages, principal)}
     msg_responses = [
         MessageResponse(
             message_id=str(m.message_id),
             role=m.role,
-            content=m.content,
-            sources=m.sources if isinstance(m.sources, list) else None,
+            content=m.content if m.message_id in visible_ids else "Tato odpověď již není dostupná podle aktuálních oprávnění.",
+            sources=saved_citations(m) if m.message_id in visible_ids else None,
             created_at=m.created_at.isoformat(),
         )
         for m in messages
@@ -192,6 +180,7 @@ async def update_thread(
         db.query(DBChatThread)
         .filter(
             DBChatThread.thread_id == t_uuid,
+            exact_value(DBChatThread.tenant_id, settings.TENANT_ID, db.bind.dialect.name),
             DBChatThread.user_id == user_id,
         )
         .first()
@@ -204,7 +193,7 @@ async def update_thread(
     db.commit()
     db.refresh(thread)
 
-    msg_count = db.query(DBChatMessage).filter(DBChatMessage.thread_id == t_uuid).count()
+    msg_count = db.query(DBChatMessage).filter(DBChatMessage.thread_id == t_uuid, exact_value(DBChatMessage.tenant_id, settings.TENANT_ID, db.bind.dialect.name)).count()
     return ThreadResponse(
         thread_id=str(thread.thread_id),
         title=thread.title,
@@ -230,6 +219,7 @@ async def delete_thread(
         db.query(DBChatThread)
         .filter(
             DBChatThread.thread_id == t_uuid,
+            exact_value(DBChatThread.tenant_id, settings.TENANT_ID, db.bind.dialect.name),
             DBChatThread.user_id == user_id,
         )
         .first()

@@ -16,12 +16,14 @@ def test_get_prompts_endpoint():
     assert "en" in data["prompts"]
 
 
-def test_update_prompt_endpoint():
+def test_update_prompt_endpoint(manager_headers):
+    client.headers.update(manager_headers)
     test_prompt = "Testovací systémový prompt pro klienta [1]."
     payload = {"locale": "cs", "prompt_text": test_prompt}
     
     from app.core.tenant_config import load_tenant_json, save_tenant_json
-    orig = load_tenant_json("default", "prompts.json")
+    from app.core.config import settings
+    orig = load_tenant_json(settings.TENANT_ID, "prompts.json")
     
     try:
         put_response = client.put("/api/prompts", json=payload)
@@ -35,4 +37,4 @@ def test_update_prompt_endpoint():
         assert get_response.json()["prompts"]["cs"] == test_prompt
     finally:
         if orig:
-            save_tenant_json("default", "prompts.json", orig)
+            save_tenant_json(settings.TENANT_ID, "prompts.json", orig)

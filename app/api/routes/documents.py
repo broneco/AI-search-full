@@ -5,17 +5,20 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.api.dependencies import get_db_session
-from app.api.routes.auth import decode_token
 from app.core.config import settings
-from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
+from app.providers.factory import create_embedding_provider
 from app.schemas.documents import DocumentIngestRequest, DocumentIngestResponse, CategoryConfigRequest, DocumentConfirmedIngestRequest
 from app.storage.models import DBDocument, DBChunk
+from app.api.identity import Principal, get_principal, require_manager
+from app.retrieval.access import access_context, visible_document, safe_data_path
+from app.retrieval.filters import document_filters, eligibility_filters, exact_value
+from app.storage.vector_store import write_chunks
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Cache or reuse provider instance
-embedding_provider = AzureOpenAIEmbeddingProvider()
+embedding_provider = create_embedding_provider()
 
 # Global state for re-indexing progress tracking
 reindex_progress = {
@@ -29,7 +32,7 @@ reindex_progress = {
 }
 
 
-@router.post("/ingest", response_model=DocumentIngestResponse)
+@router.post("/ingest", dependencies=[Depends(require_manager)], response_model=DocumentIngestResponse)
 async def ingest_document(
     request: DocumentIngestRequest,
     db: Session = Depends(get_db_session),
@@ -41,7 +44,10 @@ async def ingest_document(
     try:
         # Generate embedding vector
         logger.info(f"Generating embeddings for document: {request.title}")
-        embedding = await embedding_provider.embed_query(request.content)
+        document_embeddings = await embedding_provider.embed_documents([request.content])
+        if len(document_embeddings) != 1:
+            raise ValueError("Embedding provider did not return exactly one document embedding.")
+        embedding = document_embeddings[0]
     except Exception as e:
         logger.error(f"Failed to generate embedding: {e}")
         raise HTTPException(
@@ -61,27 +67,21 @@ async def ingest_document(
             metadata_json=request.metadata_json,
         )
         db.add(doc)
-        db.commit()
-        db.refresh(doc)
+        db.flush()
 
         # Store DBChunk
-        chunk = DBChunk(
-            document_id=doc.document_id,
-            chunk_index=0,
-            content=request.content,
-            embedding=embedding,
-            language=request.language,
-            security_acl=request.security_acl,
-            metadata_json=request.metadata_json,
-        )
-        db.add(chunk)
+        import uuid
+        chunk_id = uuid.uuid4()
+        write_chunks(db, [{"chunk_id": chunk_id, "document_id": doc.document_id,
+            "chunk_index": 0, "content": request.content, "embedding": embedding,
+            "language": request.language, "security_acl": request.security_acl,
+            "metadata_json": request.metadata_json}], embedding_provider.profile)
         db.commit()
-        db.refresh(chunk)
 
         logger.info(f"Ingested document and chunk successfully. Doc ID: {doc.document_id}")
         return DocumentIngestResponse(
             document_id=str(doc.document_id),
-            chunk_id=str(chunk.chunk_id),
+            chunk_id=str(chunk_id),
             title=doc.title,
             status="ingested",
         )
@@ -96,47 +96,21 @@ async def ingest_document(
 
 @router.get("/list")
 async def list_documents(
-    http_request: Request,
     db: Session = Depends(get_db_session),
-    x_user_groups: Optional[str] = Header(None, alias="X-User-Groups"),
+    principal: Principal = Depends(get_principal),
 ):
     """List all ingested documents and their chunk counts, respecting security ACL allowed groups."""
     try:
-        user_groups_str = x_user_groups
-        if not user_groups_str:
-            auth_header = http_request.headers.get("Authorization") or http_request.headers.get("authorization")
-            if auth_header and auth_header.startswith("Bearer "):
-                token = auth_header.split(" ")[1]
-                try:
-                    payload = decode_token(token)
-                    groups_list = payload.get("groups", [])
-                    if groups_list:
-                        user_groups_str = ",".join(groups_list)
-                except Exception as token_err:
-                    logger.debug(f"Could not decode token for groups extraction: {token_err}")
-
-        user_groups_str = user_groups_str or "User"
-        acl_groups = [g.strip() for g in user_groups_str.split(",") if g.strip()]
-        tenant_id = (settings.TENANT_ID or "dolphin").lower()
-        tenant_base = tenant_id.split("-")[0]
-        tenant_variants = list(set([tenant_id, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
-
-        docs = (
-            db.query(DBDocument)
-            .filter(DBDocument.tenant_id.in_(tenant_variants))
-            .order_by(DBDocument.ingested_at.desc())
-            .all()
-        )
+        context = access_context(principal)
+        docs = db.query(DBDocument).filter(
+            *document_filters(context, db.bind.dialect.name)
+        ).order_by(DBDocument.ingested_at.desc()).all()
         result = []
         for doc in docs:
-            # Enforce Management bypass and allowed groups filters
-            if doc.security_acl and "Management" not in acl_groups:
-                allowed_groups = doc.security_acl.get("allowed_groups", [])
-                if "User" not in allowed_groups:
-                    if allowed_groups and not any(g in acl_groups for g in allowed_groups):
-                        continue
-
-            chunk_count = db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).count()
+            chunk_count = db.query(DBChunk).join(DBDocument).filter(
+                DBChunk.document_id == doc.document_id,
+                *eligibility_filters(context, db.bind.dialect.name, metadata=False)
+            ).count()
             result.append({
                 "document_id": str(doc.document_id),
                 "title": doc.title,
@@ -162,6 +136,7 @@ async def view_document(
     document_id: str,
     db: Session = Depends(get_db_session),
     highlight_chunk_id: Optional[str] = None,
+    principal: Principal = Depends(get_principal),
 ):
     """Fetch the document PDF file from local storage or Azure Blob, highlight cited RAG chunk if requested, and serve it."""
     from fastapi.responses import StreamingResponse
@@ -176,7 +151,7 @@ async def view_document(
         raise HTTPException(status_code=400, detail="Invalid document UUID format.")
 
     try:
-        doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
+        doc = visible_document(db, doc_uuid, principal, full_document=True)
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found.")
 
@@ -197,11 +172,19 @@ async def view_document(
                 container_name = uri_parts[0]
                 blob_name = uri_parts[1]
 
+            if container_name != settings.AZURE_BLOB_CONTAINER_ORIGINALS:
+                raise HTTPException(404, "Document source is outside the configured tenant container.")
+
             # Server-side Blob Cache check for ultra-fast serving
             import tempfile
             cache_dir = os.path.join(tempfile.gettempdir(), "dolphin_blob_cache")
             os.makedirs(cache_dir, exist_ok=True)
-            cache_file = os.path.join(cache_dir, f"{doc.document_id}.pdf")
+            import hashlib
+            cache_identity = "|".join([
+                settings.TENANT_ID, settings.APP_ENV, settings.AZURE_STORAGE_ACCOUNT or "",
+                container_name, blob_name, str(doc.document_id), doc.checksum or "",
+            ])
+            cache_file = os.path.join(cache_dir, hashlib.sha256(cache_identity.encode()).hexdigest() + ".pdf")
 
             if os.path.exists(cache_file):
                 logger.info(f"Serving blob '{blob_name}' from server local cache ({cache_file})...")
@@ -247,7 +230,9 @@ async def view_document(
                 if len(parts) > 1:
                     raw_uri_path = parts[1]
 
-            local_path = raw_uri_path
+            local_path = safe_data_path(raw_uri_path) or safe_data_path(os.path.join("data", raw_uri_path))
+            if local_path is None:
+                raise HTTPException(404, "Document source is outside the data directory.")
             if not os.path.isabs(local_path):
                 data_dir = os.path.abspath("data")
                 local_path = os.path.join(data_dir, local_path)
@@ -275,6 +260,8 @@ async def view_document(
                 if not found:
                     raise HTTPException(status_code=404, detail=f"PDF document file not found in Blob storage or local disk: {filename}")
 
+            if safe_data_path(local_path) is None:
+                raise HTTPException(404, "Document source is outside the data directory.")
             with open(local_path, "rb") as f:
                 data = f.read()
 
@@ -282,7 +269,10 @@ async def view_document(
         if highlight_chunk_id:
             try:
                 chunk_uuid = uuid.UUID(highlight_chunk_id)
-                chunk = db.query(DBChunk).filter(DBChunk.chunk_id == chunk_uuid).first()
+                chunk = db.query(DBChunk).join(DBDocument).filter(
+                    DBChunk.chunk_id == chunk_uuid, DBChunk.document_id == doc_uuid,
+                    *eligibility_filters(access_context(principal), db.bind.dialect.name, metadata=False)
+                ).first()
                 if chunk:
                     import fitz
                     import re
@@ -406,6 +396,8 @@ async def view_document(
         )
 
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
         logger.error(f"Failed to retrieve and serve document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -418,7 +410,7 @@ async def get_categories(db: Session = Depends(get_db_session)):
     return await tagger.load_config()
 
 
-@router.post("/categories")
+@router.post("/categories", dependencies=[Depends(require_manager)])
 async def update_categories(request: CategoryConfigRequest, db: Session = Depends(get_db_session)):
     """Save the updated classification configuration to Blob Storage and disk, and execute migrations if any."""
     from app.ingestion.tagger import MetadataTagger
@@ -480,7 +472,7 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
             security_acl_val = {"allowed_groups": allowed_groups}
             
             # Fetch and update all documents belonging to the deleted category key
-            documents_to_migrate = db.query(DBDocument).all()
+            documents_to_migrate = db.query(DBDocument).filter(exact_value(DBDocument.tenant_id, settings.TENANT_ID, db.bind.dialect.name)).all()
             migrated_count = 0
             from sqlalchemy.orm.attributes import flag_modified
             for doc in documents_to_migrate:
@@ -518,7 +510,7 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
         security_acl_val = {"allowed_groups": allowed_groups}
         
         # Query all documents in this category
-        docs_to_update = db.query(DBDocument).all()
+        docs_to_update = db.query(DBDocument).filter(exact_value(DBDocument.tenant_id, settings.TENANT_ID, db.bind.dialect.name)).all()
         updated_count = 0
         for doc in docs_to_update:
             if doc.metadata_json and doc.metadata_json.get("department") == cat.key:
@@ -527,9 +519,9 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
                     from sqlalchemy.orm.attributes import flag_modified
                     flag_modified(doc, "security_acl")
                     
-                    db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).update(
-                        {"security_acl": security_acl_val}
-                    )
+                    for chunk in db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).all():
+                        chunk.security_acl = security_acl_val
+                        flag_modified(chunk, "security_acl")
                     updated_count += 1
         if updated_count > 0:
             db.commit()
@@ -547,7 +539,7 @@ class DocumentUpdateMetadataRequest(BaseModel):
     language: str = "cs"
 
 
-@router.post("/update-metadata")
+@router.post("/update-metadata", dependencies=[Depends(require_manager)])
 async def update_document_metadata(
     request: DocumentUpdateMetadataRequest,
     db: Session = Depends(get_db_session)
@@ -559,7 +551,7 @@ async def update_document_metadata(
     
     try:
         doc_uuid = uuid.UUID(request.document_id)
-        doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
+        doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid, exact_value(DBDocument.tenant_id, settings.TENANT_ID, db.bind.dialect.name)).first()
         if not doc:
             raise HTTPException(status_code=404, detail="Dokument nenalezen.")
             
@@ -613,7 +605,7 @@ async def update_document_metadata(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/analyze-draft")
+@router.post("/analyze-draft", dependencies=[Depends(require_manager)])
 async def analyze_draft(
     file: UploadFile = File(...),
     db: Session = Depends(get_db_session)
@@ -627,7 +619,8 @@ async def analyze_draft(
     temp_dir = os.path.abspath("data/temp_drafts")
     os.makedirs(temp_dir, exist_ok=True)
 
-    unique_filename = f"{uuid.uuid4()}_{file.filename}"
+    original_filename = os.path.basename((file.filename or "upload").replace("\\", "/"))
+    unique_filename = f"{uuid.uuid4()}_{original_filename}"
     temp_path = os.path.join(temp_dir, unique_filename)
 
     try:
@@ -638,7 +631,7 @@ async def analyze_draft(
         suggestions = await tagger.analyze_file(temp_path)
         
         # Restore original filename in the suggested title
-        suggestions["title"] = os.path.splitext(file.filename)[0]
+        suggestions["title"] = os.path.splitext(original_filename)[0]
         
         # Append the temp file path for the confirmed ingest step
         suggestions["temp_file_path"] = temp_path
@@ -651,7 +644,7 @@ async def analyze_draft(
         raise HTTPException(status_code=500, detail=f"Chyba při analýze dokumentu: {str(e)}")
 
 
-@router.post("/ingest-confirmed")
+@router.post("/ingest-confirmed", dependencies=[Depends(require_manager)])
 async def ingest_confirmed(
     request: DocumentConfirmedIngestRequest,
     db: Session = Depends(get_db_session)
@@ -662,7 +655,7 @@ async def ingest_confirmed(
     from app.ingestion.pipeline import IngestionPipeline
     from app.ingestion.tagger import MetadataTagger
 
-    if not os.path.exists(request.temp_file_path):
+    if safe_data_path(request.temp_file_path) is None or not os.path.exists(request.temp_file_path):
         raise HTTPException(status_code=400, detail="Dočasný soubor nebyl nalezen. Nahrajte dokument znovu.")
 
     try:
@@ -705,7 +698,7 @@ async def ingest_confirmed(
             import uuid
             try:
                 target_uuid = uuid.UUID(request.relationship.target_document_id)
-                target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid).first()
+                target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid, exact_value(DBDocument.tenant_id, settings.TENANT_ID, db.bind.dialect.name)).first()
                 if target_doc:
                     logger.info(f"Archiving replaced document: {target_doc.title} (ID: {target_doc.document_id})")
                     
@@ -748,6 +741,8 @@ async def ingest_confirmed(
             cleaned_filename = request.original_filename
             
         confirmed_file_path = os.path.join(os.path.dirname(request.temp_file_path), cleaned_filename)
+        if safe_data_path(confirmed_file_path) is None:
+            raise HTTPException(400, "Invalid confirmed file path.")
         if os.path.exists(confirmed_file_path):
             os.remove(confirmed_file_path)
         os.rename(request.temp_file_path, confirmed_file_path)
@@ -940,7 +935,7 @@ async def run_reindex_full_task():
             if rel_type == "replaces" and rel.get("target_document_id"):
                 try:
                     target_uuid = uuid.UUID(rel.get("target_document_id"))
-                    target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid).first()
+                    target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid, exact_value(DBDocument.tenant_id, settings.TENANT_ID, db.bind.dialect.name)).first()
                     if target_doc:
                         logger.info(f"Reindex: Archiving replaced document {target_doc.title}")
                         target_doc.freshness_status = "archived"
@@ -998,13 +993,13 @@ async def run_reindex_full_task():
         logger.info("Background re-indexing finished.")
 
 
-@router.get("/reindex-progress")
+@router.get("/reindex-progress", dependencies=[Depends(require_manager)])
 async def get_reindex_progress():
     """Get the current progress of the background re-indexing task."""
     return reindex_progress
 
 
-@router.post("/reindex-full")
+@router.post("/reindex-full", dependencies=[Depends(require_manager)])
 async def reindex_full_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db_session)
@@ -1088,20 +1083,12 @@ async def run_reindex_all_task():
                 
                 db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).delete()
                 
-                for chunk_idx, chunk in enumerate(chunks):
-                    db_chunk = DBChunk(
-                        document_id=doc.document_id,
-                        chunk_index=chunk_idx,
-                        content=chunk.content,
-                        embedding=embeddings[chunk_idx],
-                        language=doc.language,
-                        section_title=chunk.section_title,
-                        page_number=chunk.page_number,
-                        security_acl=doc.security_acl,
-                        metadata_json=doc.metadata_json,
-                        freshness_status=doc.freshness_status
-                    )
-                    db.add(db_chunk)
+                write_chunks(db, [{"document_id": doc.document_id, "chunk_index": chunk_idx,
+                    "content": chunk.content, "embedding": embeddings[chunk_idx],
+                    "language": doc.language, "section_title": chunk.section_title,
+                    "page_number": chunk.page_number, "security_acl": doc.security_acl,
+                    "metadata_json": doc.metadata_json, "freshness_status": doc.freshness_status}
+                    for chunk_idx, chunk in enumerate(chunks)], pipeline.embedding_provider.profile)
                 
                 db.commit()
                 logger.info(f"Successfully fast-reindexed document: {doc.title}")
@@ -1124,7 +1111,7 @@ async def run_reindex_all_task():
         logger.info("Background fast re-indexing finished.")
 
 
-@router.post("/reindex-all")
+@router.post("/reindex-all", dependencies=[Depends(require_manager)])
 async def reindex_all_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db_session)
@@ -1137,7 +1124,8 @@ async def reindex_all_endpoint(
 @router.get("/{document_id}/chunks")
 async def get_document_chunks(
     document_id: str,
-    db: Session = Depends(get_db_session)
+    db: Session = Depends(get_db_session),
+    principal: Principal = Depends(get_principal),
 ):
     """Retrieve all chunks belonging to a document, ordered by chunk_index, to show a chunking preview in the frontend."""
     import uuid
@@ -1148,13 +1136,15 @@ async def get_document_chunks(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid document UUID format.")
         
-    doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
+    doc = visible_document(db, doc_uuid, principal, full_document=False)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
         
     chunks = (
         db.query(DBChunk)
-        .filter(DBChunk.document_id == doc_uuid)
+        .join(DBDocument)
+        .filter(DBChunk.document_id == doc_uuid,
+                *eligibility_filters(access_context(principal), db.bind.dialect.name, metadata=False))
         .order_by(DBChunk.chunk_index.asc())
         .all()
     )
@@ -1174,7 +1164,8 @@ async def get_document_chunks(
 @router.post("/preview-chunks")
 async def preview_document_chunks(
     payload: Dict[str, Any],
-    db: Session = Depends(get_db_session)
+    db: Session = Depends(get_db_session),
+    principal: Principal = Depends(get_principal),
 ):
     """Simulate and preview text segmentation into chunks using custom chunk_size and chunk_overlap without writing to DB."""
     import uuid
@@ -1198,8 +1189,8 @@ async def preview_document_chunks(
     token_params = payload.get("token_params")
     agentic_params = payload.get("agentic_params")
     
-    from app.providers.azure_openai import AzureOpenAIProvider
-    llm_provider = AzureOpenAIProvider()
+    from app.providers.factory import create_llm_provider
+    llm_provider = create_llm_provider()
     
     if not document_id:
         raise HTTPException(status_code=400, detail="Missing document_id")
@@ -1209,7 +1200,7 @@ async def preview_document_chunks(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid document UUID format.")
         
-    doc = db.query(DBDocument).filter(DBDocument.document_id == doc_uuid).first()
+    doc = visible_document(db, doc_uuid, principal, full_document=True)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
         
@@ -1223,7 +1214,9 @@ async def preview_document_chunks(
         if len(parts) > 3:
             relative_path = parts[3]
             
-    file_path = os.path.abspath(os.path.join("data", relative_path))
+    file_path = safe_data_path(os.path.join("data", relative_path))
+    if file_path is None:
+        raise HTTPException(404, "Document source is outside the data directory.")
     if not os.path.exists(file_path):
         # Fallback search
         found_path = None
@@ -1239,6 +1232,8 @@ async def preview_document_chunks(
         else:
             raise HTTPException(status_code=404, detail=f"File not found on server.")
             
+    if safe_data_path(file_path) is None:
+        raise HTTPException(404, "Document source is outside the data directory.")
     # Extract pages and run custom splitter
     extractor = DocumentExtractor()
     pages = extractor.extract(file_path)

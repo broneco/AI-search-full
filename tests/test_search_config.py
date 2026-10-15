@@ -177,7 +177,7 @@ def test_context_expansion_siblings(db_setup):
     )
 
     # Expand context with N=1 (should return c0 + c1 + c2 joined, c1 wrapped in match tags)
-    expanded = retriever._expand_context([matched_item], expansion_type="siblings", expansion_size=1)
+    expanded = retriever._expand_context([matched_item], expansion_type="siblings", expansion_size=1, context=QueryContext(query="", acl_groups=["User"]))
     assert len(expanded) == 1
     assert expanded[0].content == "Prvni odstavec.\n[[MATCH_START]]Druhy odstavec.[[MATCH_END]]\nTreti odstavec."
 
@@ -225,11 +225,11 @@ def test_context_expansion_page_and_section(db_setup):
     )
 
     # Page expansion (c_p1 is matched, should be wrapped)
-    expanded_page = retriever._expand_context([matched_item], expansion_type="page", expansion_size=1)
+    expanded_page = retriever._expand_context([matched_item], expansion_type="page", expansion_size=1, context=QueryContext(query="", acl_groups=["User"]))
     assert len(expanded_page) == 1
     assert expanded_page[0].content == "[[MATCH_START]]Odstavec na strane 5.[[MATCH_END]]\nDalsi odstavec na strane 5."
 
     # Section expansion (c_p1 is matched, should be wrapped)
-    expanded_section = retriever._expand_context([matched_item], expansion_type="section", expansion_size=1)
+    expanded_section = retriever._expand_context([matched_item], expansion_type="section", expansion_size=1, context=QueryContext(query="", acl_groups=["User"]))
     assert len(expanded_section) == 1
     assert expanded_section[0].content == "[[MATCH_START]]Odstavec na strane 5.[[MATCH_END]]\nDalsi odstavec na strane 5."

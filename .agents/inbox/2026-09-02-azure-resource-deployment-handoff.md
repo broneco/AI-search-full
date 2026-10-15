@@ -1,6 +1,6 @@
 # Azure Deployment Handoff: Nastavení Azure Zdrojů ve 3 Resource Groups (Dev, Prod, Showcase)
 
-- Status: pending_human_action
+- Status: completed
 - Created: 2026-09-02
 - Related task: Multi-Resource Group separation, Azure SQL DTU Model, and Naming Standardization
 - Related ADR: ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md
@@ -131,7 +131,7 @@ Pokud preferujete vytvořit zdroje jedním příkazem místo klikání v portál
 az login
 
 # 2. Vytvoreni Azure SQL Serveru a DB v DTU modu (Basic) pro DEV
-az sql server create --name sql-aisearch-dev --resource-group ai-search-rg-dev --location northeurope --admin-user sqladmin --admin-password "VaseBezpecneHeslo123!"
+az sql server create --name sql-aisearch-dev --resource-group ai-search-rg-dev --location northeurope --admin-user sqladmin --admin-password "<SQL_ADMIN_PASSWORD_FROM_SECURE_INPUT>"
 az sql server firewall-rule create --resource-group ai-search-rg-dev --server sql-aisearch-dev --name AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
 az sql db create --resource-group ai-search-rg-dev --server sql-aisearch-dev --name sqldb-dolphin-dev --service-objective Basic
 

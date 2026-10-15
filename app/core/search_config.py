@@ -35,6 +35,8 @@ class AgenticChunkingParams(BaseModel):
     max_context_chars: int = Field(4000, ge=1000, le=16000)
 
 class SearchConfigSchema(BaseModel):
+    vector_search_mode: str = Field("exact", pattern="^(exact|ann)$")
+    vector_query_timeout_seconds: int = Field(10, ge=1, le=120, strict=True)
     search_strategy: str = Field("hybrid", pattern="^(hybrid|vector|keyword)$")
     hybrid_strategy: str = Field("rrf", pattern="^(rrf|score_addition|union)$")
     vector_weight: float = Field(0.6, ge=0.0, le=1.0)
@@ -121,6 +123,8 @@ class SearchConfigManager:
 
     def get_defaults(self) -> Dict[str, Any]:
         return {
+            "vector_search_mode": "exact",
+            "vector_query_timeout_seconds": 10,
             "search_strategy": "hybrid",
             "hybrid_strategy": "rrf",
             "vector_weight": 0.6,

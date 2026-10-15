@@ -15,8 +15,19 @@ from app.schemas.documents import RelationshipInfo, DocumentConfirmedIngestReque
 client = TestClient(app)
 
 
+@pytest.fixture
+def data_draft_path():
+    """Confirmed-ingest API only accepts files staged inside data/."""
+    import tempfile
+    from pathlib import Path
+    os.makedirs("data", exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="test-acl-draft-", dir=os.path.abspath("data")) as directory:
+        yield Path(directory)
+
+
 @pytest.fixture(scope="module", autouse=True)
-def categories_setup(db_setup):
+def categories_setup(db_setup, manager_headers):
+    client.headers.update(manager_headers)
     import copy
     # 1. Fetch current config to back it up
     get_res = client.get("/api/documents/categories")
@@ -190,7 +201,8 @@ def test_analyze_draft_api_endpoint(mock_extract, mock_generate, db_setup, tmp_p
 
 
 @patch("app.providers.azure_openai.AzureOpenAIEmbeddingProvider.embed_documents")
-def test_ingest_confirmed_with_archival(mock_embed, db_setup, tmp_path):
+def test_ingest_confirmed_with_archival(mock_embed, db_setup, data_draft_path):
+    tmp_path = data_draft_path
     db = db_setup
     mock_embed.return_value = [[0.1] * 1536]
 
@@ -345,7 +357,8 @@ def test_category_migration_api_endpoint(db_setup):
 
 
 @patch("app.providers.azure_openai.AzureOpenAIEmbeddingProvider.embed_documents")
-def test_ingest_confirmed_updates_existing_doc(mock_embed, db_setup, tmp_path):
+def test_ingest_confirmed_updates_existing_doc(mock_embed, db_setup, data_draft_path):
+    tmp_path = data_draft_path
     db = db_setup
     mock_embed.return_value = [[0.15] * 1536]
 

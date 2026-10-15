@@ -8,7 +8,8 @@ param location = 'northeurope'
 param provisionPostgres = true
 param existingPostgresHost = ''
 param postgresAdminUser = 'Bronec'
-param postgresAdminPassword = 'BULVER4v68rTzf4X'
+// Supply through an untracked process environment; no credential default is stored here.
+param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')
 
 param provisionOpenAI = true
 param existingOpenAiEndpoint = ''

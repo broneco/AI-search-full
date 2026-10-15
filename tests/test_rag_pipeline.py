@@ -1,4 +1,5 @@
 import pytest
+import os
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -11,7 +12,10 @@ client = TestClient(app)
 
 
 @pytest.fixture(scope="module")
-def rag_setup():
+def rag_setup(manager_headers):
+    client.headers.update(manager_headers)
+    if os.getenv("RUN_AZURE_MODEL_TESTS") != "1":
+        pytest.skip("Set RUN_AZURE_MODEL_TESTS=1 to opt in to real Azure model calls.")
     # 1. Skip if database is not available
     try:
         with engine.connect() as conn:
@@ -54,6 +58,18 @@ def test_end_to_end_rag_flow(rag_setup):
     assert ingest_data["title"] == "Corporate Firewall Protocols"
     assert "document_id" in ingest_data
 
+    from sqlalchemy import select
+    from app.providers.factory import create_embedding_profile
+    from app.storage.models import DBSearchIndex
+    from app.storage.vector_store import activate_index
+    with SessionLocal() as session:
+        index = session.scalar(select(DBSearchIndex).where(
+            DBSearchIndex.tenant_id == settings.TENANT_ID,
+            DBSearchIndex.profile_id == create_embedding_profile().profile_id))
+        assert index is not None
+        activate_index(session, index)
+        session.commit()
+
     # Step B: Submit a RAG query matching the document topic
     chat_payload = {
         "query": "Which subnet is allowed to access port 22 according to the firewall protocols?",
@@ -66,7 +82,7 @@ def test_end_to_end_rag_flow(rag_setup):
     chat_response = client.post(
         "/api/chat",
         json=chat_payload,
-        headers={"X-User-Groups": "Engineering"}
+        headers=client.headers
     )
     assert chat_response.status_code == 200
     chat_data = chat_response.json()
@@ -79,5 +95,5 @@ def test_end_to_end_rag_flow(rag_setup):
     # Check that sources and citations are present
     assert len(chat_data["sources"]) >= 1
     assert chat_data["sources"][0]["title"] == "Corporate Firewall Protocols"
-    assert chat_data["metadata"]["retrieval_strategy"] == "vector_pgvector"
+    assert chat_data["metadata"]["retrieval_strategy"] == "vector_exact"
     assert "latency_ms" in chat_data["metadata"]

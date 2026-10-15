@@ -1,6 +1,6 @@
 # Azure Deployment Handoff: Vyhrazené Showcase Prostředí (ai-search-showcase-rg-dev)
 
-- Status: pending_human_action
+- Status: completed
 - Created: 2026-09-02
 - Updated: 2026-09-03
 - Related task: Dedicated Isolated Showcase Tenant Environment Setup & Non-Admin IT Provisioning Model
@@ -106,7 +106,7 @@ az login
 az group create --name ai-search-showcase-rg-dev --location northeurope
 
 # 2. Azure SQL Server + DB v DTU modu
-az sql server create --name ai-search-showcase-sql-dev --resource-group ai-search-showcase-rg-dev --location northeurope --admin-user sqladmin --admin-password "VaseBezpecneHeslo123!"
+az sql server create --name ai-search-showcase-sql-dev --resource-group ai-search-showcase-rg-dev --location northeurope --admin-user sqladmin --admin-password "<SQL_ADMIN_PASSWORD_FROM_SECURE_INPUT>"
 az sql server firewall-rule create --resource-group ai-search-showcase-rg-dev --server ai-search-showcase-sql-dev --name AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
 az sql db create --resource-group ai-search-showcase-rg-dev --server ai-search-showcase-sql-dev --name ai-search-showcase-sqldb-dev --service-objective Basic
 

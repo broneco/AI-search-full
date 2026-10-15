@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { TRANSLATIONS } from "./translations";
 import { CLIENT_THEMES, DEFAULT_THEME_ID } from "./config/themes";
 import { PdfViewerModal } from "./components/PdfViewerModal";
+import { AuthenticatedPdf, openAuthenticatedPdf } from "./components/AuthenticatedPdf";
 import { AuthModal } from "./components/AuthModal";
 import { ThreadSidebar, ThreadItem } from "./components/ThreadSidebar";
 
@@ -31,7 +32,6 @@ interface Message {
 
 export default function UserSearchPage() {
   const [appLanguage, setAppLanguage] = useState<"cs" | "en">("cs");
-  const [userRole, setUserRole] = useState<string>("User");
   const [apiOnline, setApiOnline] = useState<boolean>(true);
   const [query, setQuery] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -118,7 +118,6 @@ export default function UserSearchPage() {
       if (res.ok) {
         const data = await res.json();
         setUserProfile(data);
-        setUserRole(data.role || "User");
         fetchUserThreads(token);
         fetchDocuments(token);
       } else {
@@ -313,7 +312,6 @@ export default function UserSearchPage() {
     localStorage.setItem("dolphin_auth_token", token);
     setAuthToken(token);
     setUserProfile(user);
-    setUserRole(user.role || "User");
     fetchUserThreads(token);
     fetchDocuments(token);
   };
@@ -331,18 +329,7 @@ export default function UserSearchPage() {
 
   // Get Auth headers based on active session
   const getHeaders = () => {
-    const roleGroupsMap: Record<string, string[]> = {
-      User: ["User"],
-      Management: ["User", "Management"],
-      Admin: ["User", "Management", "Admin"],
-    };
-
-    const userGroups = roleGroupsMap[userRole] || ["User"];
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "X-User-Role": userRole,
-      "X-User-Groups": userGroups.join(","),
-    };
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
 
     if (authToken) {
       headers["Authorization"] = `Bearer ${authToken}`;
@@ -584,7 +571,7 @@ export default function UserSearchPage() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.3
+                v0.1.4
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -761,7 +748,7 @@ export default function UserSearchPage() {
             </form>
             <p className="text-[10px] text-zinc-500 text-center mt-2 font-medium flex items-center justify-center gap-2">
               <span>{TRANSLATIONS[appLanguage].disclaimer}</span>
-              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.3</span>
+              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.4</span>
             </p>
           </div>
         </main>
@@ -813,6 +800,7 @@ export default function UserSearchPage() {
                 {activeSource && (
                   <a
                     href={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}`}
+                    onClick={(event) => { event.preventDefault(); void openAuthenticatedPdf(`${BACKEND_URL}/api/documents/view/${activeSource.document_id}`, authToken); }}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-2 text-zinc-400 hover:text-indigo-300 hover:bg-white/10 rounded-lg transition-colors cursor-pointer text-xs flex items-center justify-center font-bold"
@@ -850,7 +838,8 @@ export default function UserSearchPage() {
             {/* Embedded Live Formatted PDF Page Canvas */}
             <div className="flex-1 bg-zinc-950/90 w-full h-full overflow-hidden flex items-center justify-center relative">
               {activeSource ? (
-                <iframe
+                <AuthenticatedPdf
+                  authToken={authToken}
                   src={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}?highlight_chunk_id=${activeSource.chunk_id}#page=${activeSource.page_number || 1}&toolbar=0&navpanes=0`}
                   title={`PDF Live View - ${activeSource.title}`}
                   className="w-full h-full border-none transition-transform duration-200"
@@ -895,6 +884,7 @@ export default function UserSearchPage() {
         pageNumber={selectedPdfPage}
         highlightChunkId={selectedPdfHighlightId}
         backendUrl={BACKEND_URL}
+        authToken={authToken}
         language={appLanguage}
       />
 

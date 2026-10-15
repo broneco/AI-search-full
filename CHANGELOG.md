@@ -6,6 +6,42 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+## [v0.1.4] - 2026-10-15
+
+Kompletní souhrn změn od v0.1.3, výsledky ověření, provozní podmínky a známá omezení: [release notes v0.1.4](docs/releases/v0.1.4.md).
+
+### Added
+- Neměnné embeddingové profily s identitou modelu/revize/rozměru/zpracování vstupu, společná factory Azure providerů a oddělené query/document embeddingy. Architektura umožňuje další profilové indexy a budoucí lokální adaptéry bez směšování vektorových prostorů.
+- Katalog profilových indexů, nativní Azure SQL VECTOR úložiště, úplné přesné VECTOR_DISTANCE hledání a transakční zápis chunků, vektorů, revizí a ACL; backfill existujících chunků bez nové extrakce.
+- Volitelný DiskANN v3+ s explicitním režimem exact/ann, kontrolou indexu/profilu, sdílenými prefiltry, scoped SQL timeoutem a diagnostikou. Vytvoření indexu nezapíná ANN.
+- Trvalé lokální prostředí: SQL Server Developer v Dockeru, dev.ps1, VS Code tasks, oddělené profily local/test a dva automaticky indexované české univerzitní PDF dokumenty Aurora.
+- Reprodukovatelný benchmark exact/ANN, oddělená cache embeddingů, recall@30, selektivita filtrů, souběh 1/3, cold start a explicitní kvalitativní/výkonové brány bez automatické aktivace.
+- Auditní a migrační CLI, izolovaný Azure native test harness, testovací návody, ADR-0019 až ADR-0028, handoffy a aktualizovaná projektová paměť.
+
+### Changed
+- Vektorová i keyword větev aplikují společné parametrizované tenant/metadata/freshness a relační dokumentové/chunkové ACL filtry před top K; kontext, historie i PDF náhled ověřují oprávnění.
+- Azure keyword používá nativní CONTAINSTABLE s Unicode parametrem a finálním oprávněným top K místo nákladného LIKE scanu. JHU fulltext byl ověřen s českým jazykem 1029; slovní fulltext má jiné chování než hledání podřetězců.
+- Backend a oba frontendy sjednoceny na v0.1.4; JHU funkčně nasazeno s pokrytím 9 372/9 372 chunků při zachování 431 dokumentů a původních ID/textů. Kapacita ani RBAC se tímto vydáním nenavyšovaly.
+- Backend deployment oddělen od migrací a ingestace, výchozí je čtecí plán a image-only update s ochranou cíle. Legacy combined deploy je blokovaný; Docker image obsahuje pouze runtime a vylučuje env, korpus i provozní artefakty.
+
+### Fixed
+- Odstraněn arbitrární limit 600 vektorových kandidátů; lokální SQL 2022 přesná reference prochází všechny způsobilé vektory.
+- Dokumentová ingestace používá embed_documents a validuje dávkové výsledky. Selhání ingestace/reindexace vrací původní databázový stav; změna textu zneplatní staré embeddingy všech profilů a smazání je kaskádově odstraní.
+- Opraven hybridní chat HTTP 500 způsobený kombinací float a SQL Decimal, ztráta české diakritiky v SQL Server sloupcích a falešné selhání Dockeru při stderr varování v PowerShellu 5.1/7.
+- Opraveny skutečné Azure/ODBC odlišnosti pro dlouhé VECTOR JSON bindy, SQL typy a korelaci ACL, CONTAINSTABLE parametr, vektorové DDL mimo uživatelskou transakci a obnovení NOCOUNT/timeoutu po chybě.
+
+### Security
+- Odstraněno doslovné SQL heslo ze starších handoffů a infrastrukturních souborů; provisioning vyžaduje bezpečný vstup. Původní hodnota může zůstat ve starší Git historii, proto je nutná následná rotace; cloudové heslo ani Git historie se při publikování nemění.
+- Autoritativní identita z tokenu a aktuálních serverových skupin, odstraněný X-User-* spoofing a cross-tenant fallback; cloud nevytváří demo účty a registraci spravuje Management.
+- Nová hesla používají Argon2id; ověřený legacy login má tenant-scoped transakční upgrade nezávislý na JWT podpisovém klíči. JWT lze načítat z Key Vaultu s připnutím verze, legacy heslový klíč je oddělený.
+- Zabezpečené PDF načítání v obou frontendech, omezené souborové/Blob operace a redakce staré historie bez ověřitelné evidence. Lokální/testovací env, cache, zálohy, SQL data a secrets zůstávají mimo Git a image.
+
+### Verification and known limits
+- Kompletní lokální regrese: **298 passed / 13 očekávaných skips**; izolované Azure keyword testy: **10 passed** s cleanup; oba produkční frontend buildy a TypeScript prošly.
+- Skutečný Showcase native exact/DiskANN lifecycle a JHU auth/chat/citace/PDF/CORS ověřeny. Dva JHU exact + fulltext HTTP smoke retrievalu klesly z 28,6/29,4 s na 3,9/2,1 s; nejde o p95 ani zátěžovou akceptaci.
+- **JHU i výchozí konfigurace používají exact.** DiskANN v3 je připravený, ale některé metadata kombinace timeoutují. Dílčích 60 User dotazů dosáhlo recall@30 99,11 %; nejméně 100 reprezentativních dotazů a p95 ≤1 s při souběhu 1/3 dosud neprošly. Žádné automatické přepínání ani fallback scan po timeoutu.
+- PostgreSQL opravy, section_title, sjednocení Blob/lokální konfigurace, OCR, lokální modelový adaptér a automatické porovnávání modelů zůstávají odložené.
+
 ## [v0.1.3] - 2026-10-12
 
 ### Added

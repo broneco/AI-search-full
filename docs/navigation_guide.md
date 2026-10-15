@@ -11,25 +11,43 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
 
 - 📁 `.agents/` — Hlavní složka obsahující systém instrukcí, pravidel a paměti pro vývojové AI agenty.
 - 📄 `.dockerignore` — Konfigurační soubor definující ignorované soubory při sestavování Docker image.
+- 📁 `.vscode/` — Sdílená konfigurace VS Code pro spouštění lokální aplikace a testů.
+- 📄 `.vscode/tasks.json` — Úlohy VS Code pro SQL Server, backend, uživatelský frontend a izolované testy.
 - 📄 `.env` — Soubor lokálních proměnných prostředí a konfigurace přístupů (neverzuje se).
+- 📄 `.env.local` — Automaticky vytvořená lokální konfigurace s náhodným heslem pro SQL Server Developer.
 - 📄 `.env.dev` — Šablona konfiguračních proměnných prostředí pro vývojové prostředí DEV.
 - 📄 `.env.example` — Vzorová šablona proměnných prostředí sloužící jako návod pro lokální nastavení.
 - 📄 `.env.ju-prod` — Konfigurační soubor proměnných prostředí vyhrazený pro produkční tenant JHU (ju-prod) v Azure.
 - 📄 `.env.prod` — Šablona konfiguračních proměnných prostředí pro produkční prostředí PROD.
 - 📁 `.github/` — Složka konfiguračních souborů a pracovních postupů pro GitHub.
 - 📄 `.gitignore` — Konfigurační soubor určující, které soubory a složky má Git ignorovat.
+- 📁 `.local/` — Ignorované runtime soubory a tenantí konfigurační overlay pro profily local a test.
+- 📁 `.local/benchmarks/` — Ignorované query cache a JSON reporty lokálních nebo soukromých retrieval benchmarků.
+- 📁 `.local/deployments/` — Ignorované provozní checkpointy a šifrované zálohy pro schválená nasazení.
+- 📁 `.local/deployments/jhu-search-20261015/` — Uchovává ne-secret stav JHU rollout a Windows DPAPI snímky původní konfigurace a dotčených dat.
+- 📁 `scratch/` — Ignorované jednorázové operátorské a diagnostické skripty v pracovním adresáři.
+- 📄 `scratch/jhu_rollout.py` — Provádí schválené fáze JHU rollout s ochranou secrets, checkpointy a úklidem vlastních testovacích objektů.
+- 📄 `docs/deployments/2026-10-15-jhu-search-rollout.md` — Zaznamenává dokončené JHU nasazení, skutečné cloudové důkazy, zachování dat, kompatibilní návrat a otevřený výkonový problém.
 - 📄 `.env.showcase` — Konfigurační soubor proměnných prostředí vyhrazený pro Showcase tenant v Azure.
 - 📄 `AGENTS.md` — Klíčový dokument definující provozní kontrakt, pravidla a role vývojových AI agentů v repozitáři.
 - 📄 `CHANGELOG.md` — Changelog projektových změn, nových funkcí a oprav chyb strukturovaný dle verzí.
+- 📁 `docs/releases/` — Uchovává souhrny vydaných verzí, ověřené výsledky a známá omezení.
+- 📄 `docs/releases/v0.1.4.md` — Shrnuje všechny změny od v0.1.3 včetně lokálního vývoje, Azure SQL vyhledávání, zabezpečení a dosud vypnutého ANN.
 - 📄 `Dockerfile` — Recept pro sestavení Docker kontejneru backendové FastAPI aplikace.
+- 📄 `docker-compose.local.yml` — Lokální SQL Server Developer kontejner s databázovými daty v persistentním Docker volume.
+- 📄 `dev.ps1` — Pomocný skript pro start lokální databáze, backendu, izolovaných testů a zastavení databáze.
+- 📄 `migrate_search_acl.py` — Explicitní audit a ručně spouštěná migrace relační ACL projekce pro ověřený SQL Server cíl.
+- 📄 `migrate_search_vectors.py` — Audituje, vytváří, doplňuje a explicitně aktivuje profilové indexy jen pro potvrzený databázový cíl.
+- 📄 `migrate_search_schema.py` — Provádí explicitně schválený přesun identity korpusu a Unicode migraci s obnovou zachyceného Full-Text indexu.
+- 📄 `benchmark_search.py` — Připravuje cache dotazových embeddingů a spouští read-only exact/ANN evaluaci s měřením a aktivačními branami.
 - 📄 `README.md` — Hlavní úvodní dokumentace repozitáře popisující architekturu, spuštění a nasazení.
 - 📁 `ai_search_app.egg-info/` — Složka s metadaty Python balíčku vygenerovaná při instalaci.
 - 📁 `app/` — Hlavní složka zdrojového kódu backendové FastAPI aplikace.
 - 📄 `ask.py` — Pomocný CLI skript pro rychlé testování dotazů vůči RAG vyhledávacímu backendu.
 - 📄 `check_diff.py` — Pomocný skript pro porovnání změn a kontrolu konzistence kódu.
 - 📁 `data/` — Složka podkladových zdrojových PDF dokumentů určených k indexaci.
-- 📄 `deploy_all.ps1` — Hlavní master PowerShell skript pro jednorázové nasazení backendu i obou frontendů v jednom kroku.
-- 📄 `deploy_backend.ps1` — PowerShell skript pro automatizované nasazení backendové aplikace do Azure Container Apps.
+- 📄 `deploy_all.ps1` — Blokuje původní kombinované nasazení, aby čtecí plán backendu nespustil zápisy frontendů.
+- 📄 `deploy_backend.ps1` — Vypíše čtecí plán a po explicitním potvrzení aktualizuje pouze image ověřené existující Container App.
 - 📄 `deploy_frontend.ps1` — PowerShell skript pro automatizované nasazení frontendových aplikací do Azure Static Web Apps.
 - 📄 `docker-compose.yml` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (docker-compose.yml).
 - 📁 `docs/` — Hlavní složka projektové dokumentace, architektonických rozhodnutí a návodů.
@@ -62,6 +80,12 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `2026-10-05-tenant-env-placeholder-handoff.md` — Handoff soubor s informacemi o 100% paritě tenantových .env souborů a seznamu zavedených placeholderů.
     - 📄 `2026-10-06-showcase-keyvault-deployment-handoff.md` — Handoff soubor s pokyny pro zřízení Key Vaultu a naplnění secretů pro Showcase tenant.
     - 📄 `2026-10-07-jhu-keyvault-rbac-handoff.md` — Handoff soubor s návodem pro schválení RBAC role Key Vault Secrets User a naplnění secretů pro JHU PROD tenant.
+    - 📄 `2026-10-14-search-acl-migration-handoff.md` — Ruční Azure handoff pro tenant audit, grant tabulky, soukromý signing klíč a ověření slice 2 před nasazením.
+    - 📄 `2026-10-14-native-vector-exact-search-handoff.md` — Ruční Azure handoff pro prázdnou native test DB, přesné VECTOR hledání, backfill a řízenou aktivaci slice 3.
+    - 📄 `2026-10-14-diskann-search-handoff.md` — Odložený Azure handoff pro DiskANN verze alespoň 3, integrační bránu a provozní návrat do exact.
+    - 📄 `2026-10-14-search-evaluation-activation-handoff.md` — Lidský handoff pro reprezentativní cloudový benchmark, native/runtime kontrolu, aktivaci ANN a rollback.
+    - 📄 `2026-10-15-jhu-search-rollout-handoff.md` — Zachycuje skutečný JHU inventář, aliasy korpusu, blokery loginů a postup schvalovaného nasazení s rollbackem.
+    - 📄 `2026-10-15-jhu-jwt-password-migration-handoff.md` — Popisuje dva oddělené secrets, přechod starých hesel a validaci i rollback přihlašování JHU bez nových rolí.
     - 📄 `azure-openai-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-openai-handoff.md).
     - 📄 `azure-postgres-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-postgres-handoff.md).
     - 📄 `azure-storage-blob-setup-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (azure-storage-blob-setup-handoff.md).
@@ -103,6 +127,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
 ## 4. Backendová aplikace Python & FastAPI (`app/`)
 
   - 📁 `api/` — Složka obsahující API rozhraní, routy a závislosti.
+    - 📄 `identity.py` — Ověření bearer identity přesného tenantu a aktuálních serverových skupin včetně Management dependency.
     - 📄 `dependencies.py` — Modul závislostí FastAPI (získání databázových relací, ověření tokenů a tenantů).
     - 📁 `routes/` — Složka s definicemi jednotlivých koncových bodů (endpoints) API.
       - 📄 `auth.py` — API endpointy pro autentizaci uživatelů, přihlášení a registrace.
@@ -113,12 +138,18 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
       - 📄 `threads.py` — API endpointy pro správu konverzčních vláken a historie rozhovorů.
   - 📁 `core/` — Složka s jádrem konfigurace, nastavením vyhledávání a tenant resolverem.
     - 📄 `config.py` — Hlavní modul proměnných prostředí a nastavení aplikace pomocí Pydantic BaseSettings.
+    - 📄 `passwords.py` — Ukládá Argon2id hesla nezávislá na JWT a explicitně ověřuje staré hashe pro řízený přechod při loginu.
     - 📄 `prompts.py` — Modul pro správu a načítání RAG systémových promptů.
     - 📄 `search_config.py` — Modul pro načítání a práci s konfigurací vyhledávání.
     - 📄 `tenant_config.py` — Hlavní resolver pro načítání konfigurací tenantů s automatickým fallbackem na tenants/default/.
+  - 📁 `evaluation/` — Nástroje pro reprodukovatelné hodnocení kvality a výkonu retrievalu bez generování odpovědí.
+    - 📄 `__init__.py` — Inicializuje balíček operátorské retrieval evaluace.
+    - 📄 `search_benchmark.py` — Validuje dataset/cache, měří recall a zátěž a připravuje bezpečný report s branami pro lidské review.
   - 📁 `ingestion/` — Složka modulů pro zpracování, dělení a indexaci dokumentů.
     - 📄 `chunking.py` — Modul pro dělení textu dokumentů na kontextové pasáže (chunks).
     - 📄 `extraction.py` — Modul pro extrakci textu z PDF dokumentů strana po straně.
+    - 📄 `local_demo.py` — Automaticky a idempotentně indexuje dvě české ukázky Aurora pouze do lokálního SQL Serveru.
+    - 📄 `index_backfill.py` — Dávkově doplňuje profilové embeddingy ze současných chunků nebo doložených historických vektorů bez nové extrakce.
     - 📁 `loaders/` — Složka loaderů pro načítání dokumentů z různých zdrojů.
       - 📄 `local.py` — Loader pro načítání a procházení dokumentů z lokálního souborového systému.
     - 📄 `pipeline.py` — Řídicí pipeline pro kompletní proces zpracování a uložení dokumentu.
@@ -127,15 +158,21 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📁 `providers/` — Složka s poskytovateli služeb (Azure OpenAI, Blob Storage, LLM rozhraní).
     - 📄 `azure_openai.py` — Poskytovatel rozhraní pro Azure OpenAI modely a klienty.
     - 📄 `blob_storage.py` — Poskytovatel pro práci s Azure Blob Storage úložistěm.
-    - 📄 `embeddings.py` — Modul pro generování vektorových embeddingů pomocí Azure OpenAI.
+    - 📄 `embeddings.py` — Rozhraní embedding provideru a neměnný profil popisující identitu vektorového prostoru.
+    - 📄 `factory.py` — Centrální factory vytvářející nakonfigurované embeddingové a jazykové providery.
     - 📄 `llm.py` — Modul pro generování textových odpovědí LLM modelu.
   - 📁 `retrieval/` — Složka vyhledávacích modulů pro vektorové i klíčové vyhledávání.
+    - 📄 `access.py` — Společné kontroly oprávnění náhledů a historie s transitivními referencemi na použité chunky.
+    - 📄 `filters.py` — Parametrizované SQL prefiltry tenantů, relačních ACL, freshness a typovaných metadat pro obě větve.
     - 📄 `base.py` — Abstraktní základní třída a rozhraní vyhledávače (VectorRetriever base).
     - 📄 `vector.py` — Implementace hybridního vyhledávání (pgvector + full-text RRF fúze).
   - 📁 `schemas/` — Složka Pydantic schémat pro validaci vstupních a výstupních dat API.
     - 📄 `chat.py` — Pydantic schémata pro chatové dotazy, odpovědi a citace.
     - 📄 `documents.py` — Pydantic schémata pro dokumenty, pasáže a metadata.
   - 📁 `storage/` — Složka pro práci s databází PostgreSQL a ORM modely.
+    - 📄 `acl.py` — Transakční synchronizace grantů při ORM zápisech, bezpečný bulk insert chunků a explicitní backfill projekce.
+    - 📄 `vector_store.py` — Spravuje immutable profilové indexy, transakční vector zápisy, revize vstupu a přesné nativní i lokální hledání.
+    - 📄 `ann_search.py` — Ověřuje DiskANN katalog, vykonává filtrované ANN hledání a řídí explicitní režimy, timeouty a diagnostiku.
     - 📄 `db.py` — Modul pro inicializaci SQLAlchemy databázového připojení a relací.
     - 📄 `models.py` — SQLAlchemy ORM modely reprezentující tabulky dokumentů, pasáží a uživatelů.
 
@@ -149,6 +186,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📁 `components/` — Adresář components v aplikaci uživatelského frontendu.
       - 📄 `AuthModal.tsx` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (AuthModal.tsx).
       - 📄 `PdfViewerModal.tsx` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (PdfViewerModal.tsx).
+      - 📄 `AuthenticatedPdf.tsx` — Autentizované načtení PDF přes bearer fetch a blob prohlížeč bez tokenu v URL.
       - 📄 `ThreadSidebar.tsx` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (ThreadSidebar.tsx).
     - 📁 `config/` — Adresář config v aplikaci uživatelského frontendu.
       - 📄 `themes.ts` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (themes.ts).
@@ -181,6 +219,7 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📁 `app/` — Adresář app v aplikaci administračního frontendu.
     - 📁 `components/` — Adresář components v aplikaci administračního frontendu.
       - 📄 `AuthModal.tsx` — Zdrojový soubor komponenty nebo stránky administračního frontendu (AuthModal.tsx).
+      - 📄 `authenticatedPdf.ts` — Autentizované otevření PDF z administrace přes blob URL bez zveřejnění tokenu v odkazu.
     - 📁 `config/` — Adresář config v aplikaci administračního frontendu.
       - 📄 `themes.ts` — Zdrojový soubor komponenty nebo stránky administračního frontendu (themes.ts).
     - 📄 `favicon.ico` — Zdrojový soubor komponenty nebo stránky administračního frontendu (favicon.ico).
@@ -250,7 +289,23 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `ADR-0016-azure-sql-database-migration.md` — Záznam architektonického rozhodnutí: ADR-0016-azure-sql-database-migration.md.
     - 📄 `ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md` — Záznam architektonického rozhodnutí: Přechod na Azure SQL DTU nákupní model a 3-tier Resource Group architekturu (ADR-0017-azure-sql-dtu-model-and-resource-group-architecture.md).
     - 📄 `ADR-0018-unified-tenant-directory-and-fallback-system.md` — Záznam architektonického rozhodnutí: Sjednocená adresářová struktura tenants/ a souborový fallback systém (ADR-0018-unified-tenant-directory-and-fallback-system.md).
-  - 📁 `architecture/` — Složka s podkladovými nemocničními směrnicemi a řády (architecture).
+    - 📄 `ADR-0019-embedding-profiles-and-provider-factories.md` — Rozhodnutí o identitě embeddingových profilů a centrálním výběru modelových providerů.
+    - 📄 `ADR-0020-local-sqlserver-and-isolated-test-profile.md` — Rozhodnutí o lokálním SQL Serveru a bezpečném oddělení profilů local/test od cloudové konfigurace.
+    - 📄 `ADR-0021-authoritative-search-identity-and-relational-acl.md` — Rozhodnutí o ověřené identitě, relačních ACL, SQL prefiltrech a ochraně náhledů i historie.
+    - 📄 `ADR-0022-local-university-fixtures-and-unicode.md` — Rozhodnutí o automatických lokálních PDF ukázkách, profilech embeddingů a Unicode textech SQL Serveru.
+    - 📄 `ADR-0023-profile-index-catalog-and-exact-vector-storage.md` — Rozhodnutí o profilovém katalogu, nativních vector tabulkách, revizích a úplném přesném hledání.
+    - 📄 `ADR-0024-explicit-diskann-search-and-failure-policy.md` — Rozhodnutí o DiskANN verze alespoň 3, prefiltrech, explicitních režimech a chybách bez fallbacku.
+    - 📄 `ADR-0025-reproducible-search-evaluation-and-human-activation.md` — Rozhodnutí o oddělení cache/modelů, benchmark metrikách, ochraně porovnatelnosti a lidské aktivaci.
+    - 📄 `ADR-0026-reviewed-existing-app-releases.md` — Odděluje image release od migrací, secrets a ingestace s výchozím čtecím plánem.
+    - 📄 `ADR-0027-keyvault-jwt-and-password-hash-migration.md` — Odděluje JWT a Argon2 hesla s explicitním legacy verifierem a transakčním přechodem při přihlášení.
+  - 📁 `development/` — Návody pro lokální vývoj a běžné vývojářské úlohy.
+    - 📄 `local-setup.md` — Postup pro první lokální spuštění ve VS Code, práci s databází a izolované testy.
+    - 📄 `search-slice-2-testing.md` — Automatické i ruční ověření search slice 2 s lokálním SQL Serverem a Azure integrační hranicí.
+    - 📄 `search-slice-3-testing.md` — Lokální migrace, akceptace přesného profilového hledání a bezpečné spuštění native Azure testu.
+    - 📄 `search-slice-4-testing.md` — Návod k lokálním ANN kontraktům, diagnostice a pozdějšímu nativnímu Azure ověření.
+    - 📄 `search-slice-5-testing.md` — Návod ke spuštění benchmark CLI z VS Code, interpretaci reportů a dokončení cloudových bran.
+  - 📁 `architecture/` — Architektonické podklady a schválené plány dalšího vývoje aplikace.
+    - 📄 `azure-sql-search-roadmap.md` — Schválený plán pěti sliců Azure SQL vyhledávání se stavem, podmínkami dokončení, testy a hranicemi rozsahu.
     - 📄 `app_database_usage_info_dump.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (app_database_usage_info_dump.md).
   - 📁 `deployments/` — Složka s návody a prameny pro nasazení do Azure cloudu.
     - 📄 `azure_bicep_provisioning_guide.md` — Dokumentace a návod k nasazení: azure_bicep_provisioning_guide.md.
@@ -267,10 +322,18 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📁 `runbooks/` — Složka s podkladovými nemocničními směrnicemi a řády (runbooks).
     - 📄 `azure-first-deployment.md` — Podkladový PDF dokument nemocniční směrnice určený k indexaci (azure-first-deployment.md).
   - 📁 `tests_explained/` — Složka s detailním vysvětlením jednotlivých testů pro vývojáře.
+    - 📄 `conftest.md` — Vysvětlení izolované SQLite databáze, tenantích overlay a skutečných testovacích manager tokenů.
+    - 📄 `test_search_access.md` — Vysvětlení SQLite a SQL Server regresí prefiltrů, identity, ACL a transitivní historie.
+    - 📄 `test_vector_store.md` — Vysvětlení testů profilového katalogu, úplného hledání, životnosti embeddingů a native Azure integrační brány.
+    - 📄 `test_rollout_schema.md` — Popisuje test přesné tenant/Unicode migrace, count guardů a samostatné Azure ověření FTS obnovy.
+    - 📄 `test_ann_search.md` — Vysvětlení ANN SQL kontraktů, chybové politiky, ODBC timeoutů a odloženého cloudového testu.
+    - 📄 `test_native_sql_harness.md` — Vysvětluje izolaci skutečných native testů ve vlastním schématu, Entra přihlášení a bezpečný úklid.
+    - 📄 `test_search_benchmark.md` — Vysvětlení benchmark metrik, cache, identity, driftu, orchestrace a aktivačních bran.
     - 📄 `test_health.md` — Dokumentace s vysvětlením testovacího modulu test_health.md.
     - 📄 `test_hybrid_retrieval.md` — Dokumentace s vysvětlením testovacího modulu test_hybrid_retrieval.md.
     - 📄 `test_ingestion.md` — Dokumentace s vysvětlením testovacího modulu test_ingestion.md.
     - 📄 `test_keyvault_config.md` — Dokumentace s vysvětlením testovacího modulu test_keyvault_config.py pro Azure Key Vault integraci a 100% paritu klíčů.
+    - 📄 `test_password_migration.md` — Vysvětluje ověření Argon2, tenant izolace, legacy přechodu, JWT rotace a rollbacku SQL zápisů.
     - 📄 `test_metadata_tagging.md` — Dokumentace s vysvětlením testovacího modulu test_metadata_tagging.md.
     - 📄 `test_multi_tenant_auth.md` — Dokumentace s vysvětlením testovacího modulu test_multi_tenant_auth.md.
     - 📄 `test_pdf_annotations.md` — Dokumentace s vysvětlením testovacího modulu test_pdf_annotations.md.
@@ -281,6 +344,10 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
     - 📄 `test_security_freshness.md` — Dokumentace s vysvětlením testovacího modulu test_security_freshness.md.
     - 📄 `test_security_prefilter.md` — Dokumentace s vysvětlením testovacího modulu test_security_prefilter.md.
     - 📄 `test_tenant_config.md` — Dokumentace s vysvětlením testovacího modulu test_tenant_config.md pro ověření tenant resolveru a fallbacku.
+    - 📄 `test_embedding_profiles.md` — Vysvětlení testů identity embeddingových profilů, validace vektorů, Azure adaptéru a provider factory.
+    - 📄 `test_local_development_config.md` — Vysvětlení testů volby a validace lokálního SQL Server backendu.
+    - 📄 `test_dev_script.md` — Vysvětlení regresních testů Docker stderr varování a exit kódů ve vývojovém PowerShell skriptu.
+    - 📄 `test_backend_deployment.md` — Vysvětluje skutečné PowerShell testy read-only plánu, release guardů a image-only update s falešným Azure CLI.
     - 📄 `test_tenant_prompts.md` — Dokumentace s vysvětlením testovacího modulu test_tenant_prompts.md.
     - 📄 `test_vector_db.md` — Dokumentace s vysvětlením testovacího modulu test_vector_db.md.
 
@@ -288,11 +355,20 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
 
 ## 9. Automatizované Testy (`tests/`)
 
+  - 📄 `test_search_access.py` — Regresní scénáře autorizace a prefiltrů se skutečnou izolovanou lokální SQL Server variantou.
+  - 📄 `test_vector_store.py` — Ověřuje profilové indexy, přesný top K, transakce a volitelnou skutečnou native Azure SQL cestu.
+  - 📄 `test_ann_search.py` — Testuje DiskANN režimy, SQL prefiltry, diagnostiku, timeouty a volitelnou nativní Azure integraci.
+  - 📄 `native_sql_harness.py` — Umožňuje native integraci přes Entra CLI v novém izolovaném schématu existující testovací databáze.
+  - 📄 `test_native_sql_harness.py` — Ověřuje ochranné podmínky, překlad schématu a lokální MSSQL úklid bez zásahu do původních tabulek.
+  - 📄 `test_search_benchmark.py` — Ověřuje read-only benchmark na SQLite i MSSQL, správnost metrik a bezpečné odmítnutí aktivace.
+
   - 📄 `conftest.py` — Testovací modul pytest ověřující funkčnost conftest.py.
   - 📄 `test_health.py` — Testovací modul pytest ověřující funkčnost test_health.py.
   - 📄 `test_hybrid_retrieval.py` — Testovací modul pytest ověřující funkčnost test_hybrid_retrieval.py.
   - 📄 `test_ingestion.py` — Testovací modul pytest ověřující funkčnost test_ingestion.py.
   - 📄 `test_keyvault_config.py` — Testovací modul pytest ověřující načítání sekretů z Azure Key Vault a 100% paritu klíčů v tenant environment souborech.
+  - 📄 `test_password_migration.py` — Ověřuje bezpečný přechod hesel při loginu na SQLite a lokálním SQL Serveru bez změn v Azure.
+  - 📄 `test_rollout_schema.py` — Ověřuje schema migraci na izolovaném lokálním SQL Serveru s ochranou podobně pojmenovaných tenantů a transakčním rollbackem.
   - 📄 `test_metadata_tagging.py` — Testovací modul pytest ověřující funkčnost test_metadata_tagging.py.
   - 📄 `test_multi_tenant_auth.py` — Testovací modul pytest ověřující funkčnost test_multi_tenant_auth.py.
   - 📄 `test_pdf_annotations.py` — Testovací modul pytest ověřující funkčnost test_pdf_annotations.py.
@@ -304,9 +380,21 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
   - 📄 `test_security_prefilter.py` — Testovací modul pytest ověřující funkčnost test_security_prefilter.py.
   - 📄 `test_tenant_config.py` — Testovací modul pytest ověřující funkčnost tenant resolveru, rezoluce souborů a fallbacku z default.
   - 📄 `test_tenant_prompts.py` — Testovací modul pytest ověřující funkčnost test_tenant_prompts.py.
+  - 📄 `test_embedding_profiles.py` — Testy fingerprintu profilu, validace vektorů, zpracování dotazů a dokumentů a výběru providerů.
+  - 📄 `test_local_development_config.py` — Testy izolované konfigurace lokální databáze SQL Server.
+  - 📄 `test_dev_script.py` — Regresní testy skutečného vývojového skriptu v PowerShellu s nativní simulací Docker varování a chyb.
+  - 📄 `test_backend_deployment.py` — Ověřuje plán, ochrany cíle a chyb, zachování runtime konfigurace a blokování kombinovaného deploymentu.
   - 📄 `test_vector_db.py` — Testovací modul pytest ověřující funkčnost test_vector_db.py.
 
 ---
+
+## Testovací dokumenty (`fixtures/`)
+
+- `fixtures/` — Verzované zdrojové dokumenty pro opakovatelné lokální testování aplikace.
+  - `fixtures/local-university/` — Dva jednostránkové české PDF o fiktivní Vysoké škole Aurora určené pro lokální automatickou indexaci.
+    - `fixtures/local-university/studijni-rad.pdf` — Ukázkový dokument popisující semestry, kredity, zápis předmětů, zkoušky a přerušení studia.
+    - `fixtures/local-university/sluzby-studentum.pdf` — Ukázkový dokument popisující studijní oddělení, knihovnu, koleje, stipendium a Erasmus.
+    - `fixtures/local-university/search-smoke.json` — Osm českých dotazů a filtrů pro lokální benchmark smoke nad ukázkami Aurora.
 
 ## 10. Metadatový balíček Python (`ai_search_app.egg-info/`)
 
@@ -351,3 +439,12 @@ Tento dokument poskytuje přehled a organizační strukturu repozitáře projekt
       - 📄 `search_config.json` — Metaparametry dělení textu a vyhledávání pro Showcase tenanta.
 
 
+
+## Doplnění v0.1.4
+
+- `app/retrieval/keyword.py` — Sestavuje nativní SQL fulltext s bezpečnými parametry a oprávněními před top K.
+- `tests/test_keyword_search.py` — Ověřuje fulltext SQL, chyby a izolované Azure české a ACL scénáře.
+- `docs/tests_explained/test_keyword_search.md` — Vysvětluje ověření nové keyword větve a její skutečné Azure testování.
+- `docs/adr/ADR-0028-native-keyword-and-jhu-ann-activation.md` — Popisuje nativní keyword větev a řízenou aktivaci ANN na JHU.
+- `scratch/jhu_ann_release.py` — Provádí schválené fáze v0.1.4 na JHU se snapshoty, kontrolou cíle a bezpečným výstupem.
+- `.local/deployments/jhu-ann-20261015/` — Uchovává ignorované nesekretní checkpointy a souhrn měření ANN pro tuto aktivaci.

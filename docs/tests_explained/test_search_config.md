@@ -56,3 +56,14 @@ This test suite validates our dynamic **Search Retrieval Settings** and **Contex
   * Seeds chunks containing page number `5` and section title `"Kapitola 1"`.
   * Matcher retrieves chunk `10` and calls `_expand_context` under `"page"` and `"section"` modes.
   * Asserts that all chunks from page `5` / section `"Kapitola 1"` are concatenated sequentially.
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+Rozšíření kontextu se provádí se známými oprávněními uživatele.
+
+### Technicky
+
+Siblings/page/section testy předávají explicitní QueryContext s User skupinou; Public je kompatibilní veřejný grant. Bez kontextu již expansion nelze vyvolat.

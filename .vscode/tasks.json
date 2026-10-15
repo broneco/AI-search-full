@@ -1,0 +1,100 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AI Search: local database",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\dev.ps1",
+        "-Action",
+        "start-db"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Search: backend",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\dev.ps1",
+        "-Action",
+        "backend"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "ai-search-backend",
+        "pattern": [{ "regexp": ".*" }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*Uvicorn running on.*",
+          "endsPattern": ".*Application startup complete.*"
+        }
+      }
+    },
+    {
+      "label": "AI Search: user frontend",
+      "type": "shell",
+      "command": "npm run dev -- --hostname 127.0.0.1",
+      "options": { "cwd": "${workspaceFolder}\\frontend-user" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "ai-search-frontend",
+        "pattern": [{ "regexp": ".*" }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*Next.js.*",
+          "endsPattern": ".*(Ready in|Local:).*"
+        }
+      }
+    },
+    {
+      "label": "AI Search: start local app",
+      "dependsOn": [
+        "AI Search: local database",
+        "AI Search: backend",
+        "AI Search: user frontend"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Search: stop local database",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\dev.ps1",
+        "-Action",
+        "stop-db"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Search: run isolated tests",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\dev.ps1",
+        "-Action",
+        "test"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

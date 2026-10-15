@@ -20,3 +20,14 @@ This test suite validates lightweight database-backed authentication, multi-tena
 4. **Multi-Tenant User Isolation (`test_multi_tenant_user_isolation`)**:
    - Creates a user under a different `tenant_id` (`"other_tenant"`).
    - Verifies that attempting to authenticate against tenant `"dolphin"` fails with `401 Unauthorized`.
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+Registrace nepřiděluje Management; přihlášení a konverzace patří ověřenému tenantovi.
+
+### Technicky
+
+Test registrace nyní očekává role User a jedinou skupinu User i při žádosti o Management. Thread CRUD nadále používá podepsaný token a skutečný serverový účet.

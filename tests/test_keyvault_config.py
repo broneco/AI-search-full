@@ -1,93 +1,112 @@
-"""
-Unit tests for Azure Key Vault secret resolution and tenant environment structural key parity.
-"""
-
-import sys
-import os
+"""Isolated Key Vault resolution; never call Azure or persist secret values."""
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import pytest
+import azure.identity
+import azure.keyvault.secrets
 
 from app.core.config import Settings
 
 
 def test_tenant_env_structural_key_parity():
-    """Verify 100% structural key parity across all tenant .env files in tenants/."""
-    all_keys = set()
-    file_keys = {}
-    
-    for root, dirs, files in os.walk("tenants"):
-        for file in files:
-            if ".env" in file:
-                path = os.path.join(root, file)
-                keys = []
-                with open(path, "r", encoding="utf-8") as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k = line.split("=", 1)[0].strip()
-                            keys.append(k)
-                            all_keys.add(k)
-                file_keys[path] = set(keys)
-                
-    assert len(file_keys) == 10, f"Expected 10 tenant .env files, found {len(file_keys)}"
-    
+    files = list(Path("tenants").rglob(".env*"))
+    files = [path for path in files if path.is_file()]
+    file_keys = {path: {line.split("=", 1)[0].strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#") and "=" in line}
+        for path in files}
+    assert len(file_keys) == 10
+    all_keys = set().union(*file_keys.values())
     for path, keys in file_keys.items():
-        missing = all_keys - keys
-        assert not missing, f"File {path} is missing keys: {missing}"
-        assert len(keys) == len(all_keys), f"Key count mismatch in {path}: {len(keys)} vs {len(all_keys)}"
+        assert keys == all_keys, f"Key parity mismatch in {path}: {all_keys - keys}"
 
 
-def test_keyvault_dynamic_secret_fetching():
-    """Test dynamic fetching of secrets from Azure Key Vault when env vars are missing."""
-    mock_secret = MagicMock()
-    mock_secret.value = "secret-from-keyvault-123"
-    
-    mock_client = MagicMock()
-    mock_client.get_secret.return_value = mock_secret
-    
-    mock_kv_mod = MagicMock()
-    mock_kv_mod.SecretClient.return_value = mock_client
-    
-    mock_id_mod = MagicMock()
-    
-    with sys.modules.setdefault("azure.identity", mock_id_mod), \
-         sys.modules.setdefault("azure.keyvault.secrets", mock_kv_mod):
-        
-        # Override mock module attributes in case azure package was partially loaded
-        import types
-        azure_mod = sys.modules.get("azure", types.ModuleType("azure"))
-        azure_kv = types.ModuleType("keyvault")
-        azure_kv_secrets = types.ModuleType("secrets")
-        azure_kv_secrets.SecretClient = MagicMock(return_value=mock_client)
-        
-        azure_identity = types.ModuleType("identity")
-        azure_identity.DefaultAzureCredential = MagicMock()
-        
-        sys.modules["azure"] = azure_mod
-        sys.modules["azure.identity"] = azure_identity
-        sys.modules["azure.keyvault"] = azure_kv
-        sys.modules["azure.keyvault.secrets"] = azure_kv_secrets
-        
-        test_settings = Settings(
-            AZURE_KEY_VAULT_NAME="test-kv-name",
-            AZURE_KEY_VAULT_SECRET_SQL_PASSWORD="test-sql-secret",
-            AZURE_KEY_VAULT_SECRET_OPENAI_KEY="test-openai-secret",
-            AZURE_KEY_VAULT_SECRET_STORAGE_CONNSTR="test-storage-secret",
-            AZURE_KEY_VAULT_SECRET_POSTGRES_PASSWORD="test-pg-secret",
-            AZURE_SQL_PASSWORD=None,
-            AZURE_OPENAI_API_KEY=None,
-            AZURE_STORAGE_CONNECTION_STRING=None,
-            POSTGRES_PASSWORD=None,
-        )
-        
-        assert test_settings.AZURE_SQL_PASSWORD == "secret-from-keyvault-123"
-        assert test_settings.AZURE_OPENAI_API_KEY == "secret-from-keyvault-123"
-        assert test_settings.AZURE_STORAGE_CONNECTION_STRING == "secret-from-keyvault-123"
-        assert test_settings.POSTGRES_PASSWORD == "secret-from-keyvault-123"
+@pytest.fixture
+def vault(monkeypatch):
+    client = MagicMock()
+    client.get_secret.side_effect = lambda name, **kw: SimpleNamespace(value="value-for-" + name)
+    constructor = MagicMock(return_value=client)
+    monkeypatch.setattr(azure.identity, "DefaultAzureCredential", MagicMock())
+    monkeypatch.setattr(azure.keyvault.secrets, "SecretClient", constructor)
+    return client, constructor
 
 
-if __name__ == "__main__":
-    test_tenant_env_structural_key_parity()
-    test_keyvault_dynamic_secret_fetching()
-    print("ALL KEYVAULT CONFIG TESTS PASSED SUCCESSFULLY!")
+def config(**overrides):
+    values = dict(_env_file=None, APP_ENV="prod", DATABASE_BACKEND="postgresql",
+        AZURE_KEY_VAULT_NAME="unit-test-vault", JWT_SECRET="", LEGACY_PASSWORD_SECRET=None,
+        AZURE_SQL_PASSWORD=None, AZURE_OPENAI_API_KEY=None, AZURE_STORAGE_CONNECTION_STRING=None,
+        POSTGRES_PASSWORD=None, AZURE_KEY_VAULT_SECRET_SQL_PASSWORD=None,
+        AZURE_KEY_VAULT_SECRET_OPENAI_KEY=None, AZURE_KEY_VAULT_SECRET_STORAGE_CONNSTR=None,
+        AZURE_KEY_VAULT_SECRET_POSTGRES_PASSWORD=None,
+        AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY=None,
+        AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY_VERSION=None,
+        AZURE_KEY_VAULT_SECRET_LEGACY_PASSWORD=None)
+    return Settings(**(values | overrides))
+
+
+def test_keyvault_dynamic_secret_fetching(vault):
+    result = config(AZURE_KEY_VAULT_SECRET_SQL_PASSWORD="sql", AZURE_KEY_VAULT_SECRET_OPENAI_KEY="openai",
+        AZURE_KEY_VAULT_SECRET_STORAGE_CONNSTR="storage", AZURE_KEY_VAULT_SECRET_POSTGRES_PASSWORD="pg")
+    for field, name in (("AZURE_SQL_PASSWORD", "sql"), ("AZURE_OPENAI_API_KEY", "openai"),
+                        ("AZURE_STORAGE_CONNECTION_STRING", "storage"), ("POSTGRES_PASSWORD", "pg")):
+        assert getattr(result, field) == "value-for-" + name
+
+
+@pytest.mark.parametrize("initial", ["", "dolphin-ai-search-secret-key-2026"])
+def test_jwt_and_legacy_are_separate_and_jwt_version_is_pinned(vault, initial):
+    client, constructor = vault
+    result = config(JWT_SECRET=initial, AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY="jwt-new",
+        AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY_VERSION="version-id",
+        AZURE_KEY_VAULT_SECRET_LEGACY_PASSWORD="password-old")
+    assert result.JWT_SECRET == "value-for-jwt-new"
+    assert result.LEGACY_PASSWORD_SECRET == "value-for-password-old"
+    client.get_secret.assert_any_call("jwt-new", version="version-id")
+    client.get_secret.assert_any_call("password-old")
+    constructor.assert_called_once()
+    assert result.JWT_SECRET not in repr(result)
+    assert result.LEGACY_PASSWORD_SECRET not in repr(result)
+    assert "JWT_SECRET" not in result.model_dump()
+    assert "LEGACY_PASSWORD_SECRET" not in result.model_dump()
+
+
+def test_explicit_private_runtime_keys_win_over_keyvault(vault):
+    client, _ = vault
+    result = config(JWT_SECRET="explicit-private-key", LEGACY_PASSWORD_SECRET="explicit-old-key",
+        AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY="jwt-new", AZURE_KEY_VAULT_SECRET_LEGACY_PASSWORD="old")
+    assert result.JWT_SECRET == "explicit-private-key"
+    assert result.LEGACY_PASSWORD_SECRET == "explicit-old-key"
+    client.get_secret.assert_not_called()
+
+
+@pytest.mark.parametrize("environment", ["local", "test"])
+def test_local_and_test_never_contact_keyvault(vault, environment):
+    _, constructor = vault
+    result = config(APP_ENV=environment, AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY="jwt",
+                    AZURE_KEY_VAULT_SECRET_LEGACY_PASSWORD="legacy")
+    assert result.JWT_SECRET == ""
+    assert result.LEGACY_PASSWORD_SECRET is None
+    constructor.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["denied", "empty", "default"])
+def test_failed_jwt_resolution_never_uses_legacy_key(vault, monkeypatch, capsys, failure):
+    from fastapi import HTTPException
+    from app.api.routes import auth
+    client, _ = vault
+    def resolve(name, **kwargs):
+        if name == "legacy":
+            return SimpleNamespace(value="legacy-not-for-signing")
+        if failure == "denied":
+            raise RuntimeError("private-provider-error-must-not-leak")
+        return SimpleNamespace(value="" if failure == "empty" else "dolphin-ai-search-secret-key-2026")
+    client.get_secret.side_effect = resolve
+    result = config(AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY="jwt", AZURE_KEY_VAULT_SECRET_LEGACY_PASSWORD="legacy")
+    monkeypatch.setattr(auth, "settings", result)
+    with pytest.raises(HTTPException) as error:
+        auth._signing_key()
+    assert error.value.status_code == 503
+    assert result.LEGACY_PASSWORD_SECRET == "legacy-not-for-signing"
+    captured = capsys.readouterr()
+    assert "private-provider-error" not in captured.out + captured.err

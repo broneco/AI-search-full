@@ -5,9 +5,10 @@ import datetime
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
-from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
+from app.providers.factory import create_embedding_provider, create_llm_provider
 from app.providers.blob_storage import BlobStorageProvider
 from app.core.config import settings
+from app.retrieval.filters import exact_value
 from app.ingestion.extraction import DocumentExtractor
 from app.ingestion.chunking import RecursiveCharacterTextSplitter
 from app.storage.models import DBDocument, DBChunk
@@ -26,9 +27,8 @@ class IngestionPipeline:
         from app.core.search_config import SearchConfigManager
         manager = SearchConfigManager()
         config = manager.load_config_sync()
-        from app.providers.azure_openai import AzureOpenAIProvider
-        self.embedding_provider = AzureOpenAIEmbeddingProvider()
-        self.llm_provider = AzureOpenAIProvider()
+        self.embedding_provider = create_embedding_provider()
+        self.llm_provider = create_llm_provider()
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=config.get("chunk_size", 1500),
             chunk_overlap=config.get("chunk_overlap", 250),
@@ -79,6 +79,7 @@ class IngestionPipeline:
             (DBDocument.source_uri == f"file://{relative_path}") |
             (DBDocument.source_uri == f"azure://{container_name}/{relative_path}")
         )
+        existing_doc_stmt = existing_doc_stmt.where(exact_value(DBDocument.tenant_id, settings.TENANT_ID, self.db.bind.dialect.name))
         existing_doc = self.db.execute(existing_doc_stmt).scalar_one_or_none()
 
         if existing_doc and existing_doc.checksum == checksum:
@@ -95,7 +96,7 @@ class IngestionPipeline:
             # Update language
             existing_doc.language = language
             self.db.add(existing_doc)
-            self.db.commit()
+            self.db.flush()
             
             # Update associated chunks as well
             update_data = {"language": language}
@@ -107,7 +108,17 @@ class IngestionPipeline:
                     update_data["freshness_status"] = metadata_json["freshness_status"]
                     
             if update_data:
-                self.db.query(DBChunk).filter(DBChunk.document_id == existing_doc.document_id).update(update_data)
+                for existing_chunk in self.db.query(DBChunk).filter(DBChunk.document_id == existing_doc.document_id).all():
+                    for key, value in update_data.items():
+                        if key == "metadata_json":
+                            # Profile provenance is server-owned, not incoming metadata.
+                            value = {k: v for k, v in value.items() if k != "embedding_profile_id"}
+                            old_profile = (existing_chunk.metadata_json or {}).get("embedding_profile_id")
+                            if old_profile:
+                                value["embedding_profile_id"] = old_profile
+                        setattr(existing_chunk, key, value)
+                        if key in {"security_acl", "metadata_json"}:
+                            flag_modified(existing_chunk, key)
                 self.db.commit()
                 
             logger.info(f"└─ 📋 Ingestion updated: {file_name}")
@@ -115,9 +126,7 @@ class IngestionPipeline:
 
         # If it exists but changed, delete old version to perform update
         if existing_doc:
-            logger.info(f"│  ├── ⚠️ Document {file_name} changed. cleaning old records...")
-            self.db.delete(existing_doc)
-            self.db.commit()
+            logger.info("Document changed; retaining its records until replacement embeddings are ready.")
 
         # 2. Extract text page-by-page
         logger.info(f"│  ├── [Step 2/5] Extracting text page-by-page using PyPDF...")
@@ -175,6 +184,9 @@ class IngestionPipeline:
                 except Exception as e:
                     logger.warning(f"│  │   ⚠️ Azure Blob upload failed: {e}. Falling back to local storage path.")
 
+            if existing_doc:
+                self.db.delete(existing_doc)
+                self.db.flush()
             doc = DBDocument(
                 source_type=source_type,
                 source_uri=source_uri,
@@ -188,8 +200,7 @@ class IngestionPipeline:
                 created_at=created_at_dt,
             )
             self.db.add(doc)
-            self.db.commit()
-            self.db.refresh(doc)
+            self.db.flush()
             logger.info(f"│  │   ├── Parent DBDocument row created successfully. ID: {doc.document_id}")
 
             from sqlalchemy import insert
@@ -213,7 +224,8 @@ class IngestionPipeline:
 
             # Executing a single batch SQL insert is highly optimal for remote WAN connections
             logger.info(f"│  │   ├── Executing bulk database insertion for {len(chunk_mappings)} chunks...")
-            self.db.execute(insert(DBChunk), chunk_mappings)
+            from app.storage.vector_store import write_chunks
+            write_chunks(self.db, chunk_mappings, self.embedding_provider.profile)
             self.db.commit()
             logger.info("│  │   └── Database transaction committed successfully.")
 

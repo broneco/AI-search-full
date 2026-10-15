@@ -1,5 +1,9 @@
 # Test Explanation: `test_rag_pipeline.py`
 
+## Doplnění slice 3
+
+Opt-in real-model RAG scénář po ingestaci explicitně aktivuje plně pokrytý profilový index; chat již nesmí používat neoznačený legacy JSON. Očekávaný metadata label je `vector_exact`. Test stále vyžaduje `RUN_AZURE_MODEL_TESTS=1` a reálné modelové credentials a ve standardní sadě skipuje.
+
 This test suite validates the **End-to-End Grounded RAG Chat Pipeline**. It ensures that the entire system—from ingesting a raw PDF, generating vector embeddings, executing hybrid retrieval with SSO security headers, to packing LLM contexts and generating answers with inline citation badges—operates correctly.
 
 ---
@@ -28,3 +32,14 @@ This test suite validates the **End-to-End Grounded RAG Chat Pipeline**. It ensu
     * An `"answer"` string is generated and contains substantial characters.
     * The `"sources"` list contains at least 1 grounded citation pointing to `"Corporate Firewall Protocols"`.
     * Retrieval metadata indicates the `vector_pgvector` search strategy was used and registers `latency_ms`.
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+RAG smoke používá autorizovaný serverový účet a vědomě zapnuté Azure modely.
+
+### Technicky
+
+rag_setup přidává manager_headers a kontroluje RUN_AZURE_MODEL_TESTS=1. Klientská Engineering hlavička již neurčuje oprávnění; účet Management má přístup z DB. Modelové calls zůstávají explicitní opt-in.

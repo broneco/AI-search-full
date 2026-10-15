@@ -1,6 +1,6 @@
 # Azure Resource & Deployment Handoff: JHU Produkční Prostředí (ju-ai-search-rg-prod)
 
-- Status: active_deployment
+- Status: completed
 - Created: 2026-09-25
 - Tenant: `ju` (JHU Client)
 - Environment: `prod`

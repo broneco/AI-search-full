@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.local/
 tenants/*/.env*
 tenants/**/.env*
 
@@ -42,6 +43,7 @@ build/
 temp_*
 *.tmp
 *.bak
+.tmp-pytest*/
 
 # Agent temporary local files
 .agents/inbox/*-local.md
@@ -52,5 +54,7 @@ scratch/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-.vscode/
+.vscode/*
+!.vscode/
+!.vscode/tasks.json
 .idea/

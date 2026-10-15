@@ -125,3 +125,16 @@ This test suite validates the **Automated Metadata Tagging and Archival System**
   * Asserts that the response returns status `200` and `"success"`.
   * Queries the database to verify that both the `DBDocument` and its corresponding `DBChunk` records have been updated to `freshness_status = "archived"`, category/department `"Management"`, release date `"2026-05-05T00:00:00"`, and security ACL allowed groups `["Management"]`.
   * Cleans up database records.
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+Změny kategorií a dokumentů provádí přihlášený testovací správce.
+
+### Technicky
+
+Module fixture manager_headers vytváří reálný DBUser s Management a přidává bearer do API volání; ACL změny současně synchronizují grant projekci přes ORM eventy.
+
+Confirmed-ingest testy používají vlastní dočasný staging adresář uvnitř data/, protože API odmítá jiné souborové cesty; fixture po sobě uklidí. Testy tak napodobují skutečný upload místo přístupu k libovolnému OS temp souboru.

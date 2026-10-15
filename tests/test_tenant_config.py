@@ -40,10 +40,13 @@ def test_tenant_file_resolution_and_fallback():
 
 
 def test_tenant_env_files_priority():
-    assert len(_ENV_FILES) >= 4
-    # Ensure tenant-specific directory env files are placed last (highest priority in Pydantic Settings)
-    highest_priority_entry = _ENV_FILES[-1]
-    assert "tenants" in highest_priority_entry
+    if settings.APP_ENV in {"local", "test"}:
+        assert _ENV_FILES == (f".env.{settings.APP_ENV}",)
+    else:
+        assert len(_ENV_FILES) >= 4
+        # Ensure tenant-specific directory env files are placed last (highest priority in Pydantic Settings)
+        highest_priority_entry = _ENV_FILES[-1]
+        assert "tenants" in highest_priority_entry
 
 
 def test_tenant_prompts_loading():

@@ -6,26 +6,37 @@ from typing import Generator, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.core.config import settings
+from app.retrieval.filters import exact_value
 
 logger = logging.getLogger(__name__)
 
 # Ensure Key Vault and default settings are resolved before database engine initialization
 settings.set_environment_defaults()
 
-# Connection string setup
-if settings.USE_AZURE_SQL:
-    logger.info(f"Connecting to Azure SQL Database at {settings.AZURE_SQL_HOST}/{settings.AZURE_SQL_DB}...")
+
+def _select_odbc_driver() -> str:
     import pyodbc
+
     available_drivers = pyodbc.drivers()
     selected_driver = settings.AZURE_SQL_DRIVER
     if selected_driver not in available_drivers:
-        for candidate in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server", "SQL Server"]:
-            if candidate in available_drivers:
-                selected_driver = candidate
-                break
+        selected_driver = next(
+            (candidate for candidate in ["ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server", "SQL Server"] if candidate in available_drivers),
+            selected_driver,
+        )
+    if selected_driver not in available_drivers:
+        raise RuntimeError("Install an ODBC driver for SQL Server on this computer (recommended: Microsoft ODBC Driver 17 or 18).")
+    return selected_driver
+
+# Connection string setup
+if settings.USE_AZURE_SQL:
+    target_label = "Azure SQL Database" if settings.DATABASE_BACKEND == "azure_sql" else "local SQL Server"
+    logger.info(f"Connecting to {target_label} at {settings.AZURE_SQL_HOST}/{settings.AZURE_SQL_DB}...")
+    selected_driver = _select_odbc_driver()
     logger.info(f"Using ODBC driver: '{selected_driver}'")
 
-    if settings.AZURE_SQL_PASSWORD:
+    if settings.AZURE_SQL_PASSWORD or settings.DATABASE_BACKEND == "sqlserver":
+        trust_server_certificate = "yes" if settings.DATABASE_BACKEND == "sqlserver" else "no"
         params = urllib.parse.quote_plus(
             f"DRIVER={{{selected_driver}}};"
             f"SERVER=tcp:{settings.AZURE_SQL_HOST},{settings.AZURE_SQL_PORT};"
@@ -33,7 +44,7 @@ if settings.USE_AZURE_SQL:
             f"UID={settings.AZURE_SQL_USER};"
             f"PWD={settings.AZURE_SQL_PASSWORD};"
             f"Encrypt=yes;"
-            f"TrustServerCertificate=no;"
+            f"TrustServerCertificate={trust_server_certificate};"
             f"Login Timeout=30;"
         )
         DATABASE_URL = f"mssql+pyodbc:///?odbc_connect={params}"
@@ -101,9 +112,29 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def ensure_database_exists() -> None:
-    """Connect to default database and create target database if it does not exist (PostgreSQL only)."""
-    if settings.USE_AZURE_SQL:
-        # Azure SQL Databases are created via Azure Portal / ARM / Bicep
+    """Ensure local databases exist; Azure SQL databases are provisioned outside the app."""
+    if settings.DATABASE_BACKEND == "azure_sql":
+        return
+
+    if settings.DATABASE_BACKEND == "sqlserver":
+        import pyodbc
+
+        driver = _select_odbc_driver()
+        database_literal = (settings.AZURE_SQL_DB or "ai_search_local").replace("'", "''")
+        database_identifier = (settings.AZURE_SQL_DB or "ai_search_local").replace("]", "]]" )
+        connection_string = (
+            f"DRIVER={{{driver}}};SERVER=tcp:{settings.AZURE_SQL_HOST},{settings.AZURE_SQL_PORT};"
+            f"DATABASE=master;UID={settings.AZURE_SQL_USER};PWD={settings.AZURE_SQL_PASSWORD};"
+            "Encrypt=yes;TrustServerCertificate=yes;Login Timeout=30;"
+        )
+        connection = pyodbc.connect(connection_string, autocommit=True)
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"IF DB_ID(N'{database_literal}') IS NULL CREATE DATABASE [{database_identifier}]"
+            )
+        finally:
+            connection.close()
         return
 
     base_url = (
@@ -129,16 +160,58 @@ def ensure_database_exists() -> None:
         logger.warning(f"Could not verify/create database '{target_db}': {e}")
 
 
+def ensure_local_unicode_columns(connection) -> None:
+    """Upgrade existing local text columns before full-text index verification.
+
+    Cloud schemas require a separate human migration. Names/types are fixed,
+    never supplied by a request or a tenant configuration.
+    """
+    if settings.APP_ENV != "local" or settings.DATABASE_BACKEND != "sqlserver":
+        return
+    if settings.AZURE_SQL_HOST not in {"localhost", "127.0.0.1", "::1"} or settings.AZURE_SQL_DB != "ai_search_local":
+        raise ValueError("Unicode startup migration is limited to loopback / ai_search_local.")
+    for table, column, target in (
+        ("documents", "title", "NVARCHAR(512)"),
+        ("chunks", "content", "NVARCHAR(MAX)"),
+        ("chat_threads", "title", "NVARCHAR(512)"),
+        ("chat_messages", "content", "NVARCHAR(MAX)"),
+    ):
+        current = connection.scalar(text(
+            "SELECT TYPE_NAME(system_type_id) FROM sys.columns "
+            "WHERE object_id = OBJECT_ID(:table) AND name = :column"
+        ), {"table": f"dbo.{table}", "column": column})
+        if current is None or current == "nvarchar":
+            continue
+        if table == "chunks":
+            connection.execute(text(
+                "IF EXISTS (SELECT 1 FROM sys.fulltext_indexes WHERE object_id = OBJECT_ID('dbo.chunks')) "
+                "DROP FULLTEXT INDEX ON dbo.chunks"
+            ))
+        connection.execute(text(f"ALTER TABLE dbo.[{table}] ALTER COLUMN [{column}] {target} NOT NULL"))
+        logger.info("Local Unicode column verified: %s.%s", table, column)
+
+
 def init_db() -> None:
     """Initialize database schemas, extensions, and tables."""
     from app.storage.models import Base
 
-    if settings.USE_AZURE_SQL:
+    if engine.dialect.name == "sqlite":
+        Base.metadata.create_all(bind=engine)
+    elif settings.USE_AZURE_SQL:
+        if settings.DATABASE_BACKEND == "sqlserver":
+            ensure_database_exists()
         logger.info("Initializing Azure SQL Database tables...")
         for attempt in range(1, 4):
             try:
                 with engine.begin() as conn:
-                    Base.metadata.create_all(bind=conn)
+                    if settings.DATABASE_BACKEND == "azure_sql":
+                        tables = [table for table in Base.metadata.sorted_tables
+                                  if table.name not in {"document_acl_grants", "chunk_acl_grants",
+                                      "embedding_profiles", "search_indexes", "active_search_indexes"}]
+                        Base.metadata.create_all(bind=conn, tables=tables)
+                    else:
+                        Base.metadata.create_all(bind=conn)
+                        ensure_local_unicode_columns(conn)
                 logger.info("Azure SQL base tables initialized successfully.")
                 break
             except Exception as e:
@@ -204,16 +277,25 @@ def init_db() -> None:
         except Exception as e:
             logger.error(f"Failed to create GIN full-text index: {e}")
 
+    if settings.DATABASE_BACKEND != "azure_sql":
+        from app.storage.acl import rebuild_acl_grants
+        with SessionLocal.begin() as session:
+            rebuild_acl_grants(session)
+
+    # Public demo credentials are only appropriate for isolated local/test runs.
+    if settings.APP_ENV not in {"local", "test"}:
+        logger.info("Database initialization complete; cloud demo seeding disabled.")
+        return
+
     # Seed default demo users if current TENANT_ID has no users yet
     try:
         from app.storage.models import DBUser
-        import hashlib
+        from app.core.passwords import hash_password
         with SessionLocal() as db_session:
             user_count = db_session.query(DBUser).filter(DBUser.tenant_id == settings.TENANT_ID).count()
             if user_count == 0:
                 logger.info(f"Seeding default demo users for tenant '{settings.TENANT_ID}'...")
-                hashed = hashlib.sha256(f"password123:{settings.JWT_SECRET}".encode("utf-8")).hexdigest()
-                admin_hashed = hashlib.sha256(f"DolphinAdmin26:{settings.JWT_SECRET}".encode("utf-8")).hexdigest()
+                admin_hashed = hash_password("DolphinAdmin26")
                 admin = DBUser(
                     tenant_id=settings.TENANT_ID,
                     email="admin@dolphin.cz",
@@ -226,7 +308,7 @@ def init_db() -> None:
                     tenant_id=settings.TENANT_ID,
                     email="user@dolphin.cz",
                     username="Dolphin Demo Uživatel",
-                    password_hash=hashed,
+                    password_hash=hash_password("password123"),
                     role="User",
                     groups=["User"],
                 )
@@ -234,7 +316,7 @@ def init_db() -> None:
                     tenant_id=settings.TENANT_ID,
                     email="user@dolphinconsulting.cz",
                     username="Dolphin Demo Uživatel",
-                    password_hash=hashed,
+                    password_hash=hash_password("password123"),
                     role="User",
                     groups=["User"],
                 )
@@ -284,13 +366,10 @@ def clear_document_data(tenant_id: Optional[str] = None) -> None:
         try:
             with SessionLocal() as db_session:
                 if tenant_id:
-                    tenant_base = tenant_id.lower().split("-")[0]
-                    tenant_variants = list(set([tenant_id, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
-                    
                     from sqlalchemy import select
-                    subq = select(DBDocument.document_id).where(DBDocument.tenant_id.in_(tenant_variants))
+                    subq = select(DBDocument.document_id).where(exact_value(DBDocument.tenant_id, tenant_id, engine.dialect.name))
                     db_session.query(DBChunk).filter(DBChunk.document_id.in_(subq)).delete(synchronize_session=False)
-                    db_session.query(DBDocument).filter(DBDocument.tenant_id.in_(tenant_variants)).delete(synchronize_session=False)
+                    db_session.query(DBDocument).filter(exact_value(DBDocument.tenant_id, tenant_id, engine.dialect.name)).delete(synchronize_session=False)
                 else:
                     db_session.query(DBChunk).delete()
                     db_session.query(DBDocument).delete()

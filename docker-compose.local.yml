@@ -1,0 +1,16 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: ai-search-sql-local
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${LOCAL_SQL_SA_PASSWORD:?Run dev.ps1 -Action start-db to create .env.local first}
+    ports:
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - ai_search_sql_local_data:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  ai_search_sql_local_data:

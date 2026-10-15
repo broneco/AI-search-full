@@ -15,7 +15,8 @@ TEST_PDF_PATH = os.path.abspath("data/test_highlight.pdf")
 
 
 @pytest.fixture(scope="module")
-def pdf_setup():
+def pdf_setup(manager_headers):
+    client.headers.update(manager_headers)
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1;"))

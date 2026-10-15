@@ -39,3 +39,14 @@ This test suite validates the **PDF Ingestion Pipeline**. It ensures that the do
   * Launches `IngestionPipeline` and calls its asynchronous method `pipeline.ingest_file(...)` wrapped inside an `anyio` async runner block.
   * Checks that the document is successfully uploaded to Azure Storage (setting `doc.source_type == "azure_blob"`) or falls back safely to local sandbox path logging (`doc.source_type == "local"`), depending on env configurations.
   * Runs a database `select` query on `DBChunk` using SQLAlchemy Core to assert that parent-child database relationships are created successfully and chunk text content matches the source string.
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+Reálné modelové volání se při běžné sadě nespouští automaticky.
+
+### Technicky
+
+Pipeline Azure integrační test vyžaduje RUN_AZURE_MODEL_TESTS=1 i platné credentials. Extrakční test zůstává offline; bulk ACL zápisy ověřuje také test_search_access bez Azure.

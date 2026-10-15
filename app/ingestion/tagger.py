@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.providers.azure_openai import AzureOpenAIProvider
+from app.providers.factory import create_llm_provider
 from app.providers.llm import ChatMessage
 from app.ingestion.extraction import DocumentExtractor
 from app.storage.models import DBDocument
@@ -28,7 +28,7 @@ class MetadataTagger:
     def __init__(self, db_session: Optional[Session] = None) -> None:
         self.db = db_session
         self.extractor = DocumentExtractor()
-        self.llm = AzureOpenAIProvider()
+        self.llm = create_llm_provider()
         self.blob_provider = BlobStorageProvider()
 
     async def load_config(self) -> Dict[str, Any]:

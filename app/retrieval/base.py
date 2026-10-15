@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from app.core.config import settings
 
 
 class RetrievalResult(BaseModel):
@@ -21,6 +22,7 @@ class QueryContext(BaseModel):
     """Contains query parameters, metadata filters, and security controls (ACL)."""
 
     query: str
+    tenant_id: str = Field(default_factory=lambda: settings.TENANT_ID)
     user_id: Optional[str] = None
     filters: Dict[str, Any] = {}
     acl_groups: List[str] = []

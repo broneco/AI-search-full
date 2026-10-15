@@ -59,6 +59,8 @@ def test_pdf_extraction_and_chunking(tmp_path):
 def test_pipeline_ingestion(db_setup, tmp_path):
     db = db_setup
 
+    if os.getenv("RUN_AZURE_MODEL_TESTS") != "1":
+        pytest.skip("Set RUN_AZURE_MODEL_TESTS=1 to opt in to real Azure model calls.")
     if not settings.AZURE_OPENAI_ENDPOINT or not settings.AZURE_OPENAI_API_KEY:
         pytest.skip("Azure OpenAI credentials are not configured.")
 

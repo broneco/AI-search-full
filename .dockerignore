@@ -5,6 +5,16 @@
 venv
 ENV
 .env
+.env.local
+.env.test
+.env.native-test
+.env.*
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.pfx
+.local
 .pytest_cache
 __pycache__
 *.pyc
@@ -13,6 +23,15 @@ __pycache__
 .agents
 ai_search_app.egg-info
 frontend
+frontend-admin
+frontend-user
+**/node_modules
+data
+data - full backup
+data-full backup
+scratch
+.tmp-*
+**/*.log
 docs
 tests
 docker-compose.yml

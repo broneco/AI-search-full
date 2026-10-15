@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
@@ -18,8 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
-COPY . .
+# Cloud settings are supplied at runtime; tenant env files are excluded by .dockerignore.
+COPY app ./app
+COPY tenants ./tenants
+COPY migrate_search_acl.py migrate_search_vectors.py benchmark_search.py ./
 
 EXPOSE 8000
 

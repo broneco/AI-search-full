@@ -1,22 +1,32 @@
 import json
 import uuid
+import datetime
+import time
 import numpy as np
 from typing import Any, List, Optional
-from sqlalchemy import select, text
-from sqlalchemy.orm import Session
+from sqlalchemy import select, text, func, or_
+from sqlalchemy.orm import Session, defer
+from sqlalchemy.exc import DBAPIError
 
 from app.core.config import settings
 from app.core.search_config import SearchConfigManager
 from app.retrieval.base import BaseRetriever, RetrievalResult, QueryContext
 from app.storage.models import DBChunk, DBDocument
+from app.storage.acl import acl_groups
+from app.retrieval.filters import eligibility_filters, CONTROL_KEYS, FILTER_COLUMNS
+from app.storage.vector_store import SearchIndexError
+from app.storage.ann_search import vector_candidates
+from app.storage.ann_search import SearchExecutionError, sql_query_timeout
+from app.retrieval.keyword import fulltext_candidates, fulltext_condition
 
 
 class VectorRetriever(BaseRetriever):
-    """Retrieve relevant document chunks using vector similarity (pgvector), lexical FTS, or hybrid RRF/Score Addition/Union fusion."""
+    """Profile-aware exact/DiskANN search, lexical retrieval and configured fusion."""
 
     def __init__(self, db_session: Session) -> None:
         """Initialize the retriever with a database session."""
         self.db = db_session
+        self.diagnostics = {}
 
     async def retrieve(
         self,
@@ -25,6 +35,7 @@ class VectorRetriever(BaseRetriever):
         **kwargs: Any,
     ) -> List[RetrievalResult]:
         """Perform document chunk retrieval based on the chosen strategy and dynamic search config."""
+        retrieval_started = time.perf_counter()
         # Load dynamic search settings
         search_config = kwargs.get("search_config")
         if not search_config:
@@ -49,6 +60,11 @@ class VectorRetriever(BaseRetriever):
         context_expansion_size = search_config.get("context_expansion_size", 1)
 
         query_embedding: Optional[List[float]] = kwargs.get("query_embedding")
+        query_profile = kwargs.get("query_profile")
+        self.diagnostics = {}
+        vector_mode = search_config.get("vector_search_mode", "exact")
+        if strategy in ("vector", "hybrid") and query_profile is None and settings.APP_ENV != "test":
+            raise SearchIndexError("Vector search requires an explicit query embedding profile.")
 
         if strategy in ("vector", "hybrid") and not query_embedding:
             raise ValueError(
@@ -58,16 +74,26 @@ class VectorRetriever(BaseRetriever):
         # 1. Fetch Candidates from Vector Search if selected (passing context for SQL pre-filtering)
         vector_results = []
         if strategy in ("vector", "hybrid") and query_embedding:
-            vector_results = self._get_vector_candidates(query_embedding, limit=vector_limit, context=context)
+            if query_profile is None and vector_mode != "exact":
+                raise SearchIndexError("ANN requires an explicit embedding profile.")
+            vector_results = (vector_candidates(self.db, context, query_embedding, query_profile, vector_limit,
+                                               vector_mode, diagnostics=self.diagnostics,
+                                               timeout_seconds=search_config.get("vector_query_timeout_seconds", 10),
+                                               plan=kwargs.get("vector_plan"))
+                              if query_profile is not None else self._get_vector_candidates(query_embedding, limit=vector_limit, context=context))
 
         # 2. Fetch Candidates from Keyword (FTS) Search if selected (passing context for SQL pre-filtering)
         keyword_results = []
+        keyword_started = time.perf_counter()
         if strategy in ("keyword", "hybrid"):
             keyword_results = self._get_fts_candidates(context.query, limit=keyword_limit, context=context)
+        self.diagnostics["keyword_latency_ms"] = round((time.perf_counter() - keyword_started) * 1000)
+        self.diagnostics["keyword_candidates"] = len(keyword_results)
 
         # 3. Apply ACL, Freshness, Metadata filters (secondary validation) and calculate scores
+        fusion_started = time.perf_counter()
         filtered_vector = self._apply_filters(vector_results, context, query_embedding, freshness_boost)
-        filtered_keyword = self._apply_filters(keyword_results, context, query_embedding, freshness_boost)
+        filtered_keyword = self._apply_filters(keyword_results, context, None, freshness_boost)
 
         # 4. Return results based on selected strategy
         final_results = []
@@ -90,66 +116,41 @@ class VectorRetriever(BaseRetriever):
             elif hybrid_strategy == "union":
                 final_results = self._fuse_union(filtered_vector, filtered_keyword, vector_final_limit, keyword_final_limit)
 
+        self.diagnostics["fusion_filter_latency_ms"] = round((time.perf_counter() - fusion_started) * 1000)
         # 5. Apply Context Expansion if enabled (passing context_max_tokens limit)
+        expansion_started = time.perf_counter()
         if context_expansion != "none":
             context_max_tokens = search_config.get("context_max_tokens", 4000)
             final_results = self._expand_context(
                 final_results, 
                 context_expansion, 
                 context_expansion_size,
-                max_tokens=context_max_tokens
+                max_tokens=context_max_tokens,
+                context=context,
             )
 
+        self.diagnostics["expansion_latency_ms"] = round((time.perf_counter() - expansion_started) * 1000)
+        self.diagnostics["retrieval_latency_ms"] = round((time.perf_counter() - retrieval_started) * 1000)
         return final_results
 
     def _build_sql_filters(self, context: QueryContext) -> List[Any]:
-        """Build SQLAlchemy expression filters for ACL, freshness, and tenant isolation."""
-        tenant_base = settings.TENANT_ID.split("-")[0]
-        tenant_variants = list(set([settings.TENANT_ID, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
-        filters = [DBDocument.tenant_id.in_(tenant_variants)]
-        
-        # 1. ACL pre-filtering
-        if "Management" not in context.acl_groups:
-            if not settings.USE_AZURE_SQL and self.db.bind.dialect.name == "postgresql":
-                from sqlalchemy.dialects.postgresql import ARRAY
-                from sqlalchemy import String, cast
-                user_groups_list = list(context.acl_groups) + ["User"]
-                user_groups_array = cast(user_groups_list, ARRAY(String))
-                
-                # Require both document and chunk to allow access
-                filters.append(DBDocument.security_acl.isnot(None))
-                filters.append(DBDocument.security_acl.has_key('allowed_groups'))
-                filters.append(DBDocument.security_acl['allowed_groups'].op('?|')(user_groups_array))
-                
-                filters.append(DBChunk.security_acl.isnot(None))
-                filters.append(DBChunk.security_acl.has_key('allowed_groups'))
-                filters.append(DBChunk.security_acl['allowed_groups'].op('?|')(user_groups_array))
-
-        # 2. Freshness pre-filtering
-        freshness = context.filters.get("freshness_filter", "all")
-        if freshness == "this_year":
-            from sqlalchemy import extract
-            filters.append(extract('year', DBDocument.created_at) == 2026)
-        elif freshness == "latest":
-            filters.append(DBDocument.freshness_status == "current")
-            
-        return filters
+        return eligibility_filters(context, self.db.bind.dialect.name)
 
     def _get_vector_candidates(self, query_embedding: List[float], limit: int, context: QueryContext) -> List[Any]:
-        """Execute vector select query to retrieve closest semantic chunks."""
+        """Compatibility reference for unprofiled isolated test fixtures only."""
+        if settings.APP_ENV != "test" or settings.DATABASE_BACKEND == "azure_sql":
+            raise SearchIndexError("Runtime vector search requires an explicit profile and catalog index.")
         filters = self._build_sql_filters(context)
 
         if settings.USE_AZURE_SQL or self.db.bind.dialect.name != "postgresql":
             # For Azure SQL / non-pgvector databases:
-            # 1. Pre-fetch candidate chunk IDs and JSON embeddings with candidate limit
-            candidate_limit = max(limit * 20, 300)
+            # Unprofiled fixtures are not used by runtime API search.
             stmt = (
                 select(DBChunk.chunk_id, DBChunk.document_id, DBChunk.embedding)
                 .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
             )
             if filters:
                 stmt = stmt.where(*filters)
-            stmt = stmt.limit(candidate_limit)
 
             raw_rows = self.db.execute(stmt).all()
             if not raw_rows:
@@ -193,6 +194,7 @@ class VectorRetriever(BaseRetriever):
                 select(DBChunk, DBDocument)
                 .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
                 .where(DBChunk.chunk_id.in_(top_chunk_ids))
+                .where(*filters)
             )
             model_rows = self.db.execute(final_stmt).all()
 
@@ -224,6 +226,27 @@ class VectorRetriever(BaseRetriever):
 
     def _get_fts_candidates(self, query_text: str, limit: int, context: QueryContext) -> List[Any]:
         """Execute Full-Text Search query and select rank value as a column."""
+        if self.db.bind.dialect.name == "mssql" and settings.DATABASE_BACKEND == "azure_sql":
+            try:
+                condition = fulltext_condition(query_text)
+            except ValueError as error:
+                raise SearchExecutionError("keyword_invalid_query", str(error), 400) from error
+            self.diagnostics["keyword_mode"] = "fulltext"
+            if condition is None:
+                return []
+            try:
+                # A missing/unready FTS index is an explicit service error. Never
+                # retry it with a costly LIKE scan on the cloud database.
+                with sql_query_timeout(self.db, 10):
+                    return fulltext_candidates(self.db, context, condition, limit)
+            except DBAPIError as error:
+                state = str(error.orig.args[0]) if getattr(error.orig, "args", ()) else ""
+                timeout = state in {"HYT00", "HYT01"}
+                raise SearchExecutionError("keyword_timeout" if timeout else "keyword_unavailable",
+                    "Keyword search timed out; no fallback scan was started." if timeout else
+                    "Keyword search is unavailable; verify the full-text index configuration.",
+                    504 if timeout else 503) from error
+        self.diagnostics["keyword_mode"] = "local_like" if self.db.bind.dialect.name != "postgresql" else "postgres_fulltext"
         # Clean punctuation and split into individual search keywords
         clean_text = query_text
         for char in "?.,!;:()[]{}":
@@ -234,28 +257,24 @@ class VectorRetriever(BaseRetriever):
             return []
 
         if settings.USE_AZURE_SQL or self.db.bind.dialect.name != "postgresql":
-            # Azure SQL / MS SQL keyword search using ILIKE / LIKE matching
-            from sqlalchemy import or_
-            like_filters = [DBChunk.content.ilike(f"%{w}%") for w in words]
+            # Filter and rank in SQL so ineligible high-scoring rows cannot
+            # consume top K, and only winning rows cross the database boundary.
+            escaped_words = [w.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") for w in words]
+            like_filters = [DBChunk.content.ilike(f"%{w}%", escape="\\") for w in escaped_words]
             filters = self._build_sql_filters(context)
+            length = func.len if self.db.bind.dialect.name == "mssql" else func.length
+            content = func.lower(DBChunk.content)
+            rank = sum((length(content) - length(func.replace(content, w.lower(), ""))) / len(w) for w in words)
             stmt = (
-                select(DBChunk, DBDocument)
+                select(DBChunk, DBDocument, rank.label("fts_rank")).options(defer(DBChunk.embedding))
                 .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
                 .where(or_(*like_filters))
             )
             if filters:
                 stmt = stmt.where(*filters)
             
-            rows = self.db.execute(stmt).all()
-            scored_rows = []
-            for row in rows:
-                chunk = row[0]
-                doc = row[1]
-                content_lower = chunk.content.lower()
-                matches = sum(content_lower.count(w.lower()) for w in words)
-                scored_rows.append((chunk, doc, float(matches)))
-            scored_rows.sort(key=lambda x: x[2], reverse=True)
-            return scored_rows[:limit]
+            stmt = stmt.order_by(rank.desc(), DBChunk.chunk_id).limit(limit)
+            return self.db.execute(stmt).all()
         else:
             fts_query = " | ".join(words)
             cfg = self._get_fts_config()
@@ -295,32 +314,21 @@ class VectorRetriever(BaseRetriever):
         for row in raw_db_results:
             chunk = row[0]
             doc = row[1]
-            fts_rank = row[2] if len(row) > 2 else 0.0
+            # SQL Server returns Decimal for the lexical rank expression. Keep
+            # all scores as floats before fusion and JSON response serialization.
+            fts_rank = float(row[2]) if len(row) > 2 and row[2] is not None else 0.0
 
-            # 1. Apply document-level ACL filtering
-            if doc.security_acl:
-                allowed_groups = doc.security_acl.get("allowed_groups", [])
-                if "Management" not in context.acl_groups:
-                    if "User" not in allowed_groups:
-                        if allowed_groups and not any(
-                            g in context.acl_groups for g in allowed_groups
-                        ):
-                            continue
-
-            # 2. Apply chunk-level ACL filtering
-            if chunk.security_acl:
-                chunk_allowed_groups = chunk.security_acl.get("allowed_groups", [])
-                if "Management" not in context.acl_groups:
-                    if "User" not in chunk_allowed_groups:
-                        if chunk_allowed_groups and not any(
-                            g in context.acl_groups for g in chunk_allowed_groups
-                        ):
-                            continue
+            if doc.tenant_id != context.tenant_id or chunk.tenant_id != context.tenant_id:
+                continue
+            if "Management" not in context.acl_groups:
+                groups = set(context.acl_groups) | {"User"}
+                if not (acl_groups(doc.security_acl) & groups and acl_groups(chunk.security_acl) & groups):
+                    continue
 
             # 3. Apply freshness filtering constraints
             freshness_filter = context.filters.get("freshness_filter", "all")
             if freshness_filter == "this_year":
-                if doc.created_at.year != 2026:
+                if doc.created_at.year != datetime.datetime.now(datetime.timezone.utc).year:
                     continue
             elif freshness_filter == "latest":
                 if doc.freshness_status != "current":
@@ -328,18 +336,13 @@ class VectorRetriever(BaseRetriever):
 
             # 4. Apply standard metadata filters (ignoring search configuration parameters)
             is_filtered = False
-            search_config_keys = {
-                "freshness_filter", "search_strategy", "hybrid_strategy", "vector_weight", "keyword_weight",
-                "rrf_k", "vector_limit", "keyword_limit", "final_limit", "vector_final_limit", 
-                "keyword_final_limit", "score_threshold", "freshness_boost", "context_expansion", 
-                "context_expansion_size", "chunk_size", "chunk_overlap", "context_max_tokens"
-            }
+            search_config_keys = CONTROL_KEYS
             for k, v in context.filters.items():
                 if k in search_config_keys:
                     continue
                 
-                doc_attr = getattr(doc, k, None)
-                chunk_attr = getattr(chunk, k, None)
+                doc_attr = getattr(doc, k, None) if k in FILTER_COLUMNS else None
+                chunk_attr = getattr(chunk, k, None) if k in FILTER_COLUMNS else None
                 doc_meta = doc.metadata_json or {}
                 chunk_meta = chunk.metadata_json or {}
                 
@@ -356,8 +359,8 @@ class VectorRetriever(BaseRetriever):
                 continue
 
             # Calculate cosine score if vector embedding is supplied
-            score = 0.0
-            if query_embedding is not None and chunk.embedding is not None:
+            score = float(row[3]) if len(row) > 3 else 0.0
+            if len(row) <= 3 and query_embedding is not None and chunk.embedding is not None:
                 try:
                     v1 = query_embedding
                     v2 = chunk.embedding
@@ -375,8 +378,8 @@ class VectorRetriever(BaseRetriever):
                     )
                     score = 0.0
 
-            # 5. Apply freshness boost if document is released in current year (2026)
-            if freshness_boost > 0.0 and doc.created_at.year == 2026:
+            # Apply freshness boost using the current UTC year.
+            if freshness_boost > 0.0 and doc.created_at.year == datetime.datetime.now(datetime.timezone.utc).year:
                 score += freshness_boost
 
             filtered_results.append(
@@ -544,14 +547,23 @@ class VectorRetriever(BaseRetriever):
         results: List[RetrievalResult], 
         expansion_type: str, 
         expansion_size: int,
-        max_tokens: int = 4000
+        max_tokens: int = 4000,
+        *,
+        context: QueryContext,
     ) -> List[RetrievalResult]:
         """Load surrounding sibling, page or section chunks to expand context passed to the LLM."""
         if not results or expansion_type == "none":
             return results
 
         expanded_results = []
+        eligible_ids = set(self.db.scalars(
+            select(DBChunk.chunk_id).join(DBDocument)
+            .where(DBChunk.chunk_id.in_([uuid.UUID(item.chunk_id) for item in results]))
+            .where(*self._build_sql_filters(context))
+        ).all())
         for item in results:
+            if uuid.UUID(item.chunk_id) not in eligible_ids:
+                continue
             doc_id = item.document_id
             if isinstance(doc_id, str):
                 try:
@@ -572,7 +584,9 @@ class VectorRetriever(BaseRetriever):
                 min_idx = max(0, chunk_idx - expansion_size)
                 max_idx = chunk_idx + expansion_size
                 stmt = (
-                    select(DBChunk.content, DBChunk.chunk_index)
+                    select(DBChunk.content, DBChunk.chunk_index, DBChunk.chunk_id)
+                    .join(DBDocument)
+                    .where(*self._build_sql_filters(context))
                     .where(DBChunk.document_id == doc_id)
                     .where(DBChunk.chunk_index >= min_idx)
                     .where(DBChunk.chunk_index <= max_idx)
@@ -580,14 +594,18 @@ class VectorRetriever(BaseRetriever):
                 )
             elif expansion_type == "page" and page_no is not None:
                 stmt = (
-                    select(DBChunk.content, DBChunk.chunk_index)
+                    select(DBChunk.content, DBChunk.chunk_index, DBChunk.chunk_id)
+                    .join(DBDocument)
+                    .where(*self._build_sql_filters(context))
                     .where(DBChunk.document_id == doc_id)
                     .where(DBChunk.page_number == page_no)
                     .order_by(DBChunk.chunk_index.asc())
                 )
             elif expansion_type == "section" and sect_title:
                 stmt = (
-                    select(DBChunk.content, DBChunk.chunk_index)
+                    select(DBChunk.content, DBChunk.chunk_index, DBChunk.chunk_id)
+                    .join(DBDocument)
+                    .where(*self._build_sql_filters(context))
                     .where(DBChunk.document_id == doc_id)
                     .where(DBChunk.section_title == sect_title)
                     .order_by(DBChunk.chunk_index.asc())
@@ -639,6 +657,10 @@ class VectorRetriever(BaseRetriever):
                         expanded_content = self._merge_chunks_with_highlight(selected_rows, chunk_idx)
                         expanded_item = item.model_copy()
                         expanded_item.content = expanded_content
+                        expanded_item.metadata = {
+                            **item.metadata,
+                            "context_chunk_ids": [str(row[2]) for row in selected_rows],
+                        }
                         expanded_results.append(expanded_item)
                         continue
                 except Exception as e:

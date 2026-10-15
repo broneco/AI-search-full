@@ -1,4 +1,4 @@
-# ADR-0019: <Decision title>
+# Šablona ADR: <Decision title>
 
 - Status: proposed
 - Date: YYYY-MM-DD

@@ -2,7 +2,7 @@ from typing import Any, AsyncIterator, List, Optional
 from openai import AsyncAzureOpenAI
 
 from app.core.config import settings
-from app.providers.embeddings import EmbeddingProvider
+from app.providers.embeddings import EmbeddingProfile, EmbeddingProvider
 from app.providers.llm import ChatMessage, LLMProvider
 
 
@@ -102,8 +102,9 @@ class AzureOpenAIProvider(LLMProvider):
 class AzureOpenAIEmbeddingProvider(EmbeddingProvider):
     """Real embedding provider implementing the EmbeddingProvider contract using Azure OpenAI."""
 
-    def __init__(self) -> None:
+    def __init__(self, profile: EmbeddingProfile) -> None:
         """Initialize the AsyncAzureOpenAI client."""
+        self._profile = profile
         self.endpoint = settings.AZURE_OPENAI_ENDPOINT
         self.api_key = settings.AZURE_OPENAI_API_KEY
         
@@ -124,17 +125,22 @@ class AzureOpenAIEmbeddingProvider(EmbeddingProvider):
             )
         return self.client
 
+    @property
+    def profile(self) -> EmbeddingProfile:
+        return self._profile
+
     async def embed_query(self, text: str) -> List[float]:
         client = self._get_client()
         deployment = settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT
 
         response = await client.embeddings.create(
-            input=[text],
+            input=[self.profile.prepare_query(text)],
             model=deployment,
-            # text-embedding-3-large supports custom dimensions; default matches database model.
-            dimensions=1536,
+            dimensions=self.profile.dimensions,
         )
-        return response.data[0].embedding
+        if not response.data:
+            raise ValueError("Azure OpenAI returned no query embedding.")
+        return self.profile.validate_vector(response.data[0].embedding)
 
     async def embed_documents(self, texts: List[str]) -> List[List[float]]:
         if not texts:
@@ -148,7 +154,8 @@ class AzureOpenAIEmbeddingProvider(EmbeddingProvider):
         results = []
         
         # Split texts into smaller batch arrays
-        batches = [texts[i : i + batch_size] for i in range(0, len(texts), batch_size)]
+        prepared_texts = [self.profile.prepare_document(text) for text in texts]
+        batches = [prepared_texts[i : i + batch_size] for i in range(0, len(prepared_texts), batch_size)]
         
         import asyncio
         
@@ -156,7 +163,7 @@ class AzureOpenAIEmbeddingProvider(EmbeddingProvider):
             response = await client.embeddings.create(
                 input=batch,
                 model=deployment,
-                dimensions=1536,
+                dimensions=self.profile.dimensions,
             )
             return [item.embedding for item in response.data]
 
@@ -168,4 +175,8 @@ class AzureOpenAIEmbeddingProvider(EmbeddingProvider):
         for br in batch_results:
             results.extend(br)
             
-        return results
+        if len(results) != len(texts):
+            raise ValueError(
+                f"Azure OpenAI returned {len(results)} document embeddings for {len(texts)} inputs."
+            )
+        return self.profile.validate_vectors(results)

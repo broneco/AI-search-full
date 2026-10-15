@@ -1,26 +1,31 @@
 import logging
 import time
 import uuid
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db_session
 from app.core.config import settings
 from app.core.prompts import get_system_prompt
 from app.core.search_config import SearchConfigManager, SearchConfigSchema
-from app.providers.azure_openai import AzureOpenAIProvider, AzureOpenAIEmbeddingProvider
+from app.providers.factory import create_embedding_provider, create_llm_provider
 from app.providers.llm import ChatMessage
 from app.retrieval.vector import VectorRetriever
 from app.retrieval.base import QueryContext
 from app.schemas.chat import ChatRequest, ChatResponse, ChatSource, ChatMetadata
+from app.api.identity import Principal, get_principal, require_manager
+from app.retrieval.filters import validate_filters, exact_value
+from app.retrieval.access import ACCESS_POLICY, authorized_history, history_references
+from app.storage.vector_store import SearchIndexError
+from app.storage.ann_search import prepare_vector_search, sql_query_timeout, SearchExecutionError, execution_error
+from sqlalchemy.exc import DBAPIError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Initialize providers
-llm_provider = AzureOpenAIProvider()
-embedding_provider = AzureOpenAIEmbeddingProvider()
+llm_provider = create_llm_provider()
+embedding_provider = create_embedding_provider()
 
 
 @router.post("", response_model=ChatResponse)
@@ -28,10 +33,8 @@ embedding_provider = AzureOpenAIEmbeddingProvider()
 @router.post("/query", response_model=ChatResponse, include_in_schema=False)
 async def chat_interaction(
     request: ChatRequest,
-    http_request: Request,
     db: Session = Depends(get_db_session),
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-    x_user_groups: Optional[str] = Header(None, alias="X-User-Groups"),
+    principal: Principal = Depends(get_principal),
 ) -> ChatResponse:
     """End-to-end grounded RAG chat endpoint with multi-turn history awareness."""
     start_time = time.time()
@@ -39,63 +42,31 @@ async def chat_interaction(
     # 1. Authenticate user & load multi-turn thread history first
     past_messages = []
     active_thread_id = None
-    current_db_user = None
+    from app.storage.models import DBUser
+    current_db_user = db.get(DBUser, principal.user_id)
+    filters = {k: v for k, v in request.filters.items()
+               if k != "additionalProp1" and v != {} and v is not None}
+    filters["freshness_filter"] = request.freshness_filter
+    try:
+        validate_filters(filters)
+    except ValueError as error:
+        raise HTTPException(422, str(error))
 
-    auth_header = http_request.headers.get("Authorization")
-    session_header = http_request.headers.get("X-Session-Token")
-    token = None
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "").strip()
-    elif session_header:
-        token = session_header.strip()
-
-    tenant_base = (settings.TENANT_ID or "dolphin").split("-")[0]
-    valid_tenants = list(set([settings.TENANT_ID, tenant_base, f"{tenant_base}-dev", f"{tenant_base}-prod"]))
-
-    if token:
+    config_manager = SearchConfigManager()
+    search_config = await config_manager.load_config()
+    vector_plan = None
+    if request.search_strategy in {"vector", "hybrid"}:
         try:
-            from app.api.routes.auth import decode_token
-            from app.storage.models import DBUser
-            payload = decode_token(token)
-            # 1. Try matching user_id for current tenant variants
-            current_db_user = db.query(DBUser).filter(
-                DBUser.tenant_id.in_(valid_tenants),
-                DBUser.user_id == uuid.UUID(payload["sub"])
-            ).first()
-            
-            # 2. Fallback: match by email for current tenant variants
-            if not current_db_user and payload.get("email"):
-                current_db_user = db.query(DBUser).filter(
-                    DBUser.tenant_id.in_(valid_tenants),
-                    DBUser.email == payload["email"].strip().lower()
-                ).first()
-
-            # 3. Fallback: match by user_id globally
-            if not current_db_user:
-                current_db_user = db.query(DBUser).filter(
-                    DBUser.user_id == uuid.UUID(payload["sub"])
-                ).first()
-        except Exception:
-            pass
-
-    if not current_db_user and x_user_id:
-        try:
-            from app.storage.models import DBUser
-            current_db_user = db.query(DBUser).filter(
-                DBUser.user_id == uuid.UUID(x_user_id)
-            ).first()
-        except Exception:
-            pass
-
-    if not current_db_user and not token and not x_user_id:
-        from app.storage.models import DBUser
-        current_db_user = db.query(DBUser).filter(DBUser.tenant_id.in_(valid_tenants)).first()
-
-    if not current_db_user:
-        raise HTTPException(
-            status_code=401,
-            detail="Přihlášení vyžadováno. Prosím přihlaste se k účtu.",
-        )
+            with sql_query_timeout(db, search_config.get("vector_query_timeout_seconds", 10)):
+                vector_plan = prepare_vector_search(db, principal.tenant_id, embedding_provider.profile,
+                                                    search_config.get("vector_search_mode", "exact"))
+        except DBAPIError as error:
+            controlled = execution_error(error, "preflight")
+            raise HTTPException(controlled.status_code, str(controlled), headers={"X-Search-Error-Code": controlled.code})
+        except SearchExecutionError as error:
+            raise HTTPException(error.status_code, str(error), headers={"X-Search-Error-Code": error.code})
+        except SearchIndexError as error:
+            raise HTTPException(503, str(error))
 
     from app.storage.models import DBChatThread, DBChatMessage
     user_question_title = request.query[:50] + ("..." if len(request.query) > 50 else "")
@@ -104,7 +75,7 @@ async def chat_interaction(
         try:
             t_uuid = uuid.UUID(request.thread_id)
             thread = db.query(DBChatThread).filter(
-                DBChatThread.tenant_id.in_(valid_tenants),
+                exact_value(DBChatThread.tenant_id, principal.tenant_id, db.bind.dialect.name),
                 DBChatThread.thread_id == t_uuid,
                 DBChatThread.user_id == current_db_user.user_id
             ).first()
@@ -112,7 +83,8 @@ async def chat_interaction(
                 active_thread_id = str(thread.thread_id)
                 past_messages = (
                     db.query(DBChatMessage)
-                    .filter(DBChatMessage.thread_id == t_uuid)
+                    .filter(DBChatMessage.thread_id == t_uuid,
+                            exact_value(DBChatMessage.tenant_id, principal.tenant_id, db.bind.dialect.name))
                     .order_by(DBChatMessage.created_at.asc())
                     .all()
                 )
@@ -120,8 +92,10 @@ async def chat_interaction(
                 if thread.title in ("Nová konverzace", "New Chat", "") or len(past_messages) == 0:
                     thread.title = user_question_title
                     db.commit()
-        except Exception:
-            pass
+            else:
+                raise HTTPException(404, "Konverzace nebyla nalezena.")
+        except ValueError:
+            raise HTTPException(400, "Invalid thread UUID.")
 
     if not active_thread_id:
         # Auto-create a new thread with user's question as title
@@ -140,7 +114,7 @@ async def chat_interaction(
 
     # 3. Embed retrieval query
     try:
-        logger.info(f"Generating vector embedding for retrieval query: '{retrieval_query}'")
+        logger.info("Generating query embedding for tenant %s", principal.tenant_id)
         query_embedding = await embedding_provider.embed_query(retrieval_query)
     except Exception as e:
         logger.error(f"Failed to generate query embedding: {e}")
@@ -153,38 +127,30 @@ async def chat_interaction(
     try:
         retriever = VectorRetriever(db)
         
-        user_id = x_user_id or "local_user"
-        user_groups_str = x_user_groups or "User"
-        acl_groups = [g.strip() for g in user_groups_str.split(",") if g.strip()]
-
-        filters = {}
-        if request.filters:
-            for k, v in request.filters.items():
-                if k != "additionalProp1" and v != {} and v is not None:
-                    filters[k] = v
-        filters["freshness_filter"] = request.freshness_filter
-
         context = QueryContext(
             query=retrieval_query,
-            user_id=user_id,
+            tenant_id=principal.tenant_id,
+            user_id=str(principal.user_id),
             filters=filters,
-            acl_groups=acl_groups,
+            acl_groups=list(principal.groups),
         )
-
-        config_manager = SearchConfigManager()
-        search_config = await config_manager.load_config()
 
         logger.info(f"Executing hybrid retrieval with strategy: {request.search_strategy}")
         retrieved_items = await retriever.retrieve(
             context,
             limit=search_config.get("final_limit", 5),
             query_embedding=query_embedding,
+            query_profile=embedding_provider.profile,
             search_strategy=request.search_strategy,
             search_config=search_config,
+            vector_plan=vector_plan,
         )
-        logger.info(f"RETRIEVAL_DEBUG: Retrieved {len(retrieved_items)} items for query: '{request.query}'")
-        for i, item in enumerate(retrieved_items):
-            logger.info(f"RETRIEVAL_DEBUG [{i+1}]: Title='{item.title}' | Page={item.page_number} | Snippet={repr(item.content[:80])}")
+        logger.info("Retrieved %s authorized chunks for tenant %s", len(retrieved_items), principal.tenant_id)
+        logger.info("Search diagnostics %s", retriever.diagnostics)
+    except SearchExecutionError as error:
+        raise HTTPException(error.status_code, str(error), headers={"X-Search-Error-Code": error.code})
+    except SearchIndexError as error:
+        raise HTTPException(503, str(error))
     except Exception as e:
         logger.error(f"Database vector retrieval failed: {e}")
         raise HTTPException(
@@ -212,6 +178,7 @@ async def chat_interaction(
                 freshness_status=item.freshness_status,
                 score=item.score,
                 allowed_groups=item.metadata.get("allowed_groups", []),
+                context_chunk_ids=item.metadata.get("context_chunk_ids", [item.chunk_id]),
             )
         )
 
@@ -220,7 +187,8 @@ async def chat_interaction(
 
     messages = [ChatMessage(role="system", content=system_message)]
     # Attach last 6 past message turns for multi-turn conversational context
-    for pm in past_messages[-6:]:
+    visible_history = authorized_history(db, past_messages[-6:], principal)
+    for pm in visible_history:
         messages.append(ChatMessage(role=pm.role, content=pm.content))
     messages.append(ChatMessage(role="user", content=request.query))
 
@@ -245,7 +213,16 @@ async def chat_interaction(
             from app.storage.models import DBChatMessage, DBChatThread
             import datetime
             t_uuid = uuid.UUID(active_thread_id)
-            sources_dict_list = [s.model_dump() for s in sources]
+            references = {(uuid.UUID(chunk_id), uuid.UUID(source.document_id))
+                          for source in sources for chunk_id in [source.chunk_id, *source.context_chunk_ids]}
+            for past in visible_history:
+                references.update(history_references(past) or set())
+            saved_evidence = {
+                "access_policy": ACCESS_POLICY,
+                "citations": [source.model_dump() for source in sources],
+                "access_refs": [{"chunk_id": str(cid), "document_id": str(did)}
+                                for cid, did in sorted(references)],
+            }
             user_msg = DBChatMessage(
                 tenant_id=settings.TENANT_ID,
                 thread_id=t_uuid,
@@ -257,7 +234,7 @@ async def chat_interaction(
                 thread_id=t_uuid,
                 role="assistant",
                 content=answer,
-                sources=sources_dict_list,
+                sources=saved_evidence,
             )
             db.add(user_msg)
             db.add(asst_msg)
@@ -271,17 +248,18 @@ async def chat_interaction(
     latency_ms = int((time.time() - start_time) * 1000)
 
     if request.search_strategy == "vector":
-        retrieval_strategy = "vector_pgvector"
+        retrieval_strategy = "vector_" + retriever.diagnostics.get("vector_mode", "exact")
     elif request.search_strategy == "keyword":
-        retrieval_strategy = "keyword_fts"
+        retrieval_strategy = "keyword_sql"
     else:
-        retrieval_strategy = "hybrid_rrf"
+        retrieval_strategy = "hybrid_" + retriever.diagnostics.get("vector_mode", "exact")
 
     metadata = ChatMetadata(
         mode=request.mode,
         retrieval_strategy=retrieval_strategy,
         model_profile=request.mode,
         latency_ms=latency_ms,
+        search_diagnostics=retriever.diagnostics,
     )
 
     return ChatResponse(
@@ -301,7 +279,7 @@ async def get_search_config():
 
 
 @router.post("/config")
-async def save_search_config(config_data: SearchConfigSchema):
+async def save_search_config(config_data: SearchConfigSchema, principal: Principal = Depends(require_manager)):
     """Update the retrieval & chunking search configuration."""
     config_manager = SearchConfigManager()
     await config_manager.save_config(config_data.model_dump())

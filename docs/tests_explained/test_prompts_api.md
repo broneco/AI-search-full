@@ -18,3 +18,14 @@ Testovací modul `tests/test_prompts_api.py` využívá `fastapi.testclient.Test
 
 1. `test_get_prompts_endpoint()`: Volá `GET /api/prompts` a ověřuje vrácení objektu se klíči `tenant_id`, `tenant_base` a slovníkem `prompts` obsahujícím šablony pro `cs` a `en`.
 2. `test_update_prompt_endpoint()`: Odesílá `PUT /api/prompts` s novým textem promptu, ověřuje HTTP 200 a následně ověřuje přes `GET /api/prompts`, že změněný prompt persistuje.
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+Systémový prompt smí upravit testovací správce a po testu se obnoví správný tenant.
+
+### Technicky
+
+PUT používá manager_headers. Záloha i restore pracují s settings.TENANT_ID místo nesouvisejícího default tenantu; conftest izoluje overlay mezi pytest běhy.

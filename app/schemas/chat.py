@@ -12,6 +12,7 @@ class ChatSource(BaseModel):
     freshness_status: str
     score: float
     allowed_groups: List[str] = []
+    context_chunk_ids: List[str] = Field(default_factory=list)
 
 
 class ChatMetadata(BaseModel):
@@ -19,6 +20,7 @@ class ChatMetadata(BaseModel):
     retrieval_strategy: str
     model_profile: str
     latency_ms: Optional[int] = None
+    search_diagnostics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatRequest(BaseModel):

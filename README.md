@@ -1,8 +1,18 @@
 # AI Search Full-Stack Application
 
-Tato aplikace představuje podnikovou AI vyhledávací platformu (RAG) běžící na **Python / FastAPI** backendu, dvoudílném **Next.js / React / TypeScript** frontendu (`frontend-user` a `frontend-admin`), **Azure Database for PostgreSQL (s pgvector)** a modelech **Azure OpenAI / AI Foundry**. Umožňuje plně zabezpečené, sémantické vyhledávání nad firemními dokumenty (včetně českých diakritických znaků) se zobrazením přesných citací a čísel stránek.
+Tato aplikace představuje podnikovou AI vyhledávací platformu (RAG) běžící na **Python / FastAPI** backendu, dvoudílném **Next.js / React / TypeScript** frontendu (`frontend-user` a `frontend-admin`), **Azure SQL Database** a modelech **Azure OpenAI / AI Foundry**. Umožňuje zabezpečené, sémantické vyhledávání nad firemními dokumenty (včetně českých diakritických znaků) se zobrazením přesných citací a čísel stránek.
 
 ---
+
+## Lokální vývoj ve VS Code
+
+Pro spuštění lokální SQL databáze, backendu a uživatelského frontendu použij **Terminal → Run Task… → AI Search: start local app**. První spuštění vyžaduje Docker Desktop, Python závislosti v `.venv` a `npm install` ve složce `frontend-user`. Podrobný postup, izolované testy a zachování lokálních dat popisuje [návod pro lokální vývoj](docs/development/local-setup.md).
+
+Vyhledávání a dokumentové náhledy nyní vyžadují bearer token a používají serverové skupiny; veřejná registrace nepřiděluje Management. [Ověření slice 2](docs/development/search-slice-2-testing.md) popisuje lokální testy a ruční akceptaci; před Azure nasazením je nutná migrace podle odkazovaného handoffu.
+
+[Ověření slice 4](docs/development/search-slice-4-testing.md) popisuje explicitní exact/ANN režimy, lokální kontraktové testy a diagnostiku. Výchozí režim zůstává exact; nativní Azure exact/DiskANN integrace a recall/latence čekají na slice 5. Současný Docker je stále SQL Server 2022 s přesnou JSON referencí.
+
+[Benchmark slice 5](docs/development/search-slice-5-testing.md) odděluje přípravu query cache od read-only měření retrievalu, počítá recall/p95 a připraví report s branami pro lidskou aktivaci. Přiložený dataset osmi českých otázek slouží lokálnímu smoke; skutečné Azure integrační a výkonové brány zůstávají otevřené. Výsledky/cache patří do ignorované `.local/benchmarks/`.
 
 ## 🏗️ Architektura a dvě webové aplikace
 
@@ -103,18 +113,23 @@ Otevřete v prohlížeči na adrese: 👉 **[http://localhost:3001](http://local
 
 ## ☁️ Automatizované nasazení do Azure
 
-Pro sestavení a nasazení libovolného klienta a prostředí jsou k dispozici automatizované PowerShell skripty:
+Backend release, databázové migrace a nasazení frontendů jsou oddělené kroky. Před změnami schvalte konkrétní cíl a migrační postup; JHU má aktuální [handoff](.agents/inbox/2026-10-15-jhu-search-rollout-handoff.md). Kombinovaný `deploy_all.ps1` je blokovaný.
 
 ### Backend (Azure Container Apps)
 ```powershell
-# Nasazení vývojového prostředí (DEV):
+# Pouze čtecí plán vývojového prostředí (DEV):
 powershell -ExecutionPolicy Bypass -File .\deploy_backend.ps1 -Client dolphin -Environment dev
 
-# Nasazení produkčního prostředí (PROD):
+# Pouze čtecí plán produkčního prostředí (PROD):
 powershell -ExecutionPolicy Bypass -File .\deploy_backend.ps1 -Client dolphin -Environment prod
 ```
 
+Výchozí spuštění neprovádí build ani zápis do Azure. `-Apply` vyžaduje `-ExpectedSubscriptionId`, `-ExpectedAzureTenantId`, `-ExpectedCurrentImage`, `-MigrationConfirmed`, `-JwtMigrationConfirmed` a vyřešené blokery plánu. Aktualizuje pouze image existujícího kontejneru; nespouští ingestaci a nemění runtime konfiguraci, secrets, identitu ani kapacitu. Modely, embeddingový profil a soukromý JWT klíč musí být předem správně nastavené za běhu: tenant `.env` soubory se do image nekopírují. Odkazy na secrets je nutné funkčně ověřit a při změně JWT zároveň vyřešit přihlašovací hesla.
+
+JWT a přechod starých hesel mají samostatný [JHU handoff](.agents/inbox/2026-10-15-jhu-jwt-password-migration-handoff.md). Nový kód může načíst podpisový klíč z existujícího Key Vaultu přes `AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY` (volitelně připnutá `AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY_VERSION`). Staré heslo lze zachovat s doloženým původním klíčem přes oddělený `AZURE_KEY_VAULT_SECRET_LEGACY_PASSWORD`: úspěšný login jej převede na Argon2id. Nová hesla už na JWT nezávisí. Starý image Argon2 nezná, proto musí připravený rollback image zachovat nový verifier. Žádné hodnoty secrets do repozitáře ani chatu.
+
 ### Frontend (Azure Static Web Apps)
+
 ```powershell
 # Nasazení uživatelské aplikace:
 powershell -ExecutionPolicy Bypass -File .\deploy_frontend.ps1 -Client dolphin -Environment prod -AppType user

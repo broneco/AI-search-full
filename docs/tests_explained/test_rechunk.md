@@ -1,5 +1,9 @@
 # Test Explanation: `test_rechunk.py`
 
+## Doplnění slice 3
+
+Rychlá reindexace zapisuje nové chunky a profilové embeddingy přes společný transakční repository. Tento test používá deterministické fake dokumentové embeddingy aktuálního rozměru, takže nevolá Azure model ani neuzavírá klienta v již skončeném event loopu. Native Azure SQL není cílem této SQLite reindexační regrese.
+
 This test suite verifies the background re-indexing and document re-segmentation (re-chunking) pipeline in the FastAPI backend application. It ensures that changing the document chunking parameters (such as chunk size and chunk overlap) triggers a safe database transition, updating old segments with newly split text chunks and regenerating embeddings.
 
 ---
@@ -71,3 +75,14 @@ This test suite verifies the background re-indexing and document re-segmentation
   * **Semantic check:** Employs an async `MockEmbeddingProvider` to calculate cosine similarities between sentences, computing standard deviation boundaries to split sentences on topic transitions without crashing.
   * **Pure Overlap & Cross-Page Overlap check:** Runs character splitting with `chunk_overlap = 30` over distinct words, asserting that no chunk is a 100% duplicate substring of its predecessor and that `overlap_cross_page` controls carryover across page breaks.
 
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+Náhled chunků potřebuje přihlášený účet s přístupem k dokumentu.
+
+### Technicky
+
+db_setup nastaví manager bearer; samostatný TestClient v preview testu dostává manager_headers explicitně. Raw preview podléhá ACL celého dokumentu.

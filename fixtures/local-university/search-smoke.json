@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "cases": [
+    {"case_id": "credits", "query": "Kolik kreditů potřebuji pro postup do druhého ročníku?"},
+    {"case_id": "exams", "query": "Kolik opravných termínů zkoušky má student?"},
+    {"case_id": "office", "query": "Kdy má studijní oddělení úřední hodiny?"},
+    {"case_id": "erasmus", "query": "Do kdy se podává přihláška na Erasmus?"},
+    {"case_id": "metadata-study", "query": "Jak fungují zkoušky a postup do dalšího ročníku?", "filters": {"title": "Aurora: Organizace studia"}},
+    {"case_id": "metadata-services", "query": "Kdy mohu kontaktovat studijní oddělení?", "filters": {"title": "Aurora: Služby pro studenty"}},
+    {"case_id": "small-k", "query": "Jaká jsou pravidla pro opravný termín?", "filters": {"title": "Aurora: Organizace studia", "page_number": 1}},
+    {"case_id": "empty", "query": "Jak probíhá zápis do studia?", "filters": {"title": "__benchmark_missing_document__"}}
+  ]
+}

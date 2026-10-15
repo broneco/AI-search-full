@@ -27,3 +27,14 @@ This test suite verifies the dynamic backend PDF highlighting capabilities of th
     * Extracts all annotations from page 1 (`page.annots()`) and asserts that at least one annotation is present.
     * Inspects the annotation type and asserts that it is exactly type `8` (the standard PDF Highlight annotation type).
     * Closes the document safely.
+
+
+## Aktualizace pro slice 2 (2026-10-14)
+
+### Jednoduše
+
+Zvýraznění PDF se ověřuje i za novou autentizační kontrolou.
+
+### Technicky
+
+pdf_setup předává bearer skutečného testovacího Management účtu; route ověří tenant, doc/chunk ACL a úplný přístup před načtením souboru.

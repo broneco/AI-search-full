@@ -28,6 +28,25 @@ async def lifespan(app: FastAPI):
                 await asyncio.sleep(2)
             else:
                 logger.error(f"Database initialization failed after 3 attempts: {e}")
+                if settings.APP_ENV == "local":
+                    raise
+    if settings.APP_ENV == "local":
+        from app.ingestion.local_demo import seed_local_demo
+        from app.storage.db import SessionLocal
+        try:
+            await seed_local_demo(SessionLocal)
+        except Exception:
+            logger.exception("Lokální demo se nepodařilo připravit. Zkontroluj modelové nastavení "
+                             "v .env.local a restartuj backend; uživatelské dokumenty zůstávají zachované.")
+        try:
+            from app.storage.vector_store import activate_local_ready_index
+            from app.providers.factory import create_embedding_profile
+            with SessionLocal() as session:
+                activate_local_ready_index(session, create_embedding_profile())
+                session.commit()
+        except Exception as error:
+            logger.warning("Lokální profilový index čeká na migraci: %s. "
+                           "Použij migrate_search_vectors.py podle návodu pro slice 3.", error)
     yield
     logger.info("Shutting down FastAPI application...")
 

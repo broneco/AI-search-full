@@ -1,4 +1,5 @@
 "use client";
+import { openAuthenticatedPdf } from "./components/authenticatedPdf";
 
 import React, { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { TRANSLATIONS } from "./translations";
@@ -337,7 +338,7 @@ export default function Home() {
     setChunkPreviewDocId(docId);
     setLoadingChunks(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/documents/${docId}/chunks`);
+      const res = await fetch(`${BACKEND_URL}/api/documents/${docId}/chunks`, { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
         setChunkPreviewList(data);
@@ -358,7 +359,7 @@ export default function Home() {
   const [chatMode, setChatMode] = useState<"flash" | "thinking">("flash");
   
   // Interactive testing states for security & freshness
-  const [userRole, setUserRole] = useState<string>("management");
+  const [userRole, setUserRole] = useState<string>("User");
   const [freshnessFilter, setFreshnessFilter] = useState<"all" | "this_year" | "latest">("all");
 
   const [messages, setMessages] = useState<Message[]>([
@@ -541,7 +542,7 @@ export default function Home() {
     try {
       const res = await fetch(`${BACKEND_URL}/api/prompts`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ locale: promptLocale, prompt_text: promptEditorText }),
       });
       if (res.ok) {
@@ -582,7 +583,7 @@ export default function Home() {
 
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/documents/reindex-progress`);
+        const res = await fetch(`${BACKEND_URL}/api/documents/reindex-progress`, { headers: getHeaders() });
         if (res.ok) {
           const data = await res.json();
           setReindexProgress(data);
@@ -657,11 +658,6 @@ export default function Home() {
         setConfig(data);
         setEditingConfig(data);
         
-        // Match default user role dynamically to first category key
-        if (data.categories && data.categories.length > 0) {
-          const keys = data.categories.map((c: Category) => c.key.toLowerCase());
-          setUserRole((prev) => (keys.includes(prev.toLowerCase()) ? prev.toLowerCase() : keys[0]));
-        }
       }
     } catch (err) {
       console.error("Failed to fetch categories config", err);
@@ -791,37 +787,10 @@ export default function Home() {
     });
   };
 
-  // Map visual roles to dynamic Entra ID headers based on dynamic config
+  // Permissions come from server-side groups; headers only carry the session.
   const getHeaders = (extraHeaders: Record<string, string> = {}) => {
     const headers: Record<string, string> = { ...extraHeaders };
-    if (config?.categories) {
-      const activeCat = config.categories.find(
-        (cat) => cat.key.toLowerCase() === userRole.toLowerCase()
-      );
-      if (activeCat) {
-        headers["X-User-Id"] = `${userRole.toLowerCase()}.user`;
-        let resolvedRole = activeCat.role_name;
-        if (!resolvedRole) {
-          if (activeCat.key.toLowerCase() === "management") {
-            resolvedRole = "Management";
-          } else if (activeCat.key.toLowerCase() === "user") {
-            resolvedRole = "User";
-          } else {
-            const groups = activeCat.allowed_groups.filter(
-              (g) => g.toLowerCase() !== "management"
-            );
-            resolvedRole = groups.length > 0 ? groups[0] : activeCat.key;
-          }
-        }
-        headers["X-User-Groups"] = resolvedRole;
-      }
-    }
-    if (!headers["X-User-Id"]) headers["X-User-Id"] = "admin.user";
-    if (!headers["X-User-Groups"]) headers["X-User-Groups"] = "User,Management,Admin";
-
-    if (authToken) {
-      headers["Authorization"] = `Bearer ${authToken}`;
-    }
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
     return headers;
   };
 
@@ -912,7 +881,7 @@ export default function Home() {
   // Fetch documents list whenever userRole changes to demonstrate live dynamic ACL hiding
   useEffect(() => {
     fetchDocuments();
-  }, [userRole, config]);
+  }, [userRole, config, authToken]);
 
   // Auto-scroll chat window when new messages arrive
   useEffect(() => {
@@ -1542,7 +1511,7 @@ export default function Home() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.3
+                v0.1.4
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -1647,28 +1616,10 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Dynamic Active User Role Selection (Switches permissions immediately) */}
+          {/* Current account permissions are assigned by the server. */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/40 border border-white/20 text-white">
             <span className="text-xs font-medium text-white/80">{TRANSLATIONS[appLanguage].userLabel}</span>
-            <select
-              value={userRole}
-              onChange={(e) => setUserRole(e.target.value)}
-              className="bg-black/60 border border-white/20 text-xs text-white rounded px-2.5 py-1 focus:outline-none font-semibold cursor-pointer"
-            >
-              {config?.categories.map((cat) => (
-                <option key={cat.key} value={cat.key.toLowerCase()}>
-                  👑 {cat.label}
-                </option>
-              ))}
-              {(!config || config.categories.length === 0) && (
-                <>
-                  <option value="management">{TRANSLATIONS[appLanguage].roleVedení}</option>
-                  <option value="hr">{TRANSLATIONS[appLanguage].rolePersonální}</option>
-                  <option value="finance">{TRANSLATIONS[appLanguage].roleFinanční}</option>
-                  <option value="user">{TRANSLATIONS[appLanguage].roleZaměstnanec}</option>
-                </>
-              )}
-            </select>
+            <span className="text-xs font-semibold">{userProfile?.groups?.join(", ") || userRole}</span>
           </div>
 
           {/* User Account / Login Button */}
@@ -1769,6 +1720,7 @@ export default function Home() {
                     <div className="flex items-start gap-1">
                       <a
                         href={`${BACKEND_URL}/api/documents/view/${doc.document_id}`}
+                        onClick={(event) => { event.preventDefault(); void openAuthenticatedPdf(`${BACKEND_URL}/api/documents/view/${doc.document_id}`, authToken); }}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs font-bold text-zinc-300 hover:text-indigo-400 hover:underline truncate block flex-1"
@@ -2178,6 +2130,7 @@ export default function Home() {
                       <h4 className="text-sm font-bold text-white leading-snug">
                         <a
                           href={`${BACKEND_URL}/api/documents/view/${activeSource.document_id}${getSearchHash(activeSource)}`}
+                        onClick={(event) => { event.preventDefault(); void openAuthenticatedPdf(`${BACKEND_URL}/api/documents/view/${activeSource.document_id}${getSearchHash(activeSource)}`, authToken); }}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-white hover:text-indigo-400 hover:underline transition-colors block"
@@ -3784,6 +3737,7 @@ export default function Home() {
                                 )}
                                 <a
                                   href={`${BACKEND_URL}/api/documents/view/${selectedPreviewDocId}#page=${chunk.page_number}`}
+                        onClick={(event) => { event.preventDefault(); void openAuthenticatedPdf(`${BACKEND_URL}/api/documents/view/${selectedPreviewDocId}#page=${chunk.page_number}`, authToken); }}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 px-2 py-0.5 rounded text-indigo-300 transition-all font-semibold flex items-center gap-1 cursor-pointer normal-case text-[9px]"
@@ -4148,6 +4102,7 @@ export default function Home() {
                             {chunk.page_number && (
                               <a
                                 href={`${BACKEND_URL}/api/documents/view/${chunkPreviewDocId}?highlight_chunk_id=${chunk.chunk_id}#page=${chunk.page_number}`}
+                        onClick={(event) => { event.preventDefault(); void openAuthenticatedPdf(`${BACKEND_URL}/api/documents/view/${chunkPreviewDocId}?highlight_chunk_id=${chunk.chunk_id}#page=${chunk.page_number}`, authToken); }}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 px-2 py-0.5 rounded text-indigo-300 transition-all font-semibold flex items-center gap-1 cursor-pointer normal-case text-[9px]"

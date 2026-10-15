@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { AuthenticatedPdf, openAuthenticatedPdf } from "./AuthenticatedPdf";
 
 interface PdfViewerModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface PdfViewerModalProps {
   pageNumber?: number;
   highlightChunkId?: string;
   backendUrl: string;
+  authToken: string | null;
   language: "cs" | "en";
 }
 
@@ -21,6 +23,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
   pageNumber = 1,
   highlightChunkId,
   backendUrl,
+  authToken,
   language,
 }) => {
   const [zoom, setZoom] = useState<number>(100);
@@ -70,7 +73,8 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           <div className="flex items-center gap-2">
             {/* Open in new window button */}
             <a
-              href={`${backendUrl}/api/documents/view/${documentId}`}
+              href={pdfUrl}
+              onClick={(event) => { event.preventDefault(); void openAuthenticatedPdf(pdfUrl, authToken); }}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold rounded-lg border border-white/10 transition-colors"
@@ -112,7 +116,8 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
 
         {/* PDF Embedded Canvas Container */}
         <div className="relative flex-1 bg-zinc-950/80 w-full h-full overflow-hidden flex items-center justify-center">
-          <iframe
+          <AuthenticatedPdf
+            authToken={authToken}
             src={pdfUrl}
             title={`PDF View - ${documentTitle}`}
             className="w-full h-full border-none transition-transform duration-200"
@@ -129,6 +134,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           </span>
           <a
             href={pdfUrl}
+            onClick={(event) => { event.preventDefault(); void openAuthenticatedPdf(pdfUrl, authToken); }}
             target="_blank"
             rel="noopener noreferrer"
             className="text-indigo-400 hover:underline flex items-center gap-1 font-medium"

@@ -1,14 +1,18 @@
 # Parameterized Azure CLI Infrastructure Provisioning Script
 # Usage:
-#   .\infra\create_azure_resources.ps1 -Client showcase -Environment dev -Location northeurope -SqlPassword "VaseBezpecneHeslo123!"
+#   Set AZURE_SQL_PASSWORD securely, then run .\infra\create_azure_resources.ps1 -Client showcase -Environment dev -Location northeurope
 
 param (
     [string]$Client = "showcase",
     [string]$Environment = "dev",
     [string]$Location = "northeurope",
     [string]$SqlAdminUser = "sqladmin",
-    [string]$SqlPassword = "VaseBezpecneHeslo123!"
+    [string]$SqlPassword = $env:AZURE_SQL_PASSWORD
 )
+
+if ([string]::IsNullOrWhiteSpace($SqlPassword)) {
+    throw "Provide -SqlPassword or set AZURE_SQL_PASSWORD securely before provisioning."
+}
 
 $ErrorActionPreference = "Continue"
 $OutputEncoding = [System.Text.Encoding]::UTF8

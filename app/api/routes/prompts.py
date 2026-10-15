@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.api.dependencies import get_db_session
 from app.core.config import settings
 from app.core.prompts import get_tenant_prompts_map, update_tenant_prompt, get_tenant_base
+from app.api.identity import require_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ async def get_prompts():
     )
 
 
-@router.put("", response_model=PromptResponse)
-@router.put("/", response_model=PromptResponse, include_in_schema=False)
+@router.put("", response_model=PromptResponse, dependencies=[Depends(require_manager)])
+@router.put("/", response_model=PromptResponse, include_in_schema=False, dependencies=[Depends(require_manager)])
 async def update_prompt(request: PromptUpdateRequest):
     """Update custom system prompt for current tenant and locale."""
     if not request.prompt_text or not request.prompt_text.strip():

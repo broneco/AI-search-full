@@ -8,11 +8,17 @@ import os
 import json
 import logging
 from typing import Any, Dict, Tuple
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 # Root tenants directory path
 TENANTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tenants"))
+LOCAL_TENANTS_DIR = (
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".local", settings.APP_ENV, "tenants"))
+    if settings.APP_ENV in {"local", "test"}
+    else None
+)
 
 
 def get_tenant_base(tenant_id: str) -> str:
@@ -36,15 +42,24 @@ def resolve_tenant_file_path(tenant_id: str, filename: str) -> Tuple[str, bool]:
     target_path = os.path.join(TENANTS_DIR, tenant_base, filename)
     default_path = os.path.join(TENANTS_DIR, "default", filename)
 
-    if os.path.exists(target_path):
-        return target_path, False
+    # Local development and tests read tracked defaults but write into an ignored overlay.
+    candidates = []
+    if LOCAL_TENANTS_DIR:
+        local_target = os.path.join(LOCAL_TENANTS_DIR, tenant_base, filename)
+        local_default = os.path.join(LOCAL_TENANTS_DIR, "default", filename)
+        candidates.extend([(local_target, False), (target_path, False), (local_default, True), (default_path, True)])
+    else:
+        candidates.extend([(target_path, False), (default_path, True)])
 
-    if os.path.exists(default_path):
-        logger.info(f"Tenant config file '{filename}' missing for tenant '{tenant_base}'. Falling back to default: {default_path}")
-        return default_path, True
+    for candidate, is_fallback in candidates:
+        if os.path.exists(candidate):
+            if is_fallback:
+                logger.info(f"Tenant config file '{filename}' missing for tenant '{tenant_base}'. Falling back to: {candidate}")
+            return candidate, is_fallback
 
+    write_path = os.path.join(LOCAL_TENANTS_DIR, tenant_base, filename) if LOCAL_TENANTS_DIR else target_path
     logger.warning(f"Tenant config file '{filename}' not found for tenant '{tenant_base}' nor in default at {default_path}")
-    return target_path, False
+    return write_path, False
 
 
 def load_tenant_json(tenant_id: str, filename: str, default_data: Any = None) -> Any:
@@ -68,7 +83,8 @@ def save_tenant_json(tenant_id: str, filename: str, data: Any) -> str:
     Ensures directory exists.
     """
     tenant_base = get_tenant_base(tenant_id)
-    tenant_dir = os.path.join(TENANTS_DIR, tenant_base)
+    tenant_root = LOCAL_TENANTS_DIR or TENANTS_DIR
+    tenant_dir = os.path.join(tenant_root, tenant_base)
     os.makedirs(tenant_dir, exist_ok=True)
     
     target_path = os.path.join(tenant_dir, filename)

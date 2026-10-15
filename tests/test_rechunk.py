@@ -17,7 +17,8 @@ client = TestClient(app)
 
 
 @pytest.fixture(scope="module")
-def db_setup():
+def db_setup(manager_headers):
+    client.headers.update(manager_headers)
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1;"))
@@ -35,7 +36,13 @@ def db_setup():
         clear_db()
 
 
-def test_fast_reindex_task(db_setup):
+def test_fast_reindex_task(db_setup, monkeypatch):
+    # This is a repository/rechunk regression, not an opt-in model test.
+    # Keep vectors deterministic and avoid clients tied to a closed event loop.
+    from app.providers.azure_openai import AzureOpenAIEmbeddingProvider
+    async def fake_documents(provider, texts):
+        return [[0.1] * provider.profile.dimensions for _ in texts]
+    monkeypatch.setattr(AzureOpenAIEmbeddingProvider, "embed_documents", fake_documents)
     db = db_setup
 
     # 1. Clean previous records
@@ -127,7 +134,7 @@ def test_fast_reindex_task(db_setup):
             os.remove(temp_txt_path)
 
 
-def test_preview_chunks_endpoint(db_setup):
+def test_preview_chunks_endpoint(db_setup, manager_headers):
     db = db_setup
     client = TestClient(app)
 
@@ -167,7 +174,7 @@ def test_preview_chunks_endpoint(db_setup):
             "chunk_size": 200,
             "chunk_overlap": 50
         }
-        res = client.post("/api/documents/preview-chunks", json=payload)
+        res = client.post("/api/documents/preview-chunks", json=payload, headers=manager_headers)
         assert res.status_code == 200
         
         chunks = res.json()
