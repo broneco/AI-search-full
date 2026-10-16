@@ -10,7 +10,7 @@ All configuration files, environment variable files, and graphic assets belongin
 
 ```text
 tenants/
-├── default/                  # [REQUIRED] Fallback tenant
+├── default/                  # Required public JSON/assets fallback; private env is optional
 │   ├── .env.dev              # Default DEV environment settings
 │   ├── .env.prod             # Default PROD environment settings
 │   ├── prompts.json          # Default RAG system prompts (CS/EN)
@@ -45,9 +45,11 @@ tenants/
 
 Whenever a tenant-specific file is requested or required at runtime:
 
-1. The system checks `tenants/<tenant_base>/<filename>` (or `tenants/<tenant_base>/.env.<app_env>`).
-2. **If the file is missing** in the tenant's subfolder, the system automatically falls back to **`tenants/default/<filename>`** (or `tenants/default/.env.<app_env>`).
+1. The JSON/asset resolver checks `tenants/<tenant_base>/<filename>`.
+2. **If the file is missing** in the tenant's subfolder, the system automatically falls back to **`tenants/default/<filename>`**.
 3. Fallback operates at the **entire file level**, not line-by-line or key-by-key.
+
+Environment variables use the separate precedence defined in `app/core/config.py`: process variables override Pydantic env files, and later env files override earlier ones. Do not assume JSON fallback semantics apply to env files. Local/test use their isolated profiles and ignored overlays.
 
 ---
 
@@ -60,8 +62,9 @@ Whenever a tenant-specific file is requested or required at runtime:
 
 ## 4. Tenant File Parity & Structural Parity Rule
 
-- **All `.env.dev` and `.env.prod` files across all tenant subfolders (`tenants/<tenant>/`) MUST be kept structurally identical with 100% variable key parity.**
-- If a new variable, key, or section is added to any `.env` file or tenant configuration file, it **MUST be added to all tenant `.env` files** across all tenants (`default`, `dolphin`, `alzbeta`, `jhu`, `showcase`).
+- **At least one configured tenant is sufficient; do not require ten private env files on a new checkout.**
+- Configured tenant env files must agree on key structure; wholly unconfigured placeholder tenants are excluded. A clean checkout runs isolated fixtures without credentials and skips only the optional real-env structural check.
+- When adding a setting, update the non-secret `.env.example` and the actually configured tenant files where applicable. Do not manufacture secret-bearing files for unused tenants.
 - When placeholder values are used for new or unconfigured tenants (e.g. `<REQUIRED_VALUE>` or `YOUR_SECRET_HERE`), the agent must follow the **Placeholder Handoff Policy**.
 
 ---
@@ -81,6 +84,7 @@ Whenever a tenant-specific file is requested or required at runtime:
 ## 6. Mandatory Agent Instructions
 
 - **NEVER** hardcode tenant system prompts or search parameters directly inside `app/core/` code files.
-- **NEVER** place tenant-specific configuration or environment files outside of the `tenants/` directory.
-- When creating or modifying a tenant `.env` file, ensure **100% variable key parity** across all tenants in `tenants/`.
+- Keep cloud tenant files under `tenants/`. Documented local/test exceptions are ignored root `.env.local`/`.env.test` files and JSON overlays under `.local/`; these must never alter public tenant files.
+- When creating or modifying tenant env, preserve key parity among configured environments and keep templates non-secret; one configured tenant is enough.
+- Configuration aliases use `app.core.tenant_identity.tenant_config_name`; `ju-prod` loads `jhu` configuration but remains `ju-prod` in database/token/ACL identity.
 - Always use `TenantConfigResolver` (`app.core.tenant_config.load_tenant_json` / `resolve_tenant_file_path`) in backend services.

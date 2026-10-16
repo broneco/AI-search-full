@@ -86,3 +86,7 @@ Náhled chunků potřebuje přihlášený účet s přístupem k dokumentu.
 ### Technicky
 
 db_setup nastaví manager bearer; samostatný TestClient v preview testu dostává manager_headers explicitně. Raw preview podléhá ACL celého dokumentu.
+
+## Aktualizace bezpečnosti údržby
+
+Fast reindex nyní používá přesný tenant a scope zachycený z Principal při spuštění background tasku. Dosavadní rechunk testy dál ověřují změnu chunkování; dvoutenantovou a modelovou failure regresi doplňuje `tests/test_maintenance.py`. Plný refresh má sdílenou službu bez počátečního bulk mazání.

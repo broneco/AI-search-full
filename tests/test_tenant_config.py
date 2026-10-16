@@ -4,6 +4,11 @@ Unit tests for TenantConfigResolver and file-level tenant configuration fallback
 
 import sys
 import os
+import json
+from pathlib import Path
+import pytest
+
+import app.core.tenant_config as tenant_config
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -22,18 +27,24 @@ def test_tenant_base_extraction():
     assert get_tenant_base("alzbeta-prod") == "alzbeta"
     assert get_tenant_base("dolphin-dev") == "dolphin"
     assert get_tenant_base("jhu") == "jhu"
+    assert get_tenant_base("ju-prod") == "jhu"
     assert get_tenant_base("") == "default"
 
 
-def test_tenant_file_resolution_and_fallback():
-    # Dolphin has prompts.json
-    path, is_fallback = resolve_tenant_file_path("dolphin", "prompts.json")
+def test_tenant_file_resolution_and_fallback(tmp_path, monkeypatch):
+    # Synthetic files keep fallback coverage independent of bundled clients.
+    for tenant, filename in (("alpha", "prompts.json"), ("default", "search_config.json")):
+        folder = tmp_path / tenant
+        folder.mkdir()
+        (folder / filename).write_text('{}', encoding="utf-8")
+    monkeypatch.setattr(tenant_config, "TENANTS_DIR", str(tmp_path))
+    monkeypatch.setattr(tenant_config, "LOCAL_TENANTS_DIR", None)
+    path, is_fallback = resolve_tenant_file_path("alpha", "prompts.json")
     assert not is_fallback
     assert os.path.exists(path)
-    assert "dolphin" in path
+    assert "alpha" in path
 
-    # Alzbeta has prompts.json but no search_config.json -> falls back to default/search_config.json
-    path_alz, is_fallback_alz = resolve_tenant_file_path("alzbeta", "search_config.json")
+    path_alz, is_fallback_alz = resolve_tenant_file_path("alpha", "search_config.json")
     assert is_fallback_alz
     assert os.path.exists(path_alz)
     assert "default" in path_alz
@@ -50,19 +61,17 @@ def test_tenant_env_files_priority():
 
 
 def test_tenant_prompts_loading():
-    prompts_alz = get_tenant_prompts_map("alzbeta")
-    assert "Nemocnice sv. Alžběty" in prompts_alz["cs"]
-
     prompts_jhu = get_tenant_prompts_map("jhu")
     assert "Jihočeské univerzity" in prompts_jhu["cs"]
+    assert get_tenant_prompts_map("ju-prod") == prompts_jhu
 
     prompts_unknown = get_tenant_prompts_map("unknown-tenant-xyz")
     assert "AI Search Assistant" in prompts_unknown["cs"]
 
 
 def test_system_prompt_formatting():
-    sys_prompt = get_system_prompt("alzbeta", "cs", "Testovací kontext z PDF směrnice")
-    assert "Nemocnice sv. Alžběty" in sys_prompt
+    sys_prompt = get_system_prompt("ju-prod", "cs", "Testovací kontext z PDF směrnice")
+    assert "Jihočeské univerzity" in sys_prompt
     assert "Testovací kontext z PDF směrnice" in sys_prompt
 
 
@@ -74,16 +83,14 @@ def test_search_config_manager_tenant_loading():
 
 
 def test_tenant_branding_key_parity_and_jhu():
-    tenants = ["default", "dolphin", "alzbeta", "jhu", "showcase"]
-    brandings = {}
-    for tenant in tenants:
-        branding_data = load_tenant_json(tenant, "branding.json")
-        assert branding_data, f"branding.json for tenant '{tenant}' must exist and not be empty."
-        brandings[tenant] = branding_data
+    # One real bundled tenant is sufficient; check every branding that ships.
+    brandings = {path.parent.name: json.loads(path.read_text(encoding="utf-8"))
+                 for path in Path(tenant_config.TENANTS_DIR).glob("*/branding.json")}
+    assert "jhu" in brandings
 
     # Check 100% key parity across all tenants
-    base_keys = set(brandings["default"].keys())
-    base_color_keys = set(brandings["default"]["colors"].keys())
+    base_keys = set(brandings["jhu"].keys())
+    base_color_keys = set(brandings["jhu"]["colors"].keys())
 
     for tenant, data in brandings.items():
         assert set(data.keys()) == base_keys, f"Key mismatch in branding.json for tenant '{tenant}': {set(data.keys()) ^ base_keys}"
@@ -99,12 +106,5 @@ def test_tenant_branding_key_parity_and_jhu():
 
 
 if __name__ == "__main__":
-    test_tenant_base_extraction()
-    test_tenant_file_resolution_and_fallback()
-    test_tenant_env_files_priority()
-    test_tenant_prompts_loading()
-    test_system_prompt_formatting()
-    test_search_config_manager_tenant_loading()
-    test_tenant_branding_key_parity_and_jhu()
-    print("ALL TENANT CONFIG AND ENV TESTS PASSED SUCCESSFULLY!")
+    raise SystemExit(pytest.main([__file__]))
 

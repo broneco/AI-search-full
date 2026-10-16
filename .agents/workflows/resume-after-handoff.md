@@ -32,7 +32,7 @@ Never write secret values.
 Run or prepare checks for:
 
 - database connection
-- pgvector availability
+- selected Azure SQL VECTOR/fulltext/optional ANN capabilities (or an explicitly approved alternative)
 - blob storage access
 - model deployment availability
 - Key Vault reference resolution
@@ -42,7 +42,7 @@ Run or prepare checks for:
 
 Update:
 
-- `CHANGELOG.md`
+- `docs/CHANGELOG.md`
 - `.agents/memory/project-state.md`
 - `.agents/memory/implementation-notes.md`
 - `docs/deployments/*.md` if stable

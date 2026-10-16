@@ -19,7 +19,7 @@ def db_setup():
     except OperationalError as e:
         pytest.skip(
             f"Local PostgreSQL database is not available: {e}. "
-            "Please ensure docker compose up -d has run successfully."
+            "See docs/development/local-setup.md; legacy PostgreSQL Compose is archived under infra/legacy/."
         )
 
     # Initialize tables and extensions

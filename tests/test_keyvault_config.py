@@ -10,17 +10,53 @@ import azure.keyvault.secrets
 from app.core.config import Settings
 
 
-def test_tenant_env_structural_key_parity():
-    files = list(Path("tenants").rglob(".env*"))
-    files = [path for path in files if path.is_file()]
-    file_keys = {path: {line.split("=", 1)[0].strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#") and "=" in line}
-        for path in files}
-    assert len(file_keys) == 10
+def configured_env_keys(root):
+    """Check configured targets only; placeholder tenants need no real credentials."""
+    from dotenv import dotenv_values
+    def filled(value):
+        return bool(value and value.strip() and not value.strip().lower().startswith(
+            ("<", "your_", "your-", "replace", "todo", "required")))
+    file_keys = {}
+    for path in root.rglob(".env*"):
+        if not path.is_file():
+            continue
+        values = dotenv_values(path, encoding="utf-8-sig", interpolate=False)
+        sql = all(filled(values.get(key)) for key in ("AZURE_SQL_HOST", "AZURE_SQL_DB"))
+        pg = all(filled(values.get(key)) for key in ("POSTGRES_HOST", "POSTGRES_DB"))
+        if filled(values.get("TENANT_ID")) and values.get("APP_ENV") in {"dev", "prod"} and (sql or pg):
+            file_keys[path] = set(values)
+    return file_keys
+
+
+def assert_env_key_parity(file_keys):
+    assert file_keys, "Provide at least one configured tenant for the optional real-env check."
     all_keys = set().union(*file_keys.values())
     for path, keys in file_keys.items():
         assert keys == all_keys, f"Key parity mismatch in {path}: {all_keys - keys}"
+
+
+def test_tenant_env_structural_key_parity():
+    files = configured_env_keys(Path("tenants"))
+    if not files:
+        pytest.skip("No configured private tenant env; synthetic one-tenant regression remains active.")
+    assert_env_key_parity(files)
+
+
+def test_one_configured_tenant_is_sufficient(tmp_path):
+    tenant = tmp_path / "alpha"
+    tenant.mkdir()
+    (tenant / ".env.dev").write_text("APP_ENV=dev\nTENANT_ID=alpha-dev\nAZURE_SQL_HOST=sql.example.test\nAZURE_SQL_DB=test\n", encoding="utf-8")
+    placeholders = tmp_path / "unconfigured"
+    placeholders.mkdir()
+    (placeholders / ".env.prod").write_text("APP_ENV=prod\nTENANT_ID=other-prod\nAZURE_SQL_HOST=<REQUIRED>\n", encoding="utf-8")
+    files = configured_env_keys(tmp_path)
+    assert len(files) == 1
+    assert_env_key_parity(files)
+
+
+def test_configured_tenant_key_mismatch_is_rejected():
+    with pytest.raises(AssertionError, match="Key parity mismatch"):
+        assert_env_key_parity({Path("alpha"): {"TENANT_ID"}, Path("beta"): {"TENANT_ID", "EXTRA"}})
 
 
 @pytest.fixture

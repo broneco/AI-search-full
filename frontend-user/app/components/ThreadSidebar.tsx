@@ -326,7 +326,7 @@ export const ThreadSidebar: React.FC<ThreadSidebarProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono text-zinc-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full select-none" title="Verze aplikace">
-            v0.1.4
+            v0.1.5
           </span>
           <button
             onClick={onLogout}

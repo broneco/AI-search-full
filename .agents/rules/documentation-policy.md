@@ -2,7 +2,7 @@
 
 ## Changelog
 
-Update `CHANGELOG.md` whenever the change affects:
+Update `docs/CHANGELOG.md` whenever the change affects:
 
 - application behavior
 - architecture
@@ -27,9 +27,9 @@ Create or update an ADR for durable decisions.
 
 Examples requiring ADR:
 
-- choosing PostgreSQL + pgvector as MVP vector store
-- introducing Azure AI Search later
-- selecting LangGraph for stateful workflows
+- changing native Azure SQL storage or the optional ANN activation strategy
+- introducing another search service or model provider
+- replacing the current application orchestration
 - deciding how ACL filtering is enforced
 - changing model profile strategy
 - changing deployment architecture

@@ -1,195 +1,63 @@
 # Project Agent Operating Contract
 
-## Role
+## Role and source of truth
 
-You are an implementation agent for a full-stack AI Search Application.
+Maintain this AI Search application in tested, reversible increments. Read this contract, `.agents/memory/project-state.md`, the iteration policy, deployment policy and relevant rules before edits.
 
-The application is an Azure-first, Python/FastAPI, PostgreSQL/pgvector, hybrid retrieval, LangChain/LangGraph-based product for searching company knowledge and documents with citations, freshness validation, ACL-aware retrieval, auditability, and future Microsoft 365 integration.
+Precedence: latest explicit user request, security/privacy, this contract, rules, workflows, current memory, implementation, historical notes. Explicitly approved batches may contain multiple related fixes; do not stop after the first item of an approved batch.
 
-Your job is to build the project iteratively in small, reversible, tested slices. Do not attempt to implement the entire design in one large pass.
+## Implemented architecture
 
-## Source of truth hierarchy
+- Python 3.12 reference environment, FastAPI, Pydantic and synchronous SQLAlchemy repositories.
+- Two Next.js/React/TypeScript applications: `frontend-user/` and `frontend-admin/`.
+- Azure SQL native VECTOR exact retrieval; shared tenant, metadata and relational document/chunk ACL predicates before top K.
+- Native Azure SQL fulltext keyword retrieval; local SQL Server 2022 uses the documented JSON cosine/LIKE reference.
+- Immutable embedding profiles, per-profile index tables and one explicitly active index per tenant.
+- DiskANN v3+ is optional and explicitly configured. Default and deployed JHU mode remains exact; representative ANN/performance acceptance is open.
+- Azure OpenAI providers selected through factories; local model adapters are planned, not implemented.
+- Blob Storage, Azure Container Apps, Static Web Apps and optional Key Vault resolution are implemented.
+- Authentication uses a custom signed two-part bearer token, Argon2id passwords and current server-side groups. `JWT_*` setting names are historical; this is not a standard JWT or an Entra ID implementation.
+- RAG orchestration is application code. LangChain/LangGraph and Entra ID are future options, not current dependencies.
+- PostgreSQL scaffolding remains experimental with explicitly deferred retrieval issues; it is not the supported local development path.
 
-When instructions conflict, follow this order:
+Do not reintroduce Azure AI Search, other databases, orchestration frameworks or auth providers without an approved architectural change. Known deferred work: PostgreSQL operators, section_title persistence in the main ingestion pipeline, Blob/local configuration unification and OCR.
 
-1. The user's latest explicit request
-2. Security and privacy requirements
-3. `.agents/AGENTS.md`
-4. `.agents/rules/*.md`
-5. `.agents/workflows/*.md`
-6. `.agents/memory/*.md`
-7. Existing code and tests
-8. Older design notes
+## Environments and tenant identity
 
-If a design note conflicts with implemented reality, do not silently choose one. Explain the conflict, propose a resolution, and update an ADR when the decision is architectural.
+`APP_ENV=local` runs the persistent Docker SQL Server through `dev.ps1`; `test` uses isolated fixtures unless integration checks are explicitly enabled. Cloud uses `dev` or `prod`. DATABASE_BACKEND is independent of APP_ENV.
 
-## Product boundaries
+Database/token tenant IDs are exact identities, including suffixes. `ju-prod` must never become `ju` or `jhu` in data or ACL checks. `tenant_config_name` alone maps the configuration alias `ju` to the directory `jhu`.
 
-Build toward the following target architecture:
+Public JSON/assets under tenants/ and fixtures/ ship with the Python wheel; private `.env*` files never do. Use the tenant configuration resolver and file-level default fallback. Local/test runtime JSON writes belong in ignored overlays.
 
-- Frontend: Next.js / React / TypeScript
-- Backend: Python 3.11+, FastAPI, Pydantic
-- Data: Azure Database for PostgreSQL Flexible Server with pgvector
-- Search: hybrid retrieval using pgvector + PostgreSQL full-text search in MVP
-- Storage: Azure Blob Storage
-- Runtime: Azure Container Apps and Container Apps Jobs
-- Models: Azure AI Foundry / Azure OpenAI-compatible deployments
-- Auth: Microsoft Entra ID
-- Secrets: Azure Key Vault and managed identity where possible
-- Observability: Azure Monitor, Application Insights, structured logs
-- AI orchestration: LangChain for integrations, LangGraph for stateful workflows
+## Delivery and verification
 
-MVP must not depend on Azure AI Search, Qdrant, Databricks, Teams, or Outlook, although architecture must leave room for them later.
+- Keep interfaces between API, ingestion, retrieval, storage and providers explicit. Reuse shared authorization and repository writes.
+- Add meaningful regressions for changed behavior, including cross-tenant and failure cases when applicable.
+- Run appropriate checks and distinguish SQLite/local SQL from actual Azure native/runtime evidence. Never claim an unrun benchmark passed.
+- Check installation from clean sources when changing packaging. Runtime/dev dependency declarations live in pyproject.toml; requirements.txt delegates to it.
+- Isolated tests must run without private env files. Real-env structural checks accept at least one configured tenant; placeholder tenants are excluded, and all configured files must agree on keys.
+- Never commit secrets, private documents, dependency caches or operational snapshots. Never dump credentials into logs or tool output.
+- No automatic commit, push, release or deployment unless explicitly requested for the current work.
 
-## Delivery philosophy
+## Documentation and memory
 
-Always prefer:
+- Record changes under Unreleased in `docs/CHANGELOG.md`; create a release block only when releasing.
+- Record durable architectural decisions in `docs/adr/`, using the highest existing ADR number plus one. `ADR-0001-template.md` remains a generic template.
+- Add/update the corresponding explanations in `docs/tests_explained/` for changed test modules.
+- Keep `docs/navigation_guide.md` synchronized with source files using relative paths and concise Czech descriptions.
+- Keep project-state and implementation notes concise and current. Historical details belong in `.agents/memory/archive/` or deployment reports; archive contents are not current instructions.
+- Use repository-relative links in documents. Do not depend on another machine's absolute paths, hidden agent brain folders or private scratch scripts for standard workflows.
+- Report outcome, relevant verification, remaining risks and exactly one recommended next slice. Do not imply cloud deployment when only sources changed.
 
-- small slices over one-shot implementation
-- working vertical increments over many unfinished layers
-- explicit interfaces over provider lock-in
-- tests and eval hooks over undocumented behavior
-- ADRs for architectural decisions
-- changelog entries for user-visible or agent-environment changes
-- handoff files for manual Azure work
+## Repository publication
 
-## Definition of done for any coding task
+Before a normal release or a JHU handoff, read `.agents/workflows/jhu-publication.md`. Keep the GitHub development graph, independent Forgejo snapshot graph and Azure runtime deployment separate. The versioned exporters/templates are canonical; ignored historical operators are not required. Never mirror/merge the development history into JHU. A source-repository release does not implicitly authorize Forgejo or cloud changes.
 
-A task is not done until:
+## Azure actions
 
-- the implemented scope is clearly described
-- relevant tests are added or updated
-- relevant tests are run, or the reason they could not run is stated
-- configuration changes are documented
-- any required Azure manual action or placeholder configuration is captured in `.agents/inbox/`
-- if any tenant environment file or configuration is created or modified, 100% structural key parity is maintained across all tenant `.env` files in `tenants/`
-- `CHANGELOG.md` is updated when behavior, architecture, dependencies, or agent instructions change
-- an ADR is created or updated when an architectural decision is made or changed
-- if test files are added, removed, or modified, their corresponding markdown explanations in [**`docs/tests_explained/`**](file:///c:/Users/ondrej.bronec/OneDrive - dolphinconsulting.cz/Documents/Projekty/AI Search Full/docs/tests_explained/) are created or updated with clear high/low technical level details
-- if any file or directory is added, removed, or renamed anywhere in the repository (excluding contents/subfolders of `data/`), [**`docs/navigation_guide.md`**](file:///c:/Users/ondrej.bronec/OneDrive%20-%20dolphinconsulting.cz/Documents/Projekty/WIP%20-%20AI%20Search%20Full/docs/navigation_guide.md) MUST be created or updated with a concise 1-sentence Czech description for each affected element using clean relative backticked names without absolute URLs
-- `.agents/memory/project-state.md` is updated if phase, current focus, known constraints, or next steps changed
+Azure CLI/tool access may be available. Availability alone is not authorization to change resources. For required cloud changes, prepare a concrete handoff in `.agents/inbox/` with target guards, operations, non-secret values and rollback before requesting approval. Follow existing explicit user authorization within its scope; do not repeatedly ask for the same approval.
 
-## Required final response format
+Use managed identity/Key Vault when configured; do not invent secrets or change RBAC/capacity. Keep resource provisioning, schema migration, embedding backfill, index activation and image/frontend release separate. Current deployment scripts default to read-only plans. Only their guarded Apply paths write resources; frontend release never creates a SWA.
 
-For implementation tasks, respond with:
-
-### Summary
-
-What was done.
-
-### Changed files
-
-List changed files and why each changed.
-
-### Tests / verification
-
-Commands run and results. If not run, explain why.
-
-### Azure / manual actions
-
-State either:
-
-- `No manual Azure action required`, or
-- path to the handoff file under `.agents/inbox/` and what the human must do.
-
-### Risks and follow-ups
-
-Known risks, unfinished work, and next recommended slice.
-
-## Changelog policy
-
-Update `CHANGELOG.md` under `[Unreleased]` for:
-
-- new features
-- behavior changes
-- bug fixes
-- security changes
-- dependency or infrastructure changes
-- agent instruction changes
-- architectural changes
-
-Do not add noise for purely mechanical formatting changes unless they affect the agent environment or developer workflow.
-
-## ADR policy
-
-Create or update an ADR when changing or deciding:
-
-- cloud resource architecture
-- database or schema strategy
-- retrieval strategy
-- provider abstraction boundaries
-- model routing strategy
-- auth or ACL strategy
-- ingestion architecture
-- observability strategy
-- deployment model
-- anything that would be expensive to reverse later
-
-ADR files live in `docs/adr/` and use the template `.agents/templates/adr-template.md`.
-
-Document `ADR-0001-template.md` includes in it the latest ADR index `# ADR-000X: <Decision title>` where x will be the index.
-Use it to index the new ADR appropriately and update the index when you are done
-
-## Memory policy
-
-Agents must maintain project memory, but memory must not become a dumping ground.
-
-Update:
-
-- `.agents/memory/project-state.md` for phase, current focus, active constraints, and next slice
-- `.agents/memory/implementation-notes.md` for durable implementation details that are not obvious from code
-- `.agents/memory/open-questions.md` for unresolved questions blocking or shaping later work
-- `.agents/memory/style-decisions.md` for code style and project conventions discovered during implementation
-
-Do not store secrets, access tokens, passwords, API keys, private user data, or production connection strings in memory files.
-
-## Azure deployment policy
-
-The agent does not have direct Azure access.
-
-When Azure resources, model deployments, Key Vault values, managed identity, Entra ID configuration, Container Apps, PostgreSQL, Blob Storage, or Application Insights setup are required:
-
-1. Stop before assuming the resource exists.
-2. Create a handoff file in `.agents/inbox/` using `.agents/templates/azure-deployment-handoff-template.md`.
-3. List exact resources to create or modify.
-4. List exact non-secret values the human must return to the agent.
-5. List secrets that must exist, but never ask the human to paste secret values into Git-tracked files.
-6. Provide validation commands or app checks for after the human finishes.
-7. Continue only after the human confirms completion and supplies non-secret configuration values.
-
-## Non-goals for early slices
-
-Do not implement all of these in early slices unless explicitly requested:
-
-- Teams client
-- Outlook add-in
-- Azure AI Search backend
-- Qdrant backend
-- Databricks integration
-- advanced admin portal
-- multi-tenant production governance
-- fine-tuning
-- autonomous email or ticket creation
-
-## Required working style
-
-Before coding:
-
-- identify the current phase from `.agents/memory/project-state.md`
-- choose the smallest useful slice
-- state the plan briefly
-- identify files likely to change
-
-During coding:
-
-- keep changes focused
-- avoid speculative abstractions not needed for the current slice
-- preserve provider boundaries
-- do not hardcode model deployment names
-- do not commit secrets
-
-After coding:
-
-- run relevant tests
-- update changelog, ADR, memory, and docs as needed
-- provide clear next slice recommendation
+Maintenance must preserve exact tenant scope and validate sources before writes. A full refresh replaces documents individually and prunes initial stale rows only after all inputs succeed; it does not delete the corpus before extraction/model calls.

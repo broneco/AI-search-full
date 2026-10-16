@@ -1,36 +1,40 @@
+"""Prompt isolation with synthetic clients, independent of exported tenant count."""
+import json
+
+import pytest
+
+import app.core.tenant_config as tenant_config
 from app.core.prompts import get_system_prompt, get_tenant_base
 
 
+@pytest.fixture
+def prompt_files(tmp_path, monkeypatch):
+    for name in ("alpha", "beta"):
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "prompts.json").write_text(json.dumps({
+            "cs": f"Asistent {name}. Kontext: {{context_str}}",
+            "en": f"Assistant {name}. Context: {{context_str}}",
+        }), encoding="utf-8")
+    monkeypatch.setattr(tenant_config, "TENANTS_DIR", str(tmp_path))
+    monkeypatch.setattr(tenant_config, "LOCAL_TENANTS_DIR", None)
+
+
 def test_tenant_base_extraction():
-    assert get_tenant_base("alzbeta-prod") == "alzbeta"
-    assert get_tenant_base("alzbeta-dev") == "alzbeta"
-    assert get_tenant_base("dolphin-prod") == "dolphin"
+    assert get_tenant_base("alpha-prod") == "alpha"
+    assert get_tenant_base("alpha-dev") == "alpha"
+    assert get_tenant_base("ju-prod") == "jhu"
     assert get_tenant_base("unknown-tenant") == "unknown"
     assert get_tenant_base("") == "default"
 
 
-def test_alzbeta_tenant_prompt_identifies_leaders():
-    context = "[1] Název: Test Doc\nObsah: Testovací směrnice\n"
-    prompt_cs = get_system_prompt("alzbeta-prod", "cs", context)
-    
-    # Assert hospital name and key leadership personalities are present in Czech prompt
-    assert "Nemocnice sv. Alžběty" in prompt_cs
-    assert "RNDr. Karel Matyska, CSc." in prompt_cs
-    assert "Jednatel" in prompt_cs
-    assert "MUDr. Ivana Doleželová, MBA" in prompt_cs
-    assert "Náměstek LPP" in prompt_cs
-    assert "Mgr. Marcela Tomanová, MBA, LL.M." in prompt_cs
-    assert "Náměstek NZOK" in prompt_cs
-    assert "[1] Název: Test Doc" in prompt_cs
-
-    prompt_en = get_system_prompt("alzbeta-dev", "en", context)
-    assert "St. Elizabeth Hospital" in prompt_en
-    assert "RNDr. Karel Matyska, CSc." in prompt_en
-    assert "Managing Director" in prompt_en
+def test_tenant_prompt_formats_both_languages(prompt_files):
+    context = "[1] Testovací dokument"
+    assert get_system_prompt("alpha-prod", "cs", context) == f"Asistent alpha. Kontext: {context}"
+    assert get_system_prompt("alpha-dev", "en", context) == f"Assistant alpha. Context: {context}"
 
 
-def test_dolphin_tenant_prompt():
-    context = "[1] Název: Pracovní řád\nObsah: Testovací obsah\n"
-    prompt_cs = get_system_prompt("dolphin-prod", "cs", context)
-    assert "Dolphin Consulting" in prompt_cs
-    assert "Karel Matyska" not in prompt_cs
+def test_tenant_prompt_does_not_mix_clients(prompt_files):
+    prompt = get_system_prompt("beta-prod", "cs", "Testovací obsah")
+    assert "beta" in prompt
+    assert "alpha" not in prompt

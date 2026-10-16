@@ -18,6 +18,7 @@ from app.storage.db import SessionLocal
 from app.providers.blob_storage import BlobStorageProvider
 
 from app.core.tenant_config import load_tenant_json, save_tenant_json
+from app.retrieval.filters import exact_value
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +281,8 @@ class MetadataTagger:
             
         try:
             # Query active documents in database
-            stmt = select(DBDocument).where(DBDocument.freshness_status == "current")
+            stmt = select(DBDocument).where(DBDocument.freshness_status == "current",
+                exact_value(DBDocument.tenant_id, settings.TENANT_ID, self.db.bind.dialect.name))
             docs = self.db.execute(stmt).scalars().all()
             if not docs:
                 return relationship_fallback
@@ -330,8 +332,11 @@ class MetadataTagger:
                 data["relationship_type"] = "none"
                 data["target_document_id"] = None
                 data["target_document_title"] = None
-                
-            logger.info(f"LLM detected relationship: {data}")
+            if data.get("relationship_type") != "none" and data.get("target_document_id") not in {
+                str(doc.document_id) for doc in docs
+            }:
+                return relationship_fallback
+            logger.info("Relationship classification complete: %s", data.get("relationship_type"))
             return data
             
         except Exception as e:

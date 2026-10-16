@@ -2,13 +2,12 @@ import os
 from typing import Literal, Optional
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from app.core.tenant_identity import tenant_config_name
 
 # Determine environment: 'dev', 'prod', or 'local' and tenant ID
 _APP_ENV = os.getenv("APP_ENV", "dev").lower()
 _RAW_TENANT = os.getenv("TENANT_ID", "jhu").strip().lower()
-_TENANT_BASE = _RAW_TENANT.split("-")[0] if _RAW_TENANT else "default"
-if _TENANT_BASE == "ju":
-    _TENANT_BASE = "jhu"
+_TENANT_BASE = tenant_config_name(_RAW_TENANT)
 
 _TENANTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tenants"))
 
@@ -39,7 +38,7 @@ class Settings(BaseSettings):
     APP_ENV: str = _APP_ENV
     DATABASE_BACKEND: Literal["auto", "azure_sql", "sqlserver", "postgresql"] = "auto"
     APP_NAME: str = "ai-search-app"
-    APP_VERSION: str = "v0.1.4"
+    APP_VERSION: str = "v0.1.5"
     LOG_LEVEL: str = "INFO"
     TENANT_ID: str = "dolphin"
     JWT_SECRET: str = Field(default="dolphin-ai-search-secret-key-2026", repr=False, exclude=True)

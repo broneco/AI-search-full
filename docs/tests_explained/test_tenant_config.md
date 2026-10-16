@@ -10,8 +10,8 @@ Testovací modul `test_tenant_config.py` ověřuje správnost fungování sjedno
 
 ### Hlavní testované oblasti:
 1. **Extrakce bázového názvu tenanta (`get_tenant_base`)**: Převod komplexních ID prostředí (např. `alzbeta-prod`, `dolphin-dev`) na bázový název tenanta (`alzbeta`, `dolphin`).
-2. **Souborová rezoluce a fallback (`resolve_tenant_file_path`)**: Ověření, že pokud tenant nemá vlastní konfigurační soubor (např. `alzbeta` nemá vlastní `search_config.json`), systém automaticky a transparentně sbalí rezoluci na `tenants/default/search_config.json` a indikuje `is_fallback_used = True`.
-3. **Načítání RAG promptů per tenant (`get_tenant_prompts_map`)**: Kontrola, že se správně načtou specifické systémové prompty pro Nemocnici sv. Alžběty, Jihočeskou Univerzitu i výchozí prompty pro neznámé tenanty.
+2. **Souborová rezoluce a fallback (`resolve_tenant_file_path`)**: Dočasné syntetické složky alpha/default ověřují fallback chybějícího souboru a příznak `is_fallback_used`, bez závislosti na dalších skutečných klientech.
+3. **Načítání RAG promptů per tenant (`get_tenant_prompts_map`)**: Kontrola JHU, aliasu `ju-prod` a obecného fallbacku pro neznámou identitu.
 4. **Formátování systémového promptu (`get_system_prompt`)**: Ověření, že se do načtené šablony promptu správně vloží získaný kontext dokumentů `{context_str}`.
 5. **Integrovaný správce vyhledávání (`SearchConfigManager`)**: Ověření, že správce vyhledávací konfigurace korektně načte nastavení ze složky tenantů.
 
@@ -22,8 +22,12 @@ Testovací modul `test_tenant_config.py` ověřuje správnost fungování sjedno
 - **Importy**: Importuje funkce `resolve_tenant_file_path`, `load_tenant_json`, `save_tenant_json`, `get_tenant_base` z modulu `app.core.tenant_config` a `get_tenant_prompts_map`, `get_system_prompt` z `app.core.prompts`.
 - **Testovací funkce**:
   - `test_tenant_base_extraction()`: Porovnává řetězce přes `assert get_tenant_base(...) == expected`.
-  - `test_tenant_file_resolution_and_fallback()`: Testuje `resolve_tenant_file_path("dolphin", "prompts.json")` -> `is_fallback == False`; a `resolve_tenant_file_path("alzbeta", "search_config.json")` -> `is_fallback == True`.
-  - `test_tenant_prompts_loading()`: Kontroluje přítomnost klíčových podřetězců ("Nemocnice sv. Alžběty", "Jihočeské univerzity") v načtených promptových mapách.
+  - `test_tenant_file_resolution_and_fallback()`: Ověřuje vlastní syntetický prompt a sdílený syntetický search_config; přesměrování resolveru platí pouze během testu.
+  - `test_tenant_prompts_loading()`: Kontroluje text JHU a stejný prompt přes alias, i fallback bez přibaleného default tenantu.
   - `test_system_prompt_formatting()`: Volá `get_system_prompt()` s testovací výplní a ověřuje řetězec odpovědi.
   - `test_search_config_manager_tenant_loading()`: Ověřuje `SearchConfigManager().load_config_sync()`.
-  - `test_tenant_branding_key_parity_and_jhu()`: Načte `branding.json` pro 5 tenantů, ověří 100% paritu klíčů a otestuje JCU hodnoty pro tenant `jhu` (`appName == "JCU AI Search"`, `demoEmail == "user@jcu.cz"`).
+  - `test_tenant_branding_key_parity_and_jhu()`: Ověří paritu všech skutečně přibalených brandingů vůči JHU a jeho konkrétní hodnoty; nevyžaduje pět tenantů, postačuje samotný JHU.
+
+## Aktualizace aliasů
+
+Současné regrese ověřují, že `ju-prod` načítá stejný JHU prompt jako `jhu`, zatímco databázové ID zůstává přesné. Sdílený resolver se používá pro modelové env i JSON konfiguraci; lokální overlay a file-level fallback zůstávají zachované.

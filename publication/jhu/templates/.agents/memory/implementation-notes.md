@@ -1,0 +1,19 @@
+# Implementation Notes
+
+- Tenant data identity is exact and case-sensitive where supported. Configuration directory aliases are centralized in app/core/tenant_identity.py; aliasing never grants access or changes persisted IDs.
+- Search prefilters are shared across vector and keyword branches. Eligibility includes server-derived tenant/groups, both ACL levels, metadata and freshness before top K. Hydration/context/history recheck access and revisions.
+- Embedding profiles identify the space, not the endpoint. Same dimensions do not imply compatibility. Text changes invalidate all profile embeddings; chunk deletion cascades. Native exact and optional DiskANN use the same catalog/profile/revision checks.
+- Default mode is exact. ANN requires a real enabled cosine v3+ index; index creation does not activate it. Timeouts do not launch another scan. JHU metadata-filter ANN performance remains unresolved.
+- Main ingestion generates replacement embeddings before deleting old records, then writes document/chunks/ACL/profile vectors transactionally. force_reindex bypasses the unchanged-file shortcut for explicit refresh.
+- Administrative refresh captures exact tenant scope. Input validation and classification precede replacements; only initial, unchanged stale IDs can be pruned after all files succeed, using conditional deletes. Failed runs can retain successful replacements but do not prune the rest. Newly uploaded rows are not stale candidates.
+- Fast reindex requires the exact stored source under data/. A missing source preserves existing chunks and reports failure; a same-basename file elsewhere is never substituted.
+- Use full_refresh_ingest.py without --apply for a source/target plan. Cloud apply requires expected host/database/tenant. The CLI cannot silently change the configured database/model tenant. No automatic bulk clear or root data fallback.
+- ask.py is an HTTP client: prompted email/password or AI_SEARCH_TOKEN, same server authentication/ACL as the UI. No direct FastAPI handler calls or local DB initialization.
+- Backend and frontend deployment scripts are separate existing-resource plan/apply tools. Frontend requires confirmed subscription/directory, checks native exit codes, never creates SWA and never echoes the deployment token.
+- Canonical Python dependencies and package discovery are in pyproject.toml; requirements.txt installs .[dev]. Public tenants/fixtures are sibling namespace resources in the wheel; private env files are explicitly excluded. Repository and installed paths retain the same relative resource layout.
+- Azure SDK configuration loads at process import. local/test skips Key Vault; cloud supports runtime secrets/managed identity. Passwords use Argon2id; explicit legacy password key is separate from signing. Current tokens are custom signed bearer tokens despite historical JWT variable names.
+- Tests globally replace the SQL engine/session before importing routes; native/local SQL tests are opt-in and separate from unit evidence. Real-env structural checks inspect configured tenant files only and require no fixed count of ten; synthetic fixtures cover the one-tenant case on clean clones.
+- Windows PowerShell 5.1 treats native stderr warnings as error records; helper functions must judge native commands by exit code. Keep SQL NOCOUNT/timeouts scoped on every success/error/cancellation path.
+- Azure VECTOR JSON parameters need NVARCHAR(MAX); vector-index DDL needs its own AUTOCOMMIT connection, not a user transaction. Preserve correlated ACL EXISTS/type bindings when compiling textual ANN batches.
+- Native keyword uses bounded Unicode CONTAINSTABLE terms and deferred legacy embedding hydration. Local SQL 2022 reference uses JSON cosine/LIKE and does not prove native Azure fulltext/ANN performance.
+- Python reference version is 3.12. Next.js dependency versions are pinned by package locks. Current frontend builds are static exports.

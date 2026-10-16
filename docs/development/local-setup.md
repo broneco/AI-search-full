@@ -17,7 +17,7 @@ V kořeni repozitáře spusť jednou v terminálu:
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 Set-Location frontend-user
-npm install
+npm ci
 Set-Location ..
 ```
 
@@ -48,7 +48,7 @@ Startup lokálního SQL také převede existující názvy dokumentů/konverzac�
 
 ## Zastavení a testy
 
-Slice 3 přidává profilový katalog a úplné přesné hledání. U starších neoznačených dat je nutný jednorázový explicitní backfill; postup, kontrola pokrytí a aktivace jsou v [návodu slice 3](search-slice-3-testing.md). Aktuální lokální setup má aktivovaný index s pokrytím 3/3 chunků. Lokální SQL Server 2022 používá streamovanou JSON referenci; Azure native VECTOR se ověřuje samostatně.
+Slice 3 přidává profilový katalog a úplné přesné hledání. U starších neoznačených dat je nutný jednorázový explicitní backfill; postup, kontrola pokrytí a aktivace jsou v [návodu slice 3](search-slice-3-testing.md). Nový lokální start připraví profilový index pro dokumenty Aurora; pokrytí závisí na aktuálním korpusu a nemá pevný počet chunků. Lokální SQL Server 2022 používá streamovanou JSON referenci; Azure native VECTOR se ověřuje samostatně.
 
 Pro opakovatelnou lokální kontrolu latence bez generování odpovědí použij [benchmark slice 5](search-slice-5-testing.md). `prepare` jednou vytvoří cache osmi otázek přes aktuální embedding provider; `run` používá tuto cache a potřebuje jen SQL DB, ne běžící FE/BE ani modelová volání. Konkrétní příkazy a interpretace blokované ANN brány jsou v návodu.
 
@@ -64,4 +64,4 @@ Ukonči běžící frontend a backend přes terminály jejich VS Code úloh (Ctr
 
 Lokální uživatelské rozhraní a API lze spustit bez Azure přihlašovacích údajů. Vyhledávání, ingestace a odpovědi vyžadují nakonfigurovaný embeddingový a chatový provider; samotná databáze ani testovací režim modely nenahrazují. Modelové volání prozatím zůstává na Azure OpenAI.
 
-Lokální SQL Server ověřuje běžný SQL Server dialect, schéma, CRUD, profilovou synchronizaci a přesnou Python cosine referenci nad všemi platnými způsobilými vektory aktivního indexu bez capu. Neověřuje native VECTOR/VECTOR_DISTANCE, DiskANN ani výkon Azure SQL Basic 5 DTU; ty vyžadují samostatný Azure integrační cíl.
+Lokální SQL Server ověřuje běžný SQL Server dialect, schéma, CRUD, profilovou synchronizaci a přesnou Python cosine referenci nad všemi platnými způsobilými vektory aktivního indexu bez capu. Neověřuje native VECTOR/VECTOR_DISTANCE, DiskANN ani výkon konkrétního Azure tieru; ty vyžadují samostatný Azure integrační cíl. Native funkční testy již prošly na Showcase a JHU má nativní exact úložiště; reprezentativní ANN/výkonová akceptace zůstává otevřená. Aktuální příkazy včetně admin frontendu a lokálních SQL testů shrnuje [README](../../README.md).

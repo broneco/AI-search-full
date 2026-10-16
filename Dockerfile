@@ -15,12 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Cloud settings are supplied at runtime; tenant env files are excluded by .dockerignore.
+COPY pyproject.toml README.md ./
 COPY app ./app
 COPY tenants ./tenants
+COPY fixtures ./fixtures
+RUN pip install --no-cache-dir .
 COPY migrate_search_acl.py migrate_search_vectors.py benchmark_search.py ./
 
 EXPOSE 8000

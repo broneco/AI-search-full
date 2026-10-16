@@ -138,3 +138,7 @@ Změny kategorií a dokumentů provádí přihlášený testovací správce.
 Module fixture manager_headers vytváří reálný DBUser s Management a přidává bearer do API volání; ACL změny současně synchronizují grant projekci přes ORM eventy.
 
 Confirmed-ingest testy používají vlastní dočasný staging adresář uvnitř data/, protože API odmítá jiné souborové cesty; fixture po sobě uklidí. Testy tak napodobují skutečný upload místo přístupu k libovolnému OS temp souboru.
+
+## Izolace vztahů
+
+Detekce nahrazení/úpravy posílá do modelu pouze aktuální dokumenty přesného tenantu. Vrácené UUID musí patřit této sadě, jinak se vztah odmítne; cizí tituly se do promptu nedostanou. Dvoutenantový prompt test je v `tests/test_maintenance.py`.

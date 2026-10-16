@@ -9,6 +9,7 @@ import json
 import logging
 from typing import Any, Dict, Tuple
 from app.core.config import settings
+from app.core.tenant_identity import tenant_config_name
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +24,7 @@ LOCAL_TENANTS_DIR = (
 
 def get_tenant_base(tenant_id: str) -> str:
     """Extract base tenant name from tenant_id string (e.g. 'alzbeta-prod' -> 'alzbeta', 'dolphin-dev' -> 'dolphin')."""
-    if not tenant_id:
-        return "default"
-    clean = tenant_id.strip().lower()
-    return clean.split("-")[0]
+    return tenant_config_name(tenant_id)
 
 
 def resolve_tenant_file_path(tenant_id: str, filename: str) -> Tuple[str, bool]:

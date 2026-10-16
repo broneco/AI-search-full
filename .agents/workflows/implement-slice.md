@@ -19,7 +19,7 @@ Define:
 - tests or verification
 - whether Azure manual action is needed
 
-If the request is too large, implement the first useful slice only.
+If the request is too large, implement the first useful slice only, unless the user explicitly approved the larger batch. Complete approved batches with focused verification per issue.
 
 ## 3. Implement
 
@@ -38,7 +38,7 @@ If the request is too large, implement the first useful slice only.
 
 Update as relevant:
 
-- `CHANGELOG.md`
+- `docs/CHANGELOG.md`
 - `docs/adr/*.md`
 - `.agents/memory/project-state.md`
 - `.agents/memory/implementation-notes.md`

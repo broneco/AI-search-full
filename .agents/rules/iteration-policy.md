@@ -28,7 +28,7 @@ A slice should usually fit into one of these scopes:
 - one deployment handoff
 - one eval dataset addition
 
-If the task is larger, split it and implement only the first coherent slice.
+If the task is larger, split it and implement only the first coherent slice unless the user explicitly approves a larger batch. Complete an explicitly approved batch, retaining focused changes and verification for each issue.
 
 ## Avoid
 

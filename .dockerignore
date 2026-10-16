@@ -34,7 +34,9 @@ scratch
 **/*.log
 docs
 tests
+scripts
+publication
+export_jhu.py
+prepare_jhu_publication.py
 docker-compose.yml
 Dockerfile
-README.md
-CHANGELOG.md

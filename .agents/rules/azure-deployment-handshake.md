@@ -2,7 +2,7 @@
 
 ## Context
 
-The agent does not have direct access to Azure. Any Azure resource creation or configuration must be performed by a human.
+Azure CLI access may be available. Read access does not authorize resource changes. Prepare a concrete, reviewable handoff before writes; a human performs the actions unless the user explicitly authorizes the agent to execute them. Reuse existing authorization within its scope.
 
 ## Required workflow
 
@@ -11,8 +11,8 @@ When the implementation requires Azure resources or Azure configuration:
 1. Stop implementation at the integration boundary if continuing would require guessing Azure values.
 2. Create a file in `.agents/inbox/` using `.agents/templates/azure-deployment-handoff-template.md`.
 3. Fill in the requested resources, exact values needed back from the human, and validation steps.
-4. Continue only with local mocks or provider interfaces until the human completes the handoff.
-5. After the human fills the handoff, read it and continue implementation/testing.
+4. Continue with local mocks or provider interfaces until the target values and authorization are established.
+5. Read the completed handoff, validate the target and continue implementation/testing. Execute cloud writes only within explicit user authorization; otherwise leave them to the human.
 6. Move completed handoff documentation to `docs/deployments/` when the integration is stable.
 
 ## What the handoff must include
@@ -43,7 +43,7 @@ Ask the human to fill only non-secret values into the handoff file, such as:
 
 - resource group name
 - Azure region
-- PostgreSQL server name
+- Azure SQL server name (or the explicitly selected alternative)
 - database name
 - storage account name
 - blob container name

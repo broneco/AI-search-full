@@ -45,3 +45,7 @@ This single comprehensive integration test covers three distinct vector DB searc
 * **Low-Level Technical Details:**
   * Executes a retrieve query with `filters={"tags": ["HR", "collaboration"]}`.
   * Asserts that the return list matches *Chunk 1* (whose metadata tags match the filter dictionary), while excluding chunks without matching keys.
+
+## Poznámka k lokálnímu prostředí (2026-10-15)
+
+Výchozí lokální databáze je nyní SQL Server přes `dev.ps1`, nikoli automatické `docker compose up`. Historický PostgreSQL Compose je v `infra/legacy/docker-compose.postgres.yml`; tato změna upravuje pouze diagnostickou hlášku testu a neopravuje odloženou PostgreSQL retrieval cestu. Současné SQL testy popisuje `docs/development/local-setup.md`.

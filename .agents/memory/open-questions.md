@@ -1,22 +1,9 @@
-# Open Questions Memory
+# Open Questions
 
-## Product and data
+1. Which representative JHU questions/expected documents will be used for the full quality benchmark?
+2. Which filtered query plans and context expansion costs explain remaining latency on the current capacity?
+3. Can explicit ANN meet recall@30 >=95% over at least 100 representative queries and retrieval p95 <=1s at concurrency 1/3? Activation remains pending evidence and review.
+4. Which historical database credentials are still active and require rotation?
+5. When should the deferred PostgreSQL, section_title, configuration unification, OCR and local-model work resume?
 
-1. What are the first document sources for the technical spike?
-2. What document types must be supported first: PDF, DOCX, MD, HTML, JSON, or TXT?
-3. What is the expected MVP document/chunk volume?
-4. How should source-system permissions map to chunk/document ACL metadata?
-5. What is the target latency budget for `flash` and `thinking` mode?
-
-## Azure and deployment
-
-1. Which Azure subscription/resource group/region should the pilot use?
-2. Which Azure AI Foundry deployments will be used for `flash`, `thinking`, and `embedding` profiles?
-3. Should PostgreSQL use password auth initially or managed identity from the beginning?
-4. What networking restrictions are required for MVP?
-
-## Evaluation
-
-1. Who owns the first retrieval eval dataset?
-2. What are 20 representative company questions for recall/freshness/citation testing?
-3. What is acceptable recall@k for the pilot?
+Resolved basics (Azure SQL, two frontends, Azure providers, auth implementation and local setup) are in current project-state/implementation notes. Do not treat them as undecided architecture.

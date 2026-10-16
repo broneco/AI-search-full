@@ -54,8 +54,9 @@ class IngestionPipeline:
         security_acl: Optional[Dict[str, List[str]]] = None,
         metadata_json: Optional[Dict[str, Any]] = None,
         language: str = "en",
+        force_reindex: bool = False,
     ) -> DBDocument:
-        """Process a single file end-to-end and persist it to PostgreSQL."""
+        """Process a file and persist its chunks/embeddings to the configured database."""
         file_name = os.path.basename(file_path)
         # Determine the relative file path from data/ if applicable, to prevent folder conflicts
         parts = file_path.replace("\\", "/").split("/data/")
@@ -82,7 +83,7 @@ class IngestionPipeline:
         existing_doc_stmt = existing_doc_stmt.where(exact_value(DBDocument.tenant_id, settings.TENANT_ID, self.db.bind.dialect.name))
         existing_doc = self.db.execute(existing_doc_stmt).scalar_one_or_none()
 
-        if existing_doc and existing_doc.checksum == checksum:
+        if existing_doc and existing_doc.checksum == checksum and not force_reindex:
             logger.info(f"│  ├── ℹ️ Document {file_name} already exists and is unchanged. Updating metadata, security ACL, and language...")
             from sqlalchemy.orm.attributes import flag_modified
             if security_acl is not None:
@@ -141,18 +142,18 @@ class IngestionPipeline:
         logger.info(f"│  │   └── Text split complete. created {len(chunks)} chunks (size: {self.splitter.chunk_size}, overlap: {self.splitter.chunk_overlap}).")
 
         # 4. Generate embeddings in batch for all chunks
-        logger.info(f"│  ├── [Step 4/5] Sending batches to Azure OpenAI (text-embedding-3-large)...")
+        logger.info("│  ├── [Step 4/5] Sending batches to the configured embedding provider...")
         chunk_texts = [chunk.content for chunk in chunks]
         logger.info(f"│  │   └── Generating embedding vectors for {len(chunk_texts)} chunks...")
         try:
             embeddings = await self.embedding_provider.embed_documents(chunk_texts)
-            logger.info(f"│  │   └── Azure OpenAI vectors generated successfully.")
+            logger.info("│  │   └── Embedding vectors generated successfully.")
         except Exception as e:
             logger.error(f"│  └── ❌ Failed to generate embeddings: {e}")
             raise
 
         # 5. Persist document and chunk nodes to database
-        logger.info(f"│  ├── [Step 5/5] Persisting document and chunks to Azure PostgreSQL...")
+        logger.info("│  ├── [Step 5/5] Persisting document and chunks to the configured database...")
         try:
             # Parse created_at and clean up metadata_json to prevent database JSON serialization errors
             metadata = dict(metadata_json or {})

@@ -29,7 +29,7 @@ Enable secure cloud-based document hosting. Once completed:
 
 ## Required app configuration keys
 
-Add these keys to your local, Git-ignored [**`.env`**](file:///c:/Users/ondrej.bronec/OneDrive - dolphinconsulting.cz/Documents/Projekty/AI Search Full/.env) file:
+Add these keys to the relevant Git-ignored tenant environment file (`tenants/<configuration-name>/.env.<environment>`):
 
 | Key | Secret? | Source | Value to provide | Notes |
 |---|---:|---|---|---|

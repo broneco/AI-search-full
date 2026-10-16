@@ -571,7 +571,7 @@ export default function UserSearchPage() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.4
+                v0.1.5
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -748,7 +748,7 @@ export default function UserSearchPage() {
             </form>
             <p className="text-[10px] text-zinc-500 text-center mt-2 font-medium flex items-center justify-center gap-2">
               <span>{TRANSLATIONS[appLanguage].disclaimer}</span>
-              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.4</span>
+              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.5</span>
             </p>
           </div>
         </main>

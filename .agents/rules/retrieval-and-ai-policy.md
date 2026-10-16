@@ -10,13 +10,12 @@ user query
   -> detect language
   -> enrich with knowledge base
   -> extract metadata constraints
-  -> vector search
-  -> full-text search
-  -> ACL filtering
-  -> metadata filtering
+  -> authoritative tenant/groups from server identity
+  -> shared tenant + document/chunk ACL + metadata + freshness SQL predicates
+  -> vector and full-text branches, each filtered before top K
   -> rank fusion
-  -> freshness validation
   -> optional reranking
+  -> authorized context expansion and revision/access recheck
   -> context packing
   -> LLM answer with citations
 ```

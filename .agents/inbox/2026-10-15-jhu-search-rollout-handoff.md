@@ -138,3 +138,6 @@ thinking_mini_deployment_approved: true # existující gpt-5.4-mini pro oba chat
 backup_restore_point_confirmed:
 schema_backfill_runtime_and_deployment_scope_approved:
 ```
+## Poznámka k úklidu repozitáře
+
+Privátní JHU operátory byly po vydání v0.1.4 přesunuty ze `scratch/` do `.local/operations/`; historické cesty níže nejsou aktuálním spouštěcím místem. Snapshoty/checkpointy a data zůstávají zachované. Aktuální postup spuštění a běžného release je v kořenovém README; detaily úklidu v `docs/development/repository-cleanup.md`. Tento přesun neprovádí další migraci ani aktivaci ANN.

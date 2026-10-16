@@ -1,5 +1,7 @@
 # JHU search rollout — 2026-10-15
 
+Poznámka po úklidu repozitáře: privátní operátory jsou nově v `.local/operations/jhu_rollout.py` a `.local/operations/jhu_ann_release.py`; původní zmínky o `scratch/` níže popisují tehdejší umístění. Checkpointy a chráněné snapshoty se nepřesouvaly. Současné obecné příkazy jsou v kořenovém README, inventura přesunů v `docs/development/repository-cleanup.md`.
+
 ## Aktuální v0.1.4 — keyword nasazen, ANN připravené a vypnuté
 
 Backend **revize0000008**, image **`prod-v014-20261015-145009`**, i oba existující frontendy byly nasazeny a ověřeny ve verzi v0.1.4. Live HTML obou SWA odpovídá novým buildům. Stav indexů: skutečný DiskANN v3 nad původním profilem, Czech1029 FTS9372řádků/population0, coverage9372/9372. **Runtime stále exact, Blob search config nebyl aktivací vytvořen/upraven.** User požádal o vysvětlení zhoršení ANN místo výběru adaptivní varianty; rozhodnutí o další strategii je otevřené, žádné adaptivní přepínání se neimplementovalo.

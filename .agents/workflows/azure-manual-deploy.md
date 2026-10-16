@@ -6,15 +6,14 @@ Use this workflow whenever a task needs Azure resources or cloud configuration t
 
 Examples:
 
-- PostgreSQL Flexible Server
-- pgvector extension
+- Azure SQL schema, native vectors, fulltext or optional DiskANN
 - Blob Storage container
 - Azure AI Foundry model deployments
 - Azure Key Vault secrets
 - Container Apps environment
 - Container Registry
 - Managed identity assignment
-- Entra ID app registration
+- Entra ID app registration if separately approved (not the current app authentication)
 - Application Insights
 
 ## 2. Create handoff file

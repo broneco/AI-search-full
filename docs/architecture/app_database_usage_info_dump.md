@@ -1,7 +1,8 @@
 # app_database_usage_info_dump
 
-Tento dokument slouží jako **kompletní architektura a specifikace využití databáze** v projektu **AI Search Application**.
-Je určen pro vývojáře, architekty i AI modely jako podklad k posouzení vhodnosti stávajícího databázového řešení (PostgreSQL) a případné úvaze o alternativních databázových či vyhledávacích platformách.
+**Historický podklad před přechodem na Azure SQL.** Níže uvedené PostgreSQL dotazy a předpoklady nejsou popisem současné podporované implementace ani návodem k nasazení. Zachovávají původní kontext rozhodování.
+
+Aktuální spuštění a datové prostředí popisuje [README](../../README.md), profilové úložiště a volitelné ANN [search roadmap](azure-sql-search-roadmap.md) a skutečný stav JHU [deployment report](../deployments/2026-10-15-jhu-search-rollout.md).
 
 ---
 
@@ -28,7 +29,7 @@ Stávající databázový stroj: **Azure Database for PostgreSQL Flexible Server
 
 ## 3. Kompaktní schéma databáze & Datové modely
 
-Databáze se skládá z **5 hlavních tabulek** spravovaných přes SQLAlchemy ORM (soubor [`app/storage/models.py`](file:///c:/Users/ondrej.bronec/OneDrive%20-%20dolphinconsulting.cz/Documents/Projekty/WIP%20-%20AI%20Search%20Full/app/storage/models.py)):
+Databáze se skládá z **5 hlavních tabulek** spravovaných přes SQLAlchemy ORM (soubor [`app/storage/models.py`](../../app/storage/models.py)):
 
 ```mermaid
 erDiagram
@@ -138,7 +139,7 @@ erDiagram
 ## 4. Klíčové databázové dotazy a vyhledávací mechaniky
 
 ### A. Vektorové vyhledávání (`pgvector`)
-Model používá kosinovou vzdálenost nad vektory s integrovaným SQL pre-filteringem (soubor [`app/retrieval/vector.py`](file:///c:/Users/ondrej.bronec/OneDrive%20-%20dolphinconsulting.cz/Documents/Projekty/WIP%20-%20AI%20Search%20Full/app/retrieval/vector.py)):
+Model používá kosinovou vzdálenost nad vektory s integrovaným SQL pre-filteringem (soubor [`app/retrieval/vector.py`](../../app/retrieval/vector.py)):
 
 ```sql
 SELECT chunks.*, documents.*
@@ -165,7 +166,7 @@ LIMIT 50;
 ```
 
 ### C. GIN Index pro Plnotext
-Při startu aplikace (v [`app/storage/db.py`](file:///c:/Users/ondrej.bronec/OneDrive%20-%20dolphinconsulting.cz/Documents/Projekty/WIP%20-%20AI%20Search%20Full/app/storage/db.py)) se automaticky vytváří GIN index:
+Při startu aplikace (v [`app/storage/db.py`](../../app/storage/db.py)) se automaticky vytváří GIN index:
 ```sql
 CREATE INDEX IF NOT EXISTS chunks_fts_idx ON chunks USING gin(to_tsvector('cs', content));
 ```

@@ -50,3 +50,7 @@ Reálné modelové volání se při běžné sadě nespouští automaticky.
 ### Technicky
 
 Pipeline Azure integrační test vyžaduje RUN_AZURE_MODEL_TESTS=1 i platné credentials. Extrakční test zůstává offline; bulk ACL zápisy ověřuje také test_search_access bez Azure.
+
+## Explicitní refresh
+
+`force_reindex=True` dovoluje pouze explicitní údržbě přeskočit checksum shortcut. Ani tento režim neodstraňuje původní dokument před vytvořením náhradních embeddingů; rollback stávající pipeline zůstává zachovaný. Běžná ingestace ponechává výchozí idempotentní chování.

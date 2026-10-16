@@ -36,7 +36,7 @@ Use this project in slices:
 3. Agent implements only the agreed slice.
 4. Agent updates tests, documentation, ADRs, and changelog.
 5. If Azure resources are required, the agent creates a handoff file in `.agents/inbox/`.
-6. Human deploys or configures Azure resources manually.
+6. Human deploys/configures Azure resources, or explicitly authorizes the agent to execute the reviewed steps.
 7. Human records created resource names, endpoints, deployment names, and non-secret configuration values in the same handoff file.
 8. Agent resumes and validates integration without ever asking for secrets to be committed.
 
@@ -44,7 +44,7 @@ Use this project in slices:
 
 Agents may update these when relevant:
 
-- `CHANGELOG.md`
+- `docs/CHANGELOG.md`
 - `docs/adr/*.md`
 - `.agents/memory/project-state.md`
 - `.agents/memory/implementation-notes.md`

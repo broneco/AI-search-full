@@ -1511,7 +1511,7 @@ export default function Home() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.4
+                v0.1.5
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">

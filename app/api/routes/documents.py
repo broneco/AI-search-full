@@ -788,209 +788,18 @@ async def ingest_confirmed(
             os.remove(request.temp_file_path)
 
 
-async def run_reindex_full_task():
-    logger.info("Starting background full re-indexing of all documents...")
-    import os
-    import datetime
-    from app.storage.db import SessionLocal, init_db, clear_document_data
-    from app.ingestion.loaders.local import list_local_files
-    from app.ingestion.pipeline import IngestionPipeline
-    from app.ingestion.tagger import MetadataTagger
-    from app.storage.models import DBDocument, DBChunk
-    import uuid
-
-    # Reset progress state
-    reindex_progress["status"] = "running"
-    reindex_progress["type"] = "reindex_full"
-    reindex_progress["phase"] = "clearing_db"
-    reindex_progress["total_files"] = 0
-    reindex_progress["processed_files"] = 0
-    reindex_progress["current_file"] = None
-    reindex_progress["error"] = None
-
-    # Use fresh db session context manager
-    db = SessionLocal()
+async def run_reindex_full_task(tenant_id: str | None = None):
+    from app.ingestion.refresh import refresh_files, refresh_documents
+    tenant_id = tenant_id or settings.TENANT_ID
+    reindex_progress.update(status="running", type="reindex_full", phase="scanning_files",
+                            total_files=0, processed_files=0, current_file=None, error=None)
     try:
-        # 1. Clear database
-        try:
-            clear_db()
-        except Exception as e:
-            logger.warning(f"Drop tables failed during re-indexing: {e}")
-
-        # 2. Re-create tables
-        init_db()
-
-        tagger = MetadataTagger(db_session=db)
-        config = await tagger.load_config()
-
-        # 3. Scan data directories
-        reindex_progress["phase"] = "scanning_files"
-        tenant_id = settings.TENANT_ID.lower().split("-")[0]
-        search_dirs = [
-            os.path.abspath("data"),
-            os.path.abspath(os.path.join("data - full backup", tenant_id)),
-            os.path.abspath(os.path.join("data-full backup", tenant_id)),
-            os.path.abspath(os.path.join("data", tenant_id)),
-        ]
-        files = []
-        seen = set()
-        for d in search_dirs:
-            if os.path.exists(d):
-                for f in list_local_files(d, extensions=[".pdf", ".txt"]):
-                    if f not in seen:
-                        seen.add(f)
-                        files.append(f)
-
-        if not files:
-            logger.info("No documents found in data directories for re-indexing.")
-            reindex_progress["status"] = "completed"
-            reindex_progress["phase"] = None
-            return
-
-        reindex_progress["total_files"] = len(files)
-        reindex_progress["phase"] = "analyzing"
-        reindex_progress["processed_files"] = 0
-
-        # 4. Phase A: Extract metadata for all files to sort them
-        analyzed_docs = []
-        for idx, file_path in enumerate(files):
-            reindex_progress["current_file"] = os.path.basename(file_path)
-            reindex_progress["processed_files"] = idx
-            try:
-                suggestions = await tagger.analyze_file(file_path)
-                analyzed_docs.append({
-                    "file_path": file_path,
-                    "suggestions": suggestions
-                })
-            except Exception as e:
-                logger.error(f"Failed to analyze file {file_path} during reindex phase A: {e}")
-
-        # Helper key function to sort by date
-        def get_sort_date(item):
-            date_str = item["suggestions"].get("suggested_date")
-            try:
-                return datetime.datetime.strptime(date_str, "%Y-%m-%d")
-            except Exception:
-                return datetime.datetime.min
-
-        analyzed_docs.sort(key=get_sort_date)
-
-        # 5. Phase B: Ingest in chronological order
-        pipeline = IngestionPipeline(db)
-        reindex_progress["phase"] = "ingesting"
-        reindex_progress["processed_files"] = 0
-        reindex_progress["total_files"] = len(analyzed_docs)
-
-        for idx, item in enumerate(analyzed_docs):
-            file_path = item["file_path"]
-            sug = item["suggestions"]
-            title = sug["title"]
-            category_key = sug["suggested_category"]
-            date_str = sug["suggested_date"]
-            rel = sug["relationship"]
-
-            reindex_progress["current_file"] = os.path.basename(file_path)
-            reindex_progress["processed_files"] = idx
-
-            logger.info(f"Re-indexing document in order: {title} (Date: {date_str})")
-
-            # Resolve allowed groups
-            category_item = None
-            for cat in config.get("categories", []):
-                if cat.get("key") == category_key:
-                    category_item = cat
-                    break
-
-            if not category_item:
-                allowed_groups = ["Management", "HR", "Finance", "User"]
-            else:
-                allowed_groups = category_item.get("allowed_groups", ["Management", "HR", "Finance", "User"])
-
-            security_acl = {"allowed_groups": allowed_groups}
-
-            # Parse date
-            try:
-                release_date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
-            except Exception:
-                release_date = datetime.datetime.utcnow()
-
-            # Metadata dict
-            metadata = {
-                "department": category_key,
-                "year": release_date.year,
-                "created_at": release_date.isoformat(),
-                "freshness_status": "current",
-                "relationship_type": rel.get("relationship_type", "none"),
-            }
-
-            # Calculate source folder relative to data_dir
-            rel_dir = os.path.relpath(os.path.dirname(file_path), data_dir).replace("\\", "/")
-            if rel_dir and rel_dir != ".":
-                metadata["source_folder"] = rel_dir
-                metadata["Zdroj dat"] = rel_dir
-
-            # Check if replaces target
-            rel_type = rel.get("relationship_type", "none")
-            target_doc = None
-            if rel_type == "replaces" and rel.get("target_document_id"):
-                try:
-                    target_uuid = uuid.UUID(rel.get("target_document_id"))
-                    target_doc = db.query(DBDocument).filter(DBDocument.document_id == target_uuid, exact_value(DBDocument.tenant_id, settings.TENANT_ID, db.bind.dialect.name)).first()
-                    if target_doc:
-                        logger.info(f"Reindex: Archiving replaced document {target_doc.title}")
-                        target_doc.freshness_status = "archived"
-                        if not target_doc.metadata_json:
-                            target_doc.metadata_json = {}
-                        target_doc.metadata_json["replaced_by_document_title"] = title
-                        
-                        db.query(DBChunk).filter(DBChunk.document_id == target_uuid).update(
-                            {"freshness_status": "archived"}
-                        )
-                        metadata["replaces_document_id"] = str(target_uuid)
-                        metadata["replaces_document_title"] = target_doc.title
-                        db.flush()
-                except Exception as ex:
-                    logger.error(f"Reindex relationship archival error: {ex}")
-
-            elif rel_type == "modifies" and rel.get("target_document_id"):
-                metadata["modifies_document_id"] = rel.get("target_document_id")
-                metadata["modifies_document_title"] = rel.get("target_document_title")
-
-            # Ingest
-            try:
-                doc = await pipeline.ingest_file(
-                    file_path=file_path,
-                    document_type="policy" if "policy" in file_path.lower() else "document",
-                    security_acl=security_acl,
-                    metadata_json=metadata,
-                    language=sug.get("suggested_language", "cs"),
-                )
-                doc.title = title
-                doc.created_at = release_date
-
-                if target_doc:
-                    target_doc.metadata_json["replaced_by_document_id"] = str(doc.document_id)
-                    db.add(target_doc)
-
-                db.commit()
-                logger.info(f"Successfully reindexed file: {title} -> doc_id: {doc.document_id}")
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Failed to ingest file {title} during reindex phase B: {e}")
-
-        # Finalize success
+        files = refresh_files(tenant_id)
+        await refresh_documents(tenant_id, files, reindex_progress)
         reindex_progress["status"] = "completed"
-        reindex_progress["processed_files"] = len(analyzed_docs)
-        reindex_progress["current_file"] = None
-        reindex_progress["phase"] = None
-
-    except Exception as e:
-        logger.error(f"Re-indexing failed: {e}")
-        reindex_progress["status"] = "failed"
-        reindex_progress["error"] = str(e)
-    finally:
-        db.close()
-        logger.info("Background re-indexing finished.")
+    except Exception:
+        logger.exception("Tenant full refresh failed; stale cleanup was not completed.")
+        reindex_progress.update(status="failed", error="Refresh failed; inspect server logs. Remaining corpus was retained.", phase=None)
 
 
 @router.get("/reindex-progress", dependencies=[Depends(require_manager)])
@@ -1002,19 +811,23 @@ async def get_reindex_progress():
 @router.post("/reindex-full", dependencies=[Depends(require_manager)])
 async def reindex_full_endpoint(
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db_session)
+    db: Session = Depends(get_db_session),
+    principal: Principal = Depends(require_manager),
 ):
     """Trigger background full re-indexing of all local documents in the data folder (with LLM metadata analysis)."""
-    background_tasks.add_task(run_reindex_full_task)
+    background_tasks.add_task(run_reindex_full_task, principal.tenant_id)
     return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů (s analýzou metadat) byla spuštěna na pozadí."}
 
 
-async def run_reindex_all_task():
+async def run_reindex_all_task(tenant_id: str | None = None):
     logger.info("Starting background fast re-indexing (re-chunking) of all documents...")
     import os
     from app.storage.db import SessionLocal
     from app.storage.models import DBDocument, DBChunk
     from app.ingestion.pipeline import IngestionPipeline
+    tenant_id = tenant_id or settings.TENANT_ID
+    if tenant_id != settings.TENANT_ID:
+        raise ValueError("Reindex tenant must match the configured tenant.")
 
     # Reset progress state
     reindex_progress["status"] = "running"
@@ -1028,7 +841,9 @@ async def run_reindex_all_task():
     db = SessionLocal()
     try:
         from sqlalchemy import select
-        docs = db.execute(select(DBDocument)).scalars().all()
+        docs = db.execute(select(DBDocument).where(
+            exact_value(DBDocument.tenant_id, tenant_id, db.bind.dialect.name)
+        )).scalars().all()
         
         if not docs:
             logger.info("No documents found in database for fast re-indexing.")
@@ -1055,23 +870,18 @@ async def run_reindex_all_task():
                     relative_path = parts[3]
             
             file_path = os.path.abspath(os.path.join("data", relative_path))
+            if safe_data_path(file_path) is None:
+                raise ValueError("Reindex source is outside the data directory.")
             if not os.path.exists(file_path):
-                found_path = None
-                data_dir = os.path.abspath("data")
-                if os.path.exists(data_dir):
-                    basename = os.path.basename(relative_path)
-                    for root, dirs, files in os.walk(data_dir):
-                        if basename in files:
-                            found_path = os.path.join(root, basename)
-                            break
-                if found_path:
-                    file_path = found_path
-                else:
-                    logger.warning(f"File not found for document {doc.title} at {file_path}. Skipping.")
-                    continue
+                # A basename match elsewhere in data/ may belong to another tenant.
+                logger.warning("Exact source missing for document %s; retaining its chunks.", doc.document_id)
+                reindex_progress["error"] = "An exact document source is missing; its existing chunks were retained."
+                continue
 
             logger.info(f"Fast re-indexing document: {doc.title} from {file_path}")
             try:
+                if safe_data_path(file_path) is None:
+                    raise ValueError("Reindex source is outside the data directory.")
                 extracted_pages = pipeline.extractor.extract(file_path)
                 chunks = pipeline.splitter.split_pages(extracted_pages)
                 if not chunks:
@@ -1081,7 +891,8 @@ async def run_reindex_all_task():
                 chunk_texts = [chunk.content for chunk in chunks]
                 embeddings = await pipeline.embedding_provider.embed_documents(chunk_texts)
                 
-                db.query(DBChunk).filter(DBChunk.document_id == doc.document_id).delete()
+                db.query(DBChunk).filter(DBChunk.document_id == doc.document_id,
+                    exact_value(DBChunk.tenant_id, tenant_id, db.bind.dialect.name)).delete()
                 
                 write_chunks(db, [{"document_id": doc.document_id, "chunk_index": chunk_idx,
                     "content": chunk.content, "embedding": embeddings[chunk_idx],
@@ -1097,7 +908,7 @@ async def run_reindex_all_task():
                 logger.error(f"Failed to fast-reindex document {doc.title}: {inner_e}")
                 reindex_progress["error"] = f"Failed for {doc.title}: {inner_e}"
 
-        reindex_progress["status"] = "completed"
+        reindex_progress["status"] = "failed" if reindex_progress["error"] else "completed"
         reindex_progress["processed_files"] = len(docs)
         reindex_progress["current_file"] = None
         reindex_progress["phase"] = None
@@ -1114,10 +925,11 @@ async def run_reindex_all_task():
 @router.post("/reindex-all", dependencies=[Depends(require_manager)])
 async def reindex_all_endpoint(
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db_session)
+    db: Session = Depends(get_db_session),
+    principal: Principal = Depends(require_manager),
 ):
     """Trigger background fast re-indexing (re-chunking and embedding only) of all active documents."""
-    background_tasks.add_task(run_reindex_all_task)
+    background_tasks.add_task(run_reindex_all_task, principal.tenant_id)
     return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů (chunky a embeddingy) byla spuštěna na pozadí."}
 
 

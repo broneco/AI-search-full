@@ -2,7 +2,7 @@
 
 ## Jednoduše
 
-Testy nahrazují Azure SDK falešným klientem. Kontrolují správné načtení klíčů, oddělení JWT a starého heslového klíče, bezpečné zamítnutí chybějícího secretu a to, že local/test nikdy do Key Vaultu nevolá. Zároveň ověřují shodné názvy proměnných všech deseti tenant `.env` souborů, bez výpisu jejich hodnot.
+Testy nahrazují Azure SDK falešným klientem. Kontrolují správné načtení klíčů, oddělení JWT a starého heslového klíče, bezpečné zamítnutí chybějícího secretu a to, že local/test nikdy do Key Vaultu nevolá. Strukturální kontrola soukromých env potřebuje alespoň jeden vyplněný tenant, ignoruje placeholdery a nevyžaduje pevný počet deseti souborů. Vyplněný cíl zde znamená APP_ENV dev/prod, TENANT_ID a SQL/PostgreSQL host+DB; tato kontrola neověřuje platnost credentials. Bez soukromých env přeskočí pouze volitelnou kontrolu, zatímco syntetický jednotenantový scénář běží vždy.
 
 ## Technicky
 
