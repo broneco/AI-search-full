@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "default_profile": "azure-default",
+  "profiles": [
+    { "id": "azure-default", "provider": "azure_openai" }
+  ]
+}

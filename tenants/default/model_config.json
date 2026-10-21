@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "chat": "gpt-5.4-mini",
+    "summary": "gpt-5.4-mini",
+    "classification": "gpt-5.4-mini"
+  },
+  "advanced_chat_model": "gpt-5.4",
+  "profiles": [
+    {
+      "id": "gpt-5.4-mini",
+      "name": "GPT-5.4-mini",
+      "model": "gpt-5.4-mini",
+      "connection": "azure_mini",
+      "description": {
+        "cs": "Cloudový model pro běžné otázky, shrnutí a klasifikaci dokumentů. Výchozí volba pro každodenní práci.",
+        "en": "Cloud model for everyday questions, summaries and classification. The default for daily work."
+      },
+      "location": "cloud",
+      "provider": "azure_openai",
+      "purposes": [
+        "chat",
+        "summary",
+        "classification"
+      ],
+      "timeout_seconds": 90,
+      "max_input_chars": 120000,
+      "max_output_tokens": 4096
+    },
+    {
+      "id": "gpt-5.4",
+      "name": "GPT-5.4",
+      "model": "gpt-5.4",
+      "connection": "azure_advanced",
+      "description": {
+        "cs": "Cloudový model pro složitější otázky a podrobnější práci s dokumenty. Může mít delší dobu odpovědi a vyšší provozní náklady.",
+        "en": "Cloud model for complex questions and detailed document analysis. Responses may take longer and cost more."
+      },
+      "location": "cloud",
+      "provider": "azure_openai",
+      "purposes": [
+        "chat",
+        "summary",
+        "classification"
+      ],
+      "timeout_seconds": 90,
+      "max_input_chars": 120000,
+      "max_output_tokens": 4096
+    }
+  ]
+}

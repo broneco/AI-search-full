@@ -31,3 +31,7 @@ Testovací modul `test_tenant_config.py` ověřuje správnost fungování sjedno
 ## Aktualizace aliasů
 
 Současné regrese ověřují, že `ju-prod` načítá stejný JHU prompt jako `jhu`, zatímco databázové ID zůstává přesné. Sdílený resolver se používá pro modelové env i JSON konfiguraci; lokální overlay a file-level fallback zůstávají zachované.
+
+## Modelové profily
+
+Lokální profil může načíst ignorovaný JHU model env před .env.local; test profil čte pouze .env.test.

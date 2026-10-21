@@ -31,6 +31,9 @@ def anyio_backend():
 @pytest.fixture
 def vector_db(access_db, monkeypatch):
     monkeypatch.setattr(settings, "DATABASE_BACKEND", "sqlserver" if access_db.bind.dialect.name == "mssql" else "postgresql")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_MODEL", PROFILE.model_id)
+    monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_MODEL_REVISION", PROFILE.model_revision)
+    monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_DIMENSIONS", PROFILE.dimensions)
     return access_db
 
 
@@ -218,7 +221,7 @@ async def test_pipeline_replacement_rolls_back_document_chunks_and_vectors(vecto
     monkeypatch.setattr(pipeline_module, "create_embedding_provider", lambda: provider)
     pipeline = pipeline_module.IngestionPipeline(db)
     pipeline.blob_provider = SimpleNamespace(is_configured=lambda: False)
-    pipeline.splitter = SimpleNamespace(chunk_size=1500, chunk_overlap=0, split_pages=lambda pages: [
+    pipeline.splitter = SimpleNamespace(enrich_with_summary=False, chunk_size=1500, chunk_overlap=0, split_pages=lambda pages: [
         SimpleNamespace(content="New replacement text", index=0, page_number=1)])
     write_original = store.write_chunks
     def fail_after_write(session, rows, profile):

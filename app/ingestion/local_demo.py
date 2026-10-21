@@ -2,7 +2,6 @@
 from collections.abc import Callable
 import hashlib
 import logging
-import math
 from pathlib import Path
 import shutil
 import uuid
@@ -13,7 +12,8 @@ from app.core.config import settings
 from app.ingestion.extraction import DocumentExtractor
 from app.providers.embeddings import EmbeddingProvider
 from app.providers.factory import create_embedding_profile, create_embedding_provider
-from app.storage.vector_store import write_chunks, vector_table, index_profile, revision
+from app.core.embedding_selection import active_embedding_provider
+from app.storage.vector_store import write_chunks, write_embeddings, provision_index, vector_table, index_profile, revision
 from app.storage.models import DBSearchIndex
 from sqlalchemy import select, func
 from app.storage.models import DBChunk, DBDocument
@@ -36,9 +36,6 @@ def _ready(doc: DBDocument | None, checksum: str, texts: list[str], profile_id: 
     legacy_ready = doc.checksum == checksum and len(chunks) == len(texts) and all(
         chunk.content == content
         and chunk.tenant_id == settings.TENANT_ID
-        and (chunk.metadata_json or {}).get("embedding_profile_id") == profile_id
-        and isinstance(chunk.embedding, list) and len(chunk.embedding) == dimensions
-        and all(isinstance(value, (int, float)) and math.isfinite(value) for value in chunk.embedding)
         for chunk, content in zip(chunks, texts)
     )
     if not legacy_ready:
@@ -72,7 +69,10 @@ async def seed_local_demo(
         or settings.AZURE_SQL_DB != "ai_search_local"):
         raise ValueError("Local demo seeding requires loopback SQL Server / ai_search_local.")
 
-    profile = create_embedding_profile()
+    with session_factory() as session:
+        selected_provider = active_embedding_provider(session, settings.TENANT_ID,
+                                                       fallback=create_embedding_provider())
+    profile = selected_provider.profile
     if provider is not None and provider.profile != profile:
         raise ValueError("Local demo provider does not match the configured embedding profile.")
     target_root = (data_root or Path("data")) / "local-demo" / hashlib.sha256(
@@ -98,12 +98,12 @@ async def seed_local_demo(
         )]
     if pending:
         if provider is None:
-            if (settings.EMBEDDING_PROVIDER == "azure_openai"
+            if (profile == create_embedding_profile()
                 and not (settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_API_KEY)):
                 logger.warning("Lokální demo čeká na AZURE_OPENAI_ENDPOINT a AZURE_OPENAI_API_KEY "
                                "v .env.local. Doplň nastavení a restartuj backend; náhodné vektory se nevytvářejí.")
                 return 0
-            provider = create_embedding_provider()
+            provider = selected_provider
         texts = [content for fixture in pending for content in fixture[5]]
         vectors = await provider.embed_documents(texts)
         if len(vectors) != len(texts):
@@ -119,6 +119,24 @@ async def seed_local_demo(
             offset = 0
             for doc_id, original, destination, title, checksum, contents in pending:
                 doc = session.get(DBDocument, doc_id)
+                # A new embedding experiment must retain the same chunk IDs/text/ACL
+                # and all existing vectors. Only changed source text is re-chunked.
+                if (doc is not None and doc.checksum == checksum
+                        and len(doc.chunks) == len(contents) and all(
+                            c.content == text and c.tenant_id == settings.TENANT_ID
+                            for c, text in zip(sorted(doc.chunks, key=lambda c: c.chunk_index), contents))):
+                    indexes = session.scalars(select(DBSearchIndex).where(
+                        DBSearchIndex.tenant_id == settings.TENANT_ID,
+                        DBSearchIndex.profile_id == profile.profile_id)).all()
+                    if not indexes:
+                        indexes = [provision_index(session, settings.TENANT_ID, profile, native=False)]
+                    chunks = sorted(doc.chunks, key=lambda c: c.chunk_index)
+                    for index in indexes:
+                        write_embeddings(session, index, profile, [
+                            {"chunk_id": chunk.chunk_id, "input_revision": chunk.content_hash,
+                             "embedding": vectors[offset + i]} for i, chunk in enumerate(chunks)])
+                    offset += len(contents)
+                    continue
                 if doc is None:
                     doc = DBDocument(document_id=doc_id, tenant_id=settings.TENANT_ID)
                     session.add(doc)

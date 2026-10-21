@@ -24,3 +24,7 @@ Testy ověřují, že benchmark neopakuje modelová volání během měření, n
 Neprokazují nativní Azure VECTOR/DiskANN funkčnost, runtime oprávnění, recall reálného korpusu nebo p95 Basic 5 DTU / Container App. SQL Server 2022 integrační varianta používá přesnou JSON referenci; native testy a skutečný workload musí dodat lidský handoff. `fixtures/local-university/search-smoke.json` má osm otázek a záměrně nemůže splnit ANN quality bránu.
 
 Příkazy a interpretace jsou v [návodu slice 5](../development/search-slice-5-testing.md).
+
+CLI načte embeddingový prostor z vybraného nebo aktivního indexu. Příprava cache tak umí neaktivní Nomic experiment; samotné měření používá cache a nevolá embeddingovou službu.
+
+CLI factory dostává vlastní SQL session také při volbě registrovaného experimentálního embeddingového profilu; query cache stále patří jedinému explicitnímu indexu/profilu.

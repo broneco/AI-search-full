@@ -52,7 +52,7 @@ def test_tenant_file_resolution_and_fallback(tmp_path, monkeypatch):
 
 def test_tenant_env_files_priority():
     if settings.APP_ENV in {"local", "test"}:
-        assert _ENV_FILES == (f".env.{settings.APP_ENV}",)
+        assert _ENV_FILES == ((".env.jhu-model", ".env.local") if settings.APP_ENV == "local" else (".env.test",))
     else:
         assert len(_ENV_FILES) >= 4
         # Ensure tenant-specific directory env files are placed last (highest priority in Pydantic Settings)

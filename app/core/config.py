@@ -15,7 +15,7 @@ _TENANTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 # Pydantic Settings loads in sequence where LATER entries overwrite EARLIER entries.
 if _APP_ENV in {"local", "test"}:
     # Local and test runs must never inherit a tenant's cloud database or Key Vault settings.
-    _ENV_FILES = (f".env.{_APP_ENV}",)
+    _ENV_FILES = ((".env.jhu-model", ".env.local") if _APP_ENV == "local" else (".env.test",))
 else:
     _ENV_FILES = (
         ".env",
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     APP_ENV: str = _APP_ENV
     DATABASE_BACKEND: Literal["auto", "azure_sql", "sqlserver", "postgresql"] = "auto"
     APP_NAME: str = "ai-search-app"
-    APP_VERSION: str = "v0.1.5"
+    APP_VERSION: str = "v0.1.6"
     LOG_LEVEL: str = "INFO"
     TENANT_ID: str = "dolphin"
     JWT_SECRET: str = Field(default="dolphin-ai-search-secret-key-2026", repr=False, exclude=True)
@@ -48,7 +48,8 @@ class Settings(BaseSettings):
     # OpenAI Deployments
     AZURE_OPENAI_ENDPOINT: Optional[str] = None
     AZURE_OPENAI_FLASH_DEPLOYMENT: str = "gpt-5.4-mini"
-    AZURE_OPENAI_THINKING_DEPLOYMENT: str = "gpt-5.4-mini"
+    AZURE_OPENAI_THINKING_DEPLOYMENT: str = "gpt-5.4"
+    AZURE_OPENAI_API_VERSION: str = "2024-10-21"
     AZURE_OPENAI_EMBEDDING_DEPLOYMENT: str = "text-embedding-3-large"
     # Provider selection is centralized so alternate providers can be registered
     # without changing API routes or ingestion orchestration.
@@ -61,6 +62,12 @@ class Settings(BaseSettings):
     AZURE_OPENAI_EMBEDDING_DOCUMENT_PREFIX: str = ""
     AZURE_OPENAI_API_KEY: Optional[str] = None
     AZURE_OPENAI_TIMEOUT: float = 30.0
+    JHU_LLM_ENDPOINT: Optional[str] = None
+    JHU_LLM_USERNAME: Optional[str] = Field(default=None, repr=False, exclude=True)
+    JHU_LLM_PASSWORD: Optional[str] = Field(default=None, repr=False, exclude=True)
+    JHU_LLM_ALLOW_HTTP: bool = False
+    JHU_LLM_VPN_INTERFACE: str = "OpenVPN"
+    JHU_LLM_VERIFIED_MODEL: Optional[str] = None
 
     # PostgreSQL
     POSTGRES_HOST: str = "localhost"
@@ -101,6 +108,8 @@ class Settings(BaseSettings):
     AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY: Optional[str] = None
     AZURE_KEY_VAULT_SECRET_JWT_SIGNING_KEY_VERSION: Optional[str] = None
     AZURE_KEY_VAULT_SECRET_LEGACY_PASSWORD: Optional[str] = None
+    AZURE_KEY_VAULT_SECRET_JHU_LLM_USERNAME: Optional[str] = None
+    AZURE_KEY_VAULT_SECRET_JHU_LLM_PASSWORD: Optional[str] = None
 
     # Observability
     APPLICATIONINSIGHTS_CONNECTION_STRING: Optional[str] = None
@@ -137,6 +146,19 @@ class Settings(BaseSettings):
                             self.LEGACY_PASSWORD_SECRET = secret.value
                     except Exception:
                         pass
+
+                # Fetch Azure SQL Password
+                for value_name, reference_name in (
+                    ("JHU_LLM_USERNAME", "AZURE_KEY_VAULT_SECRET_JHU_LLM_USERNAME"),
+                    ("JHU_LLM_PASSWORD", "AZURE_KEY_VAULT_SECRET_JHU_LLM_PASSWORD"),
+                ):
+                    if not getattr(self, value_name) and getattr(self, reference_name):
+                        try:
+                            secret = client.get_secret(getattr(self, reference_name))
+                            if secret and secret.value:
+                                setattr(self, value_name, secret.value)
+                        except Exception:
+                            pass
 
                 # Fetch Azure SQL Password
                 if not self.AZURE_SQL_PASSWORD and self.AZURE_KEY_VAULT_SECRET_SQL_PASSWORD:

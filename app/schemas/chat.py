@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
+import uuid
 
 
 class ChatSource(BaseModel):
@@ -19,13 +20,22 @@ class ChatMetadata(BaseModel):
     mode: str
     retrieval_strategy: str
     model_profile: str
+    model_id: Optional[str] = None
+    model_name: Optional[str] = None
+    model_location: Optional[str] = None
+    generation_diagnostics: Dict[str, Any] = Field(default_factory=dict)
     latency_ms: Optional[int] = None
     search_diagnostics: Dict[str, Any] = Field(default_factory=dict)
+    embedding_profile_id: Optional[str] = None
+    embedding_model: Optional[str] = None
+    search_index_id: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="Conversational query or search question.")
-    mode: str = Field("flash", description="Agent query mode: 'flash' or 'thinking'.")
+    model_id: Optional[str] = Field(None, max_length=100)
+    search_index_id: Optional[uuid.UUID] = None
+    mode: Literal["flash", "thinking"] = Field("flash", description="Legacy query mode.")
     locale: str = Field("cs", description="Application locale and LLM response language ('cs' or 'en').")
     filters: Dict[str, Any] = Field(
         default_factory=dict, description="Metadata filters to apply."

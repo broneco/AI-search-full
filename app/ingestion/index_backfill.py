@@ -11,7 +11,7 @@ from app.storage.vector_store import index_profile, revision, vector_table, writ
 
 
 async def backfill_index(session: Session, index: DBSearchIndex, *, provider: EmbeddingProvider | None = None,
-                         proven_legacy: bool = False, batch_size: int = 32) -> int:
+                         proven_legacy: bool = False, batch_size: int = 32, authorize=None) -> int:
     """Each batch commits atomically; retries skip current revisions.
 
     proven_legacy requires per-chunk profile_id AND content_hash evidence.
@@ -30,6 +30,8 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
     completed = 0
     last_id = None
     while True:
+        if authorize:
+            authorize()
         stmt = (select(DBChunk).join(DBDocument).where(
             exact_value(DBChunk.tenant_id, index.tenant_id, session.bind.dialect.name),
             exact_value(DBDocument.tenant_id, index.tenant_id, session.bind.dialect.name))
@@ -62,6 +64,8 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
             raise SearchIndexError("Incomplete backfill embedding batch.")
         profile.validate_vectors(vectors)
         try:
+            if authorize:
+                authorize()
             rows = []
             # Recheck the complete batch once after the model call. Scalar get()
             # per chunk also autoflushed the previous update on every iteration.

@@ -207,14 +207,21 @@ async def test_local_demo_reembeds_only_missing_doc_and_changed_profile(access_d
     assert await seed_local_demo(local_demo_config, provider=provider, data_root=tmp_path) == 1
     assert len(provider.embed_documents.call_args.args[0]) == 1
     # A model-space change with the same dimension must still re-embed both docs.
+    original_ids = set(db.scalars(select(DBChunk.chunk_id)).all())
     monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_DOCUMENT_PREFIX", "passage: ")
     new_provider = demo_provider()
     assert await seed_local_demo(local_demo_config, provider=new_provider, data_root=tmp_path) == 2
     db.expire_all()
     docs = db.scalars(select(DBDocument).where(DBDocument.document_type == "local_demo")).all()
     assert len(docs) == 2
-    assert all(c.metadata_json["embedding_profile_id"] == new_provider.profile.profile_id
-               for doc in docs for c in doc.chunks)
+    assert set(db.scalars(select(DBChunk.chunk_id)).all()) == original_ids
+    from app.storage.vector_store import coverage
+    from app.storage.models import DBSearchIndex
+    indexes = db.scalars(select(DBSearchIndex).where(DBSearchIndex.profile_id == new_provider.profile.profile_id)).all()
+    assert indexes and all(coverage(db, index) == (2, 2) for index in indexes)
+    # Legacy JSON provenance stays paired with its original vector, while the new
+    # profile lives in a separate index over the same chunk IDs.
+    assert all(c.metadata_json["embedding_profile_id"] == provider.profile.profile_id for doc in docs for c in doc.chunks)
 
 
 @pytest.mark.anyio
@@ -224,15 +231,15 @@ async def test_local_demo_failure_rolls_back_both_documents(access_db, local_dem
     db = access_db
     originals = set(db.scalars(select(DBChunk.chunk_id)).all())
     monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_DOCUMENT_PREFIX", "passage: ")
-    insert_original = demo.write_chunks
+    insert_original = demo.write_embeddings
     calls = 0
-    def fail_second(session, rows, profile):
+    def fail_second(session, index, profile, rows):
         nonlocal calls
         calls += 1
         if calls == 2:
             raise RuntimeError("Simulated second insert failure")
-        insert_original(session, rows, profile)
-    monkeypatch.setattr(demo, "write_chunks", fail_second)
+        insert_original(session, index, profile, rows)
+    monkeypatch.setattr(demo, "write_embeddings", fail_second)
     with pytest.raises(RuntimeError, match="second insert"):
         await demo.seed_local_demo(local_demo_config, provider=demo_provider(), data_root=tmp_path)
     db.expire_all()
@@ -497,8 +504,11 @@ def test_self_registration_cannot_assign_management_and_login_is_tenant_scoped(a
 
 def prepare_chat_index(db, chat, monkeypatch):
     from dataclasses import replace
+    monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "https://example.test")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "synthetic-test-key")
     from app.storage.vector_store import provision_index, write_embeddings, activate_index
     profile = replace(chat.embedding_provider.profile, dimensions=2)
+    monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_DIMENSIONS", 2)
     monkeypatch.setattr(chat.embedding_provider, "_profile", profile)
     index = provision_index(db, "alpha", profile, native=False)
     rows = [{"chunk_id": chunk.chunk_id, "input_revision": chunk.content_hash, "embedding": chunk.embedding}
@@ -521,11 +531,11 @@ def test_chat_uses_current_server_groups_not_headers_or_stale_token(access_db, a
     prepare_chat_index(access_db, chat, monkeypatch)
     monkeypatch.setattr(chat.embedding_provider, "embed_query", AsyncMock(return_value=[1.0, 0.0]))
     generate = AsyncMock(return_value="test answer")
-    monkeypatch.setattr(chat.llm_provider, "generate", generate)
+    monkeypatch.setattr("app.providers.model_runtime.ProfileLLMProvider.generate", generate)
     monkeypatch.setattr(chat.SearchConfigManager, "load_config", AsyncMock(return_value={"context_expansion": "none"}))
     headers = {"Authorization": "Bearer " + token, "X-User-Groups": "Management"}
     result = api_client.post("/api/chat", json={"query": "needle", "search_strategy": "vector"}, headers=headers)
-    assert result.status_code == 200
+    assert result.status_code == 200, result.text
     assert [source["chunk_id"] for source in result.json()["sources"]] == [str(public.chunk_id)]
     assert all("SECRET" not in message.content for message in generate.call_args.kwargs["messages"])
     assert api_client.post("/api/documents/reindex-all", headers=headers).status_code == 403
@@ -544,7 +554,7 @@ def test_followup_answer_inherits_history_permissions(access_db, api_client, mon
     prepare_chat_index(access_db, chat, monkeypatch)
     monkeypatch.setattr(chat.embedding_provider, "embed_query", AsyncMock(return_value=[1.0, 0.0]))
     generate = AsyncMock(side_effect=["SECRET first", "SECRET carried", "insufficient evidence"])
-    monkeypatch.setattr(chat.llm_provider, "generate", generate)
+    monkeypatch.setattr("app.providers.model_runtime.ProfileLLMProvider.generate", generate)
     monkeypatch.setattr(chat.SearchConfigManager, "load_config", AsyncMock(return_value={"context_expansion": "none"}))
     headers = {"Authorization": "Bearer " + create_token(normal)}
     first = api_client.post("/api/chat", json={"query": "needle", "search_strategy": "vector"}, headers=headers)

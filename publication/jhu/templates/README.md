@@ -1,6 +1,6 @@
 # JHU AI Search
 
-Vyhledávání v dokumentech pro Jihočeskou univerzitu s odpověďmi s citacemi a PDF náhledy. FastAPI backend a dva Next.js frontendy používají Azure SQL, Blob Storage a Azure OpenAI. Lokální prostředí používá SQL Server v Dockeru; AI modely se zatím volají přes Azure.
+Vyhledávání v dokumentech pro Jihočeskou univerzitu s odpověďmi s citacemi a PDF náhledy. FastAPI backend a dva Next.js frontendy používají Azure SQL, Blob Storage a modely Azure nebo připojené JHU služby. Lokální prostředí používá SQL Server v Dockeru; odpovědní model a embeddingový index se vybírají samostatně.
 
 Zdrojová verze: **@@VERSION@@**. Tento repozitář obsahuje samostatný výchozí snapshot a následná předání. Původní Git historie, pracovní archivy ani provozní deníky nejsou součástí předání.
 
@@ -40,27 +40,36 @@ AZURE_OPENAI_FLASH_DEPLOYMENT=<název chat deploymentu>
 AZURE_OPENAI_THINKING_DEPLOYMENT=<název chat deploymentu>
 ```
 
-Jména deploymentů musí odpovídat tvému Azure prostředí. Lokální databáze nahrazuje cloudovou SQL databázi; modelové volání zatím stále používá Azure. Bez modelového připojení lze spustit API/UI a izolované testy, ale nelze vyhledávat ani generovat skutečné odpovědi. `.env.local` necommituj.
+Jména deploymentů musí odpovídat tvému Azure prostředí. Lokální databáze nahrazuje cloudovou SQL databázi; modelová volání používají vybraný Azure nebo lokální JHU profil. Výchozí ingestace nadále používá svůj aktivní embeddingový index. Bez modelového připojení lze spustit API/UI a izolované testy, ale nelze generovat skutečné embeddingy a odpovědi. `.env.local` necommituj.
 
 ### Každodenní spuštění a restart počítače
 
-Ve VS Code zvol **Terminal → Run Task… → AI Search: start local app**. Úloha spustí SQL Server, backend a uživatelský frontend. Ručně použij následující příkazy, backend a frontend každý ve vlastním terminálu:
+Ve VS Code zvol **Terminal → Run Task… → AI Search: start local app**. Úloha spustí SQL Server, backend a uživatelský frontend s nastavením úlohy a `.env.local`. Pro explicitní výběr tenantu použij příkazy níže, každou službu ve vlastním terminálu. V každém bloku nastav stejný `$tenant`; proměnné se mezi terminály nesdílejí. Pro JHU používej malé `jhu`. Přepínač `-Tenant` přepíše lokální nastavení pouze pro spuštěný proces, `.env.local` nemění.
 
 ```powershell
 # Terminál 1: databáze a backend
+$tenant = "jhu"  # Tento balíček obsahuje konfiguraci pouze pro jhu
 .\dev.ps1 -Action start-db
-.\dev.ps1 -Action backend
+.\dev.ps1 -Action backend -Tenant $tenant
 ```
 
 ```powershell
 # Terminál 2: uživatelská aplikace
-npm --prefix frontend-user run dev -- --hostname 127.0.0.1 --port 3000
+$tenant = "jhu"  # Stejný tenant jako u backendu
+$env:NEXT_PUBLIC_CLIENT_THEME = $tenant
+$env:NEXT_PUBLIC_BACKEND_URL = "http://localhost:8000"
+& .\frontend-user\node_modules\.bin\next.cmd dev .\frontend-user --webpack --hostname 127.0.0.1 --port 3000
 ```
 
 ```powershell
 # Terminál 3: volitelná administrace
-npm --prefix frontend-admin run dev -- --hostname 127.0.0.1 --port 3001
+$tenant = "jhu"  # Stejný tenant jako u backendu
+$env:NEXT_PUBLIC_CLIENT_THEME = $tenant
+$env:NEXT_PUBLIC_BACKEND_URL = "http://localhost:8000"
+& .\frontend-admin\node_modules\.bin\next.cmd dev .\frontend-admin --webpack --hostname 127.0.0.1 --port 3001
 ```
+
+`NEXT_PUBLIC_CLIENT_THEME` vybírá vzhled konzole, nikoli datová oprávnění. Ta určuje přihlášený účet a backend; použij účet odpovídající zvolenému tenantu. Po změně tenantu restartuj příslušné služby a přihlas se odpovídajícím účtem. Jiný tenant musí mít dostupnou konfiguraci a frontendové téma; čistý JHU export obsahuje pouze JHU. Přímé volání `next.cmd` zachovává přepínače i v PowerShellu, kde předávání přes `npm --prefix … run dev -- …` může selhat.
 
 | Služba | Adresa |
 |---|---|
@@ -145,3 +154,18 @@ Pro existující prostředí začni čtecím plánem `./deploy_backend.ps1 -Clie
 - infra/: provisioning šablony; neslouží jako ověřený release postup.
 
 Kořenové Python/PowerShell skripty zůstávají přímo spustitelné. Env, data, Docker volume, dependency instalace a privátní zálohy nejsou určené k automatickému mazání.
+
+## Modely
+
+Obě konzole umožňují volit model další odpovědi. Administrace odděluje model shrnutí a klasifikace a spravuje skupinová oprávnění. JHU katalog obsahuje GPT-5.4-mini, GPT-5.4 a Qwen, jehož dostupnost závisí na privátním připojení. [Návod](docs/development/model-selection.md).
+
+Embeddingy JHU lze samostatně rozšířit o Nomic 768 přes stejnou službu. Druhý index sdílí existující chunky a aktivuje se explicitně; výběr chatového LLM zůstává nezávislý. [Postup a návrat na Azure](docs/development/local-embeddings.md).
+
+V administraci záložka **Modely a vyhledávání** sdružuje volby modelů, načtení z API, oprávnění, embeddingové indexy a systémový prompt. V lokálním prostředí lze otevřít **Embeddingové indexy — příprava a porovnání**, připravit Nomic nad stejnými PDF a vybrat Azure nebo Nomic index pro další dotaz. Chat ukazuje aktuální volbu a odkaz pro změnu; pod odpovědí je skutečný model/index. Výchozí ingestace zůstává stejná. [Postup](docs/development/local-embeddings.md).
+
+
+Další lokální modely přidáš přes **Modely a vyhledávání → Dostupné modely a oprávnění → Obnovit z API**. Inventář se otevře v dialogu, trvalý přehled spojuje modely, parametry, publikaci, skupiny a editovatelný popis CS/EN. [Návod a lokální/cloudové hranice](docs/development/local-model-registry.md).
+
+**Porovnání výsledků** v administraci (`Management`) používá jednu otázku a dvě oddělené konverzace s vlastními modely, filtry a jedinými embeddingovými indexy. Modelové volby podporují vyhledání podle popisu/parametrů; poslední sekce obsahuje prompty odpovědí, shrnutí a klasifikace. Po aktualizaci restartuj lokální backend pro vytvoření tabulky popisů; cloud vyžaduje guarded `migrate_model_metadata.py`. [Podrobný návod](docs/development/admin-comparison.md).
+
+V modelovém přehledu pod **Konfigurace aplikace** může Management uložit **Maximální délku výstupu (tokeny)** nebo použít výchozí hodnotu. Platí pro nově zahájené chatové/dokumentové operace vybraného profilu. Lokální startup vytvoří `model_runtime_settings`; Azure vyžaduje samostatnou guarded migraci `migrate_model_limits.py`. Rozsah a vliv na kontext popisuje tentýž návod.

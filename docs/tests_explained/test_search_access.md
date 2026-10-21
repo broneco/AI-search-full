@@ -23,3 +23,9 @@ Seeder testy používají stejné izolované databáze a fake provider s dvouroz
 Po tomto doplnění celá sada s `RUN_LOCAL_SQL_TESTS=1`: **138 passed, 3 skipped**. Dvě skip jsou opt-in Azure modelové testy a třetí je Unicode MSSQL DDL při SQLite běhu. Samostatný smoke mimo pytest ověřil skutečné Azure embeddingy v ai_search_local, opakovaný seed bez nových embeddingů, odpověď chatu HTTP 200 se správnou hranicí 40 kreditů a obě autentizované PDF HTTP 200. Neprokazuje obecnou kvalitu retrievalu ani výkon Azure Basic.
 
 Slice 3 doplnil explicitně vytvořený profilový index pro úspěšné chatové security testy a fake provider s odpovídajícími dvěma rozměry. DB fixture při svém resetu odstraňuje také vlastní dynamické profilové tabulky, aby jejich FK neblokovaly drop chunk schématu. Demo rollback test nyní simuluje selhání společného vector repository a idempotence vyžaduje i platný profilový vector záznam, nejen starý JSON. Význam tenant/ACL kontrol zůstává stejný.
+
+## Modelové profily
+
+Chatové regrese používají bound modelového providera a syntetické připojení, aby skutečně ověřovaly ACL bez síťového LLM volání.
+
+Embeddingová slice ověřuje, že změna demo profilu vytvoří další vektory nad stejnými chunk UUID a zachová původní legacy provenance. Rollback simuluje selhání druhého zápisu vektorů; obě původní sady zůstanou konzistentní. Restart po aktivaci Nomic nevyžaduje přepsání demo dokumentů.

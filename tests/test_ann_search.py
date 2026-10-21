@@ -321,7 +321,7 @@ def test_api_ann_preflight_fails_before_models_and_thread_creation(access_db, ap
     prepare_chat_index(access_db, chat, monkeypatch)
     embed, llm = AsyncMock(), AsyncMock()
     monkeypatch.setattr(chat.embedding_provider, "embed_query", embed)
-    monkeypatch.setattr(chat.llm_provider, "generate", llm)
+    monkeypatch.setattr("app.providers.model_runtime.ProfileLLMProvider.generate", llm)
     monkeypatch.setattr(chat.SearchConfigManager, "load_config", AsyncMock(return_value={"vector_search_mode": "ann"}))
     before = len(access_db.scalars(select(DBChatThread)).all())
     response = api_client.post("/api/chat", json={"query": "needle"}, headers={"Authorization": "Bearer " + create_token(normal)})
@@ -388,9 +388,11 @@ def test_api_reports_selected_mode_and_safe_diagnostics(access_db, api_client, m
     from test_search_access import prepare_chat_index
     normal = user(access_db)
     prepare_chat_index(access_db, chat, monkeypatch)
-    monkeypatch.setattr(chat, "prepare_vector_search", Mock(return_value=ready_index() if mode == "ann" else None))
+    index = access_db.scalar(select(DBSearchIndex))
+    plan = ann.VectorSearchPlan(index=index, mode=mode, ann_index=ready_index() if mode == "ann" else None)
+    monkeypatch.setattr(chat, "prepare_vector_search", Mock(return_value=plan))
     monkeypatch.setattr(chat.embedding_provider, "embed_query", AsyncMock(return_value=[1.0, 0.0]))
-    monkeypatch.setattr(chat.llm_provider, "generate", AsyncMock(return_value="No evidence"))
+    monkeypatch.setattr("app.providers.model_runtime.ProfileLLMProvider.generate", AsyncMock(return_value="No evidence"))
     monkeypatch.setattr(chat.SearchConfigManager, "load_config", AsyncMock(return_value={"vector_search_mode": mode}))
     diagnostic = {"vector_mode": mode, "ann_index_version": 3 if mode == "ann" else None,
                   "vector_candidates": 0, "retrieval_latency_ms": 3}
@@ -409,7 +411,7 @@ def test_api_timeout_is_504_and_does_not_call_llm(access_db, api_client, monkeyp
     prepare_chat_index(access_db, chat, monkeypatch)
     monkeypatch.setattr(chat.embedding_provider, "embed_query", AsyncMock(return_value=[1.0, 0.0]))
     llm = AsyncMock()
-    monkeypatch.setattr(chat.llm_provider, "generate", llm)
+    monkeypatch.setattr("app.providers.model_runtime.ProfileLLMProvider.generate", llm)
     monkeypatch.setattr(chat.SearchConfigManager, "load_config", AsyncMock(return_value={"vector_search_mode": "exact"}))
     monkeypatch.setattr(chat, "VectorRetriever", lambda db: SimpleNamespace(
         retrieve=AsyncMock(side_effect=ann.SearchExecutionError("search_timeout", "Vector search timed out.", 504))))

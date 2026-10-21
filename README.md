@@ -2,7 +2,7 @@
 
 AI vyhledávání nad dokumenty s citacemi a PDF náhledy. Backend používá Python/FastAPI, uživatelská aplikace a administrace Next.js/React. Aktuální cloudová cesta je Azure SQL + Blob Storage + Azure OpenAI; lokální vývoj má vlastní SQL Server v Dockeru.
 
-Aktuální vydání: **[v0.1.5](docs/releases/v0.1.5.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
+Aktuální vydání: **[v0.1.6](docs/releases/v0.1.6.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
 
 ## Rychlý start ve VS Code
 
@@ -35,27 +35,45 @@ AZURE_OPENAI_FLASH_DEPLOYMENT=<název chat deploymentu>
 AZURE_OPENAI_THINKING_DEPLOYMENT=<název chat deploymentu>
 ```
 
-Jména deploymentů musí odpovídat tvému Azure prostředí. Lokální databáze nahrazuje cloudovou SQL databázi; modelové volání zatím stále používá Azure. Bez modelového připojení lze spustit API/UI a izolované testy, ale nelze vyhledávat ani generovat skutečné odpovědi. `.env.local` necommituj.
+Jména deploymentů musí odpovídat tvému Azure prostředí. Výchozí modelové připojení používá Azure. JHU navíc podporuje Qwen pro inference a Nomic pro embeddingy přes vlastní službu; aktivace embeddingového indexu je samostatná. Viz [lokální embeddingy a více indexů](docs/development/local-embeddings.md). Bez modelového připojení lze spustit API/UI a izolované testy. `.env.local` necommituj.
 
 ### Každodenní spuštění a restart počítače
 
-Ve VS Code zvol **Terminal → Run Task… → AI Search: start local app**. Úloha spustí SQL Server, backend a uživatelský frontend. Ručně použij následující příkazy, backend a frontend každý ve vlastním terminálu:
+Ve VS Code zvol **Terminal → Run Task… → AI Search: start local app**. Úloha spustí SQL Server, backend a uživatelský frontend s nastavením úlohy a `.env.local`.
+
+#### Ruční spuštění pro vybraný tenant — JHU nebo jiný
+
+Následující tři bloky spouštěj z kořene projektu, každý ve vlastním terminálu. **Tenant se zadává na řádku `$tenant = "jhu"` v každém bloku.** Pro jiný nakonfigurovaný tenant změň tuto hodnotu ve všech třech blocích, například na `"dolphin"` nebo `"showcase"`. Proměnné se mezi terminály nesdílejí. Pro JHU používej malé `jhu`.
+
+Přepínač backendu `-Tenant $tenant` přepíše lokální nastavení pouze pro spuštěný proces, `.env.local` nemění.
 
 ```powershell
 # Terminál 1: databáze a backend
+$tenant = "jhu"  # Změň podle potřeby; v hlavním repu např. "dolphin" nebo "showcase"
+
 .\dev.ps1 -Action start-db
-.\dev.ps1 -Action backend
+.\dev.ps1 -Action backend -Tenant $tenant
 ```
 
 ```powershell
 # Terminál 2: uživatelská aplikace
-npm --prefix frontend-user run dev -- --hostname 127.0.0.1 --port 3000
+$tenant = "jhu"  # Stejný tenant jako u backendu
+
+$env:NEXT_PUBLIC_CLIENT_THEME = $tenant
+$env:NEXT_PUBLIC_BACKEND_URL = "http://localhost:8000"
+& .\frontend-user\node_modules\.bin\next.cmd dev .\frontend-user --webpack --hostname 127.0.0.1 --port 3000
 ```
 
 ```powershell
 # Terminál 3: volitelná administrace
-npm --prefix frontend-admin run dev -- --hostname 127.0.0.1 --port 3001
+$tenant = "jhu"  # Stejný tenant jako u backendu
+
+$env:NEXT_PUBLIC_CLIENT_THEME = $tenant
+$env:NEXT_PUBLIC_BACKEND_URL = "http://localhost:8000"
+& .\frontend-admin\node_modules\.bin\next.cmd dev .\frontend-admin --webpack --hostname 127.0.0.1 --port 3001
 ```
+
+`NEXT_PUBLIC_CLIENT_THEME` vybírá vzhled konzole, nikoli datová oprávnění. Ta určuje přihlášený účet a backend; použij účet odpovídající zvolenému tenantu. Po změně tenantu restartuj příslušné služby a přihlas se odpovídajícím účtem. Jiný tenant musí mít dostupnou konfiguraci a frontendové téma; čistý JHU export obsahuje pouze JHU. Přímé volání `next.cmd` zachovává přepínače i v PowerShellu, kde předávání přes `npm --prefix … run dev -- …` může selhat.
 
 | Služba | Adresa |
 |---|---|
@@ -221,3 +239,16 @@ Pro přenos do nového repozitáře použij aktuální veřejné zdroje včetně
 | `.local/` | Ignorované overlay, benchmarky, provozní skripty a chráněné zálohy |
 
 `Dockerfile`, aktuální Compose, `.gitignore`, `.dockerignore`, `pyproject.toml`, `requirements.txt` a `AGENTS.md` zůstávají v kořeni kvůli nástrojům a spuštění. Uživatelské dokumenty v `data/`, původní záloha `data - full backup/`, env soubory, databázový volume, `.venv` a `node_modules` nejsou odpad pro automatické mazání. Přehled provedeného úklidu a zbývajících kandidátů je v [inventuře repozitáře](docs/development/repository-cleanup.md).
+
+## Výběr modelů
+
+Tenantový `model_config.json` definuje GPT-5.4-mini, GPT-5.4 a v JHU také Qwen. Obě konzole vybírají model pro další dotaz. V administraci záložka **Modely a vyhledávání** sdružuje modely odpovědí/shrnutí/klasifikace, načtení z JHU API, skupinová oprávnění, přípravu/výběr embeddingových indexů a systémový prompt. Chat ukazuje aktuální model/index s odkazem pro změnu. Výběr odpovědního modelu embeddingy nemění; explicitní volba indexu nemění výchozí ingestaci.
+
+[Spuštění a testování modelů](docs/development/model-selection.md), [architektura a slices](docs/architecture/model-catalog-roadmap.md). Pro lokální JHU backend použij `./dev.ps1 -Action backend -Tenant jhu` s připojenou OpenVPN. Azure potřebuje samostatně ověřenou cestu k JHU i migraci tabulky modelových oprávnění.
+
+
+Další lokální modely přidáš přes **Modely a vyhledávání → Dostupné modely a oprávnění → Obnovit z API**. Inventář se otevře v dialogu; trvalý přehled spojuje účely/parametry, publikaci, skupiny a editovatelný popis CS/EN. Pro embeddingy Nomic/MXBAI následně připrav konkrétní index. [Návod a lokální/cloudové hranice](docs/development/local-model-registry.md).
+
+**Porovnání výsledků** v administraci (`Management`) odešle jednu otázku do dvou nezávislých konverzací s vlastními modely, filtry a indexy. Vyhledávatelné modelové volby a všechny tři prompty jsou v **Modely a vyhledávání**. Po aktualizaci restartuj lokální backend kvůli tabulce popisů; Azure potřebuje samostatnou migraci `migrate_model_metadata.py` a schválené nasazení. [Podrobný postup porovnání a správy promptů](docs/development/admin-comparison.md).
+
+Limit výstupu modelu nastavíš v **Dostupné modely a oprávnění → Konfigurace aplikace → Maximální délka výstupu (tokeny)**. **Uložit limit** platí pro nové chatové/dokumentové operace daného modelu, **Použít výchozí** obnoví původní hodnotu. Lokálně restartuj backend pro vytvoření `model_runtime_settings`; Azure vyžaduje samostatný schválený `migrate_model_limits.py`. [Rozsahy a vliv na lokální kontext](docs/development/admin-comparison.md#nastavení-maximální-délky-výstupu).

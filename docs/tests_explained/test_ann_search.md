@@ -29,3 +29,11 @@ Alternativní izolovaná cesta používá explicitně schválenou existující t
 `test_native_ann_filters_and_transactional_lifecycle` vyžaduje oba opt-in příznaky RUN_NATIVE_SQL_TESTS a RUN_NATIVE_ANN_TESTS. Používá stejný potvrzený EMPTY Azure DB fixture jako `test_vector_store.py`: žádný model endpoint, žádná aplikační databáze. Vytvoří ≥100 diverzních 1536rozměrových vektorů, verzi ≥3, ověří selective/empty/full K, tenant/doc ACL/chunk ACL, invalidaci textu, update/rollback/cascade. Fixture uklidí pouze vlastní tabulky. Test nebyl při implementaci spuštěn a je přesunut do cloudové brány slice 5; samotný benchmark recall/p95 není jeho součástí.
 
 Příkazy jsou v [návodu slice 4](../development/search-slice-4-testing.md). SQL Server 2022 nepodporuje native ANN; zelený lokální výsledek nesmí být označen jako cloudová akceptace.
+
+## Modelové profily
+
+Modelové mocky používají ProfileLLMProvider; ANN preflight i timeout se nadále ověřují před skutečným voláním modelu.
+
+Příprava plánu umí explicitní ověřený DBSearchIndex mimo ingestion default. Zachovává tenant/profile/corpus/storage/mode a ANN readiness kontroly; pole requestu samo nikdy nepřepne na jiný index ani nezapne exact fallback. Nové administrační regrese ověřují připnutí při změně defaultu.
+
+API diagnostický mock vrací skutečný VectorSearchPlan s připnutým indexem i pro ANN; nový modelový/embeddingový přístup se tím ověřuje před query. Nejde o spuštění skutečného DiskANN v SQLite.

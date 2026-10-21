@@ -60,7 +60,7 @@ def refresh_files(tenant_id: str, data_dir: str | None = None) -> list[str]:
     return files
 
 
-async def refresh_documents(tenant_id: str, files: list[str], progress: dict | None = None) -> None:
+async def refresh_documents(tenant_id: str, files: list[str], progress: dict | None = None, *, model_selection=None, principal=None) -> None:
     """Commit replacements per document; prune initial stale IDs only after full success.
 
     A failed run may retain successful replacements, but never prunes the remaining
@@ -75,7 +75,10 @@ async def refresh_documents(tenant_id: str, files: list[str], progress: dict | N
         original = list(db.execute(select(
             DBDocument.document_id, DBDocument.checksum, DBDocument.updated_at, DBDocument.source_uri
         ).where(exact_value(DBDocument.tenant_id, tenant_id, dialect))).all())
-        tagger = MetadataTagger(db_session=db)
+        from app.core.model_selection import model_provider
+        selection = model_selection or {}
+        classifier = model_provider(db, tenant_id, "classification", selection.get("classification_model_id"), principal) if model_selection is not None else None
+        tagger = MetadataTagger(db_session=db, llm_provider=classifier) if classifier else MetadataTagger(db_session=db)
         config = await tagger.load_config()
         categories = {item["key"]: item for item in config.get("categories", [])}
         progress.update(phase="analyzing", total_files=len(files), processed_files=0)
@@ -91,7 +94,8 @@ async def refresh_documents(tenant_id: str, files: list[str], progress: dict | N
             except (TypeError, ValueError):
                 date = datetime.now()
             analyzed.append((date, name, suggestion, category))
-        pipeline = IngestionPipeline(db)
+        summary = model_provider(db, tenant_id, "summary", selection.get("summary_model_id"), principal) if model_selection is not None else None
+        pipeline = IngestionPipeline(db, summary_provider=summary, principal=principal) if summary else IngestionPipeline(db)
         kept_ids = set()
         replacements = {}
         relationships = []
@@ -101,6 +105,8 @@ async def refresh_documents(tenant_id: str, files: list[str], progress: dict | N
             metadata = {"department": category["key"], "year": date.year,
                         "created_at": date.isoformat(), "freshness_status": "current",
                         "relationship_type": (suggestion.get("relationship") or {}).get("relationship_type", "none")}
+            if classifier:
+                metadata["classification_model_id"] = classifier.profile.id
             folder = Path(source_key(name)).parent.as_posix()
             if folder != ".":
                 metadata.update(source_folder=folder, **{"Zdroj dat": folder})

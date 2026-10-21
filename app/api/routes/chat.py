@@ -8,8 +8,14 @@ from app.api.dependencies import get_db_session
 from app.core.config import settings
 from app.core.prompts import get_system_prompt
 from app.core.search_config import SearchConfigManager, SearchConfigSchema
-from app.providers.factory import create_embedding_provider, create_llm_provider
+from app.providers.factory import create_embedding_provider
+from app.core.embedding_selection import active_embedding_provider
+from app.core.search_index_selection import selected_embedding_provider
 from app.providers.llm import ChatMessage
+from app.core.model_selection import model_provider
+from app.core.model_config import ModelError
+from app.core.embedding_config import embedding_entry
+from app.core.local_model_registry import check_embedding_access
 from app.retrieval.vector import VectorRetriever
 from app.retrieval.base import QueryContext
 from app.schemas.chat import ChatRequest, ChatResponse, ChatSource, ChatMetadata
@@ -24,7 +30,6 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Initialize providers
-llm_provider = create_llm_provider()
 embedding_provider = create_embedding_provider()
 
 
@@ -52,14 +57,32 @@ async def chat_interaction(
     except ValueError as error:
         raise HTTPException(422, str(error))
 
+    if request.search_index_id is not None:
+        if request.search_strategy not in {"vector", "hybrid"}:
+            raise HTTPException(422, "Výběr embeddingového indexu vyžaduje vector nebo hybrid hledání.")
+    selected_provider = model_provider(db, principal.tenant_id, "chat", request.model_id,
+                                      principal, request.mode)
+    selected_profile = selected_provider.profile
+
     config_manager = SearchConfigManager()
     search_config = await config_manager.load_config()
     vector_plan = None
+    query_provider = embedding_provider
     if request.search_strategy in {"vector", "hybrid"}:
         try:
             with sql_query_timeout(db, search_config.get("vector_query_timeout_seconds", 10)):
-                vector_plan = prepare_vector_search(db, principal.tenant_id, embedding_provider.profile,
-                                                    search_config.get("vector_search_mode", "exact"))
+                if request.search_index_id is not None:
+                    chosen_index, query_provider = selected_embedding_provider(db, principal.tenant_id,
+                        request.search_index_id, fallback=embedding_provider)
+                    vector_plan = prepare_vector_search(db, principal.tenant_id, query_provider.profile,
+                        search_config.get("vector_search_mode", "exact"), selected_index=chosen_index)
+                else:
+                    query_provider = active_embedding_provider(db, principal.tenant_id, fallback=embedding_provider)
+                    vector_plan = prepare_vector_search(db, principal.tenant_id, query_provider.profile,
+                                                        search_config.get("vector_search_mode", "exact"))
+                if vector_plan is not None:
+                    entry = embedding_entry(principal.tenant_id, space=query_provider.profile, session=db)
+                    check_embedding_access(db, principal, entry, vector_plan.index.index_id)
         except DBAPIError as error:
             controlled = execution_error(error, "preflight")
             raise HTTPException(controlled.status_code, str(controlled), headers={"X-Search-Error-Code": controlled.code})
@@ -115,12 +138,15 @@ async def chat_interaction(
     # 3. Embed retrieval query
     try:
         logger.info("Generating query embedding for tenant %s", principal.tenant_id)
-        query_embedding = await embedding_provider.embed_query(retrieval_query)
+        query_embedding = (await query_provider.embed_query(retrieval_query)
+                           if request.search_strategy != "keyword" else None)
+    except ModelError:
+        raise
     except Exception as e:
         logger.error(f"Failed to generate query embedding: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Azure OpenAI Query Embedding generation failed: {str(e)}",
+            detail="Query embedding generation failed.",
         )
 
     # 4. Retrieve grounded evidence using VectorRetriever
@@ -140,7 +166,7 @@ async def chat_interaction(
             context,
             limit=search_config.get("final_limit", 5),
             query_embedding=query_embedding,
-            query_profile=embedding_provider.profile,
+            query_profile=query_provider.profile,
             search_strategy=request.search_strategy,
             search_config=search_config,
             vector_plan=vector_plan,
@@ -195,18 +221,26 @@ async def chat_interaction(
     # 6. Generate grounded LLM response using Azure OpenAI GPT deployment
     try:
         logger.info("Generating grounded response via Azure OpenAI...")
-        answer = await llm_provider.generate(
+        answer = await selected_provider.generate(
             messages=messages,
             model_profile=request.mode,
             temperature=0.0,
         )
-    except Exception as e:
-        logger.error(f"Azure OpenAI generation failed: {e}")
+    except ModelError:
+        raise
+    except Exception:
+        logger.error("Grounded model generation failed")
         raise HTTPException(
             status_code=500,
-            detail=f"Azure OpenAI Completion failed: {str(e)}",
+            detail="Generování odpovědi selhalo.",
         )
 
+    used_index = getattr(getattr(vector_plan, "index", None), "index_id", None)
+    used_embedding = {
+        "search_index_id": str(used_index) if used_index is not None else None,
+        "embedding_model": query_provider.profile.model_id if query_embedding is not None else None,
+        "embedding_profile_id": query_provider.profile.profile_id if query_embedding is not None else None,
+    }
     # 7. Save current user & assistant turn to database if active thread exists
     if active_thread_id and current_db_user:
         try:
@@ -218,6 +252,8 @@ async def chat_interaction(
             for past in visible_history:
                 references.update(history_references(past) or set())
             saved_evidence = {
+                "generation": {"model_id": selected_profile.id, "model_name": selected_profile.name,
+                               "model_location": selected_profile.location, **used_embedding},
                 "access_policy": ACCESS_POLICY,
                 "citations": [source.model_dump() for source in sources],
                 "access_refs": [{"chunk_id": str(cid), "document_id": str(did)}
@@ -255,9 +291,16 @@ async def chat_interaction(
         retrieval_strategy = "hybrid_" + retriever.diagnostics.get("vector_mode", "exact")
 
     metadata = ChatMetadata(
+        search_index_id=used_embedding["search_index_id"],
+        embedding_profile_id=query_provider.profile.profile_id if query_embedding is not None else None,
+        embedding_model=query_provider.profile.model_id if query_embedding is not None else None,
         mode=request.mode,
         retrieval_strategy=retrieval_strategy,
-        model_profile=request.mode,
+        model_profile=selected_profile.id,
+        model_id=selected_profile.id,
+        model_name=selected_profile.name,
+        model_location=selected_profile.location,
+        generation_diagnostics=selected_provider.diagnostics,
         latency_ms=latency_ms,
         search_diagnostics=retriever.diagnostics,
     )

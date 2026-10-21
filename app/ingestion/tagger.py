@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.providers.factory import create_llm_provider
 from app.providers.llm import ChatMessage
+from app.core.model_config import ModelError
 from app.ingestion.extraction import DocumentExtractor
 from app.storage.models import DBDocument
 from app.storage.db import SessionLocal
@@ -26,10 +26,21 @@ logger = logging.getLogger(__name__)
 class MetadataTagger:
     """Extracts suggested metadata from a document (category, release date, replacement relationships)."""
 
-    def __init__(self, db_session: Optional[Session] = None) -> None:
+    def __init__(self, db_session: Optional[Session] = None, llm_provider=None) -> None:
         self.db = db_session
         self.extractor = DocumentExtractor()
-        self.llm = create_llm_provider()
+        if llm_provider is not None:
+            self.llm = llm_provider
+        else:
+            from app.core.model_config import load_model_catalog
+            from app.providers.factory import create_profile_provider
+            if db_session is not None:
+                from app.core.local_model_registry import model_catalog
+                catalog = model_catalog(db_session, settings.TENANT_ID)
+            else:
+                # DB-less metadata utilities keep file defaults. Runtime/CLI model work supplies a session.
+                catalog = load_model_catalog(settings.TENANT_ID)
+            self.llm = create_profile_provider(next(p for p in catalog.profiles if p.id == catalog.defaults["classification"]))
         self.blob_provider = BlobStorageProvider()
 
     async def load_config(self) -> Dict[str, Any]:
@@ -42,6 +53,8 @@ class MetadataTagger:
                 logger.info(f"Loading config from Azure Blob: {container}/{blob_name}")
                 data = await self.blob_provider.download_blob(container, blob_name)
                 config_data = json.loads(data.decode("utf-8"))
+            except ModelError:
+                raise
             except Exception as e:
                 logger.warning(f"Failed to load config from Azure Blob, falling back to local file: {e}")
         
@@ -94,6 +107,8 @@ class MetadataTagger:
                 logger.info(f"Saving config to Azure Blob: {container}/{blob_name}")
                 config_bytes = json.dumps(config_data, ensure_ascii=False, indent=2).encode("utf-8")
                 await self.blob_provider.upload_blob(container, blob_name, config_bytes)
+            except ModelError:
+                raise
             except Exception as e:
                 logger.error(f"Failed to upload config to Azure Blob: {e}")
 
@@ -159,6 +174,8 @@ class MetadataTagger:
                 if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
                     logger.info(f"LLM successfully extracted release date: {date_str}")
                     return date_str
+            except ModelError:
+                raise
             except Exception as e:
                 logger.error(f"Failed to determine date using LLM: {e}")
  
@@ -173,6 +190,8 @@ class MetadataTagger:
                     dt = meta.creation_date
                     logger.info(f"Using PDF metadata creation date: {dt.strftime('%Y-%m-%d')}")
                     return dt.strftime("%Y-%m-%d")
+        except ModelError:
+            raise
         except Exception as e:
             logger.warning(f"Could not read PDF metadata date: {e}")
 
@@ -266,6 +285,8 @@ class MetadataTagger:
                     return cat["key"]
                     
             logger.warning(f"LLM returned unmatched role name '{role_name}'. Defaulting to fallback category key.")
+        except ModelError:
+            raise
         except Exception as e:
             logger.error(f"Failed to classify category using LLM: {e}")
             
@@ -339,6 +360,8 @@ class MetadataTagger:
             logger.info("Relationship classification complete: %s", data.get("relationship_type"))
             return data
             
+        except ModelError:
+            raise
         except Exception as e:
             logger.error(f"Failed to detect relationships using LLM: {e}")
             return relationship_fallback
@@ -366,6 +389,8 @@ class MetadataTagger:
             if lang in ("cs", "en"):
                 logger.info(f"LLM successfully detected language: {lang}")
                 return lang
+        except ModelError:
+            raise
         except Exception as e:
             logger.error(f"Failed to detect language using LLM: {e}")
             
@@ -390,14 +415,20 @@ class MetadataTagger:
         config = await self.load_config()
         
         # Run date extraction, category classification, relationships and language detection concurrently
-        date_task = self.determine_release_date(full_text, file_path)
-        category_task = self.classify_category(first_pages_text, config)
-        relationship_task = self.detect_relationships(first_pages_text)
-        language_task = self.detect_language(first_pages_text)
-        
-        date_str, category_key, relationship, language = await asyncio.gather(
-            date_task, category_task, relationship_task, language_task
-        )
+        if getattr(getattr(self.llm, "profile", None), "provider", None) == "ollama_generate":
+            # The JHU server admits one generation at a time. Do not make the
+            # four steps of one classification operation compete with each other.
+            date_str = await self.determine_release_date(full_text, file_path)
+            category_key = await self.classify_category(first_pages_text, config)
+            relationship = await self.detect_relationships(first_pages_text)
+            language = await self.detect_language(first_pages_text)
+        else:
+            date_str, category_key, relationship, language = await asyncio.gather(
+                self.determine_release_date(full_text, file_path),
+                self.classify_category(first_pages_text, config),
+                self.detect_relationships(first_pages_text),
+                self.detect_language(first_pages_text),
+            )
         
         suggested_title = os.path.splitext(os.path.basename(file_path))[0]
         

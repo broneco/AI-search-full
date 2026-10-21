@@ -88,7 +88,7 @@ def project(original: dict[str, bytes]) -> tuple[dict[str, bytes], str]:
                if not name.startswith(INTERNAL) and name not in INTERNAL_FILES
                and (not name.startswith("tenants/") or name.startswith("tenants/jhu/"))
                and ("/public/logos/" not in name or name.endswith("/logo-JHU.webp"))}
-    for filename in ("search_config.json", "classification_config.json"):
+    for filename in ("search_config.json", "classification_config.json", "model_config.json", "embedding_config.json", "local_model_recipes.json"):
         name = "tenants/jhu/" + filename
         if name not in payload:
             payload[name] = original["tenants/default/" + filename]

@@ -37,6 +37,7 @@ class MessageResponse(BaseModel):
     content: str
     sources: Optional[List[dict]] = None
     created_at: str
+    generation: Optional[dict] = None
 
 
 class ThreadDetailResponse(BaseModel):
@@ -149,6 +150,7 @@ async def get_thread_detail(
             role=m.role,
             content=m.content if m.message_id in visible_ids else "Tato odpověď již není dostupná podle aktuálních oprávnění.",
             sources=saved_citations(m) if m.message_id in visible_ids else None,
+            generation=(m.sources or {}).get("generation") if m.message_id in visible_ids and isinstance(m.sources, dict) else None,
             created_at=m.created_at.isoformat(),
         )
         for m in messages

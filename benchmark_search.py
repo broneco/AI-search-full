@@ -10,9 +10,12 @@ from sqlalchemy.exc import DBAPIError
 from app.core.config import settings
 from app.core.search_config import SearchConfigManager
 from app.evaluation.search_benchmark import Dataset, QueryCache, BenchmarkError, benchmark_plan, prepare_cache, run_benchmark, write_report
-from app.providers.factory import create_embedding_profile, create_embedding_provider
+from app.providers.factory import create_embedding_provider, catalog_embedding_provider
+from app.core.embedding_selection import active_embedding_provider
+from app.core.model_config import ModelError
 from app.storage.db import SessionLocal
-from app.storage.vector_store import SearchIndexError
+from app.storage.models import DBSearchIndex
+from app.storage.vector_store import SearchIndexError, index_profile
 
 
 async def run(args) -> dict:
@@ -23,12 +26,22 @@ async def run(args) -> dict:
     if args.output.exists():
         raise BenchmarkError("Output already exists; choose a new path.")
     dataset = Dataset.model_validate_json(args.dataset.read_text(encoding="utf-8-sig"))
-    profile = create_embedding_profile()
+    fallback = create_embedding_provider()
+    with SessionLocal() as session:
+        if args.index:
+            index = session.get(DBSearchIndex, args.index)
+            if index is None or index.tenant_id != settings.TENANT_ID or index.corpus_id != "tenant-chunks-v1":
+                raise BenchmarkError("Selected benchmark index does not belong to this tenant/corpus.")
+            profile = index_profile(session, index)
+        else:
+            profile = active_embedding_provider(session, settings.TENANT_ID, fallback=fallback).profile
     if args.command == "prepare":
         with SessionLocal() as session:
             benchmark_plan(session, settings.TENANT_ID, profile, "exact", args.index)
         # The DB read transaction is closed before provider network calls.
-        cache = await prepare_cache(dataset, create_embedding_provider())
+        with SessionLocal() as session:
+            provider = fallback if fallback.profile == profile else catalog_embedding_provider(settings.TENANT_ID, space=profile, session=session)
+        cache = await prepare_cache(dataset, provider)
         payload = cache.model_dump(mode="json")
     else:
         cache = QueryCache.model_validate_json(args.cache.read_text(encoding="utf-8-sig"))
@@ -61,7 +74,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         payload = asyncio.run(run(args))
-    except (BenchmarkError, SearchIndexError) as error:
+    except (BenchmarkError, SearchIndexError, ModelError) as error:
         parser.exit(2, f"Benchmark rejected: {error}\n")
     except (ValueError, OSError, DBAPIError):
         # Validation errors can contain the complete input; never dump them or driver secrets.

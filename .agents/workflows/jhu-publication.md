@@ -63,7 +63,7 @@ Nástroj nic nepushuje. Vytvoří ZIP a sousední `.manifest.json`; existující
 
 Povinné vlastnosti exportu:
 
-- Pouze `tenants/jhu`, bez privátních env; chybějící search/classification se zmaterializují z aktuálních default souborů.
+- Pouze `tenants/jhu`, bez privátních env; chybějící search/classification/model/embedding konfigurace se zmaterializují z aktuálních default souborů. Nomic profil/digest/prefixy a aktuální embeddingový návod musí být součástí exportu; private JHU connection env nikoli.
 - Jediný JHU motiv a logo obou frontendů. Lokální identita jhu a demo login JHU; cloudová přesná identita ju-prod se nikdy nezkracuje.
 - Ostatní runtime změny smí být jen explicitní projekce definovaná v nástroji. Změna očekávaného formátu způsobí chybu a vyžaduje revizi, nikoli tiché hádání.
 - Žádný Git graf, jiné klientské konfigurace, interní exportéry/templates, pracovní dokumenty, dependency/cache, klíče, data a historické poznámky.
@@ -109,6 +109,10 @@ Před commitem zkontroluj přesný staged file set a runtime/brand rozdíly vů�
 Ulož neveřejný release záznam pod `.local/publications/`: zdrojové SHA/tag/verze, cílové SHA před/po, manifest a hash ZIPu, výsledky testů, schválení a rozsah. Do aktuální projektové paměti zapiš odkaz a skutečně dokončený stav, bez secrets. Pokud push selže, rozliš lokální commit od vzdáleného výsledku a nehlaš vydání jako dokončené.
 
 ## 9. Samostatný Azure release
+
+Export obsahuje také `app/core/model_limits.py`, `migrate_model_limits.py` a aktuální návod k administračnímu limitu výstupu. Skutečné SQL `model_runtime_settings` řádky se neexportují. Ujisti se, že testy a wheel v čistém JHU exportu ověřily efektivní katalog, oddělené runtime revize/reset a limit obou providerů. Azure aktivace vyžaduje samostatně schválenou migraci runtime tabulky; lokální startup ji nedokazuje. Žádné embeddingy, indexy, secrets ani kapacitní změny k tomu implicitně nepřidávej.
+
+Aktuální admin porovnání používá dvě standardní chatová vlákna, každý dotaz právě jeden model/index. Součástí čistého předání musí být `model_metadata.py`, `migrate_model_metadata.py`, nový společný modelový přehled, porovnání a aktuální `docs/development/admin-comparison.md` z template. Upravitelné popisy žijí v přesně tenantové SQL tabulce `model_descriptions`, nikoli v exportovaném registry snapshotu nebo JSON katalogu. Žádné skutečné popisy/SQL řádky se do ZIPu neexportují. Před cloudovou aktivací ověř samostatně migraci popisů; lokální startup ji nedokazuje. Testy čistého exportu zahrnou `test_admin_models.py` i wheel, bez privátních env a bez živého API.
 
 Pro Azure pokračuj jen s odpovídajícím schválením. Použij [deployment handshake](../rules/azure-deployment-handshake.md) a [aktuální README](../../README.md#deployment-do-azure). Ověř Azure subscription/directory, přesný tenant, resource group, Container App/ACR/SWA a stávající image/modelový profil. Připrav read-only plány, změny a rollback před zápisy.
 

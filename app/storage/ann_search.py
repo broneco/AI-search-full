@@ -10,6 +10,7 @@ from sqlalchemy import Float, Integer, String, Unicode, bindparam, literal_colum
 from sqlalchemy.dialects import mssql
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, defer
+from app.core.config import settings
 
 from app.providers.embeddings import EmbeddingProfile
 from app.retrieval.filters import eligibility_filters
@@ -120,13 +121,17 @@ class VectorSearchPlan:
             self.ann_index.require_ready()
 
 
-def prepare_vector_search(session: Session, tenant: str, profile: EmbeddingProfile, mode: str) -> VectorSearchPlan:
+def prepare_vector_search(session: Session, tenant: str, profile: EmbeddingProfile, mode: str,
+                          *, selected_index: DBSearchIndex | None = None) -> VectorSearchPlan:
     if mode not in {"exact", "ann"}:
         raise SearchIndexError("vector_search_mode must be exact or ann.")
     try:
-        index = active_index(session, tenant, profile)
+        index = selected_index if selected_index is not None else active_index(session, tenant, profile)
     except DBAPIError as error:
         raise execution_error(error, "active_catalog") from error
+    VectorSearchPlan(index, "exact").validate(tenant, profile, "exact")
+    if settings.DATABASE_BACKEND == "azure_sql" and index.storage_kind != "native":
+        raise SearchIndexError("Azure search requires native index storage.")
     if mode == "exact":
         return VectorSearchPlan(index, mode)  # No vector-index catalog dependency.
     status = ann_index_status(session, index)

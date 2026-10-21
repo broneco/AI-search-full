@@ -4,6 +4,10 @@ from app.core.config import settings
 from contextlib import asynccontextmanager
 from app.api.routes import health, chat, documents, auth, threads, prompts
 from app.storage.db import init_db
+from app.api.routes import models
+from app.api.routes import search_indexes
+from app.core.model_config import ModelError
+from fastapi.responses import JSONResponse
 
 # Setup logging
 logging.basicConfig(
@@ -40,9 +44,9 @@ async def lifespan(app: FastAPI):
                              "v .env.local a restartuj backend; uživatelské dokumenty zůstávají zachované.")
         try:
             from app.storage.vector_store import activate_local_ready_index
-            from app.providers.factory import create_embedding_profile
+            from app.providers.factory import catalog_embedding_provider
             with SessionLocal() as session:
-                activate_local_ready_index(session, create_embedding_profile())
+                activate_local_ready_index(session, catalog_embedding_provider(settings.TENANT_ID).profile)
                 session.commit()
         except Exception as error:
             logger.warning("Lokální profilový index čeká na migraci: %s. "
@@ -57,6 +61,12 @@ app = FastAPI(
     description="Full-stack AI Search Application API",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(ModelError)
+async def model_error_handler(request, error: ModelError):
+    return JSONResponse(status_code=error.status, content={"detail": str(error), "code": error.code},
+                        headers={"X-Model-Error-Code": error.code})
 
 # Enable CORS for local and future production access
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,6 +86,8 @@ app.include_router(threads.router, prefix="/api/threads", tags=["Threads"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(prompts.router, prefix="/api/prompts", tags=["Prompts"])
+app.include_router(models.router, prefix="/api/models", tags=["Models"])
+app.include_router(search_indexes.router, prefix="/api/search-indexes", tags=["Search indexes"])
 
 
 @app.get("/")

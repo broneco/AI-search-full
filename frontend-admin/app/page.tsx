@@ -1,6 +1,10 @@
 "use client";
 import { openAuthenticatedPdf } from "./components/authenticatedPdf";
 
+import { ModelPicker, useModelCatalog } from "./components/ModelPicker";
+import { ModelManagementPanel } from "./components/ModelManagementPanel";
+import { ResultsComparison } from "./components/ResultsComparison";
+import { EmbeddingIndexPanel, EmbeddingIndexPicker, useEmbeddingIndexes } from "./components/EmbeddingIndexes";
 import React, { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { TRANSLATIONS } from "./translations";
 import { CLIENT_THEMES, DEFAULT_THEME_ID } from "./config/themes";
@@ -25,6 +29,9 @@ interface Message {
   sources?: ChatSource[];
   latency_ms?: number;
   strategy?: string;
+  model_name?: string;
+  embedding_model?: string;
+  search_index_id?: string;
 }
 
 interface IngestedDocument {
@@ -301,7 +308,8 @@ export default function Home() {
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
 
   // Application Navigation
-  const [activeTab, setActiveTab] = useState<"chat" | "ingest" | "categories" | "config" | "chunking" | "prompt">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "compare" | "ingest" | "categories" | "config" | "chunking" | "models">("chat");
+  const comparisonSourceDialog = useRef<HTMLDialogElement>(null);
 
   // System Prompt State
   const [promptPromptsMap, setPromptPromptsMap] = useState<{ cs: string; en: string }>({ cs: "", en: "" });
@@ -309,7 +317,10 @@ export default function Home() {
   const [promptLocale, setPromptLocale] = useState<"cs" | "en">("cs");
   const [promptEditorText, setPromptEditorText] = useState<string>("");
   const [savingPrompt, setSavingPrompt] = useState<boolean>(false);
+  const [savingTaskPrompt, setSavingTaskPrompt] = useState<string | null>(null);
+  const [taskPromptMessage, setTaskPromptMessage] = useState("");
   const [promptSaveMsg, setPromptSaveMsg] = useState<string | null>(null);
+  const promptSession = useRef({ identity: "", loaded: false });
 
   // Dynamic Categories and Config
   const [config, setConfig] = useState<Config | null>(null);
@@ -356,7 +367,7 @@ export default function Home() {
   // Application State
   const [query, setQuery] = useState("");
   const [searchStrategy, setSearchStrategy] = useState<"hybrid" | "vector" | "keyword">("hybrid");
-  const [chatMode, setChatMode] = useState<"flash" | "thinking">("flash");
+
   
   // Interactive testing states for security & freshness
   const [userRole, setUserRole] = useState<string>("User");
@@ -371,6 +382,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [activeSource, setActiveSource] = useState<ChatSource | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  useEffect(() => {
+    const dialog = comparisonSourceDialog.current;
+    if (activeTab === "compare" && workspaceOpen && activeSource) dialog?.showModal();
+    else dialog?.close();
+  }, [activeTab, workspaceOpen, activeSource]);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [documents, setDocuments] = useState<IngestedDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -383,6 +399,7 @@ export default function Home() {
     title: string;
     suggested_date: string;
     suggested_category: string;
+    classification_model_id?: string;
     relationship: {
       relationship_type: string;
       target_document_id: string | null;
@@ -443,7 +460,7 @@ export default function Home() {
   }, [activeTab, documents, selectedPreviewDocId]);
 
   const fetchPreview = async (force: boolean = false) => {
-    if (!selectedPreviewDocId || !editingSearchConfig) {
+    if (!selectedPreviewDocId || !editingSearchConfig || (force && editingSearchConfig.enrich_with_summary && !summaryModels.modelId)) {
       setPreviewChunks([]);
       return;
     }
@@ -455,6 +472,7 @@ export default function Home() {
         headers: getHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           document_id: selectedPreviewDocId,
+          summary_model_id: summaryModels.modelId || undefined,
           chunk_size: editingSearchConfig.chunk_size,
           chunk_overlap: editingSearchConfig.chunk_overlap,
           chunk_cross_page: editingSearchConfig.chunk_cross_page,
@@ -476,6 +494,7 @@ export default function Home() {
         setPreviewChunks(data);
       } else {
         const errData = await res.json().catch(() => ({}));
+        if ([403, 422, 503].includes(res.status)) await summaryModels.reload();
         setPreviewError(errData.detail || "Failed to load preview chunks.");
       }
     } catch (err) {
@@ -516,11 +535,13 @@ export default function Home() {
     activeTab
   ]);
 
-  const fetchPrompts = async () => {
+  const fetchPrompts = async (identity: string) => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/prompts`);
       if (res.ok) {
         const data = await res.json();
+        if (promptSession.current.identity !== identity) return;
+        promptSession.current.loaded = true;
         setPromptTenantInfo({ tenant_id: data.tenant_id, tenant_base: data.tenant_base });
         setPromptPromptsMap(data.prompts);
         setPromptEditorText(data.prompts[promptLocale] || "");
@@ -531,12 +552,19 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (activeTab === "prompt") {
-      fetchPrompts();
+    const identity = `${BACKEND_URL}:${userProfile?.tenant_id || ""}:${authToken || ""}`;
+    if (promptSession.current.identity !== identity) {
+      promptSession.current = { identity, loaded: false };
+      setPromptPromptsMap({ cs: "", en: "" });
+      setPromptEditorText("");
+      setPromptSaveMsg(null);
+      setPromptTenantInfo({ tenant_id: "", tenant_base: "" });
     }
-  }, [activeTab, promptLocale]);
+    if (activeTab === "models" && !promptSession.current.loaded) void fetchPrompts(identity);
+  }, [activeTab, authToken, userProfile?.tenant_id, BACKEND_URL]);
 
   const handleSavePrompt = async () => {
+    const savedLocale = promptLocale;
     setSavingPrompt(true);
     setPromptSaveMsg(null);
     try {
@@ -547,7 +575,7 @@ export default function Home() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPromptPromptsMap(data.prompts);
+        setPromptPromptsMap(current => ({...current,[savedLocale]:data.prompts[savedLocale]}));
         setPromptSaveMsg(appLanguage === "cs" ? "Systémový prompt byl úspěšně uložen!" : "System prompt saved successfully!");
         setTimeout(() => setPromptSaveMsg(null), 4000);
       } else {
@@ -559,6 +587,27 @@ export default function Home() {
     } finally {
       setSavingPrompt(false);
     }
+  };
+
+  const saveTaskPrompt = async (purpose: "summary" | "classification") => {
+    const text = purpose === "summary" ? editingSearchConfig?.summary_custom_prompt : editingConfig?.analysis_rules;
+    if (text === undefined || savingTaskPrompt) return;
+    setSavingTaskPrompt(purpose); setTaskPromptMessage("");
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/prompts/tasks/${purpose}`, {method:"PUT",
+        headers:getHeaders({"Content-Type":"application/json"}), body:JSON.stringify({prompt_text:text})});
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || "Save failed");
+      if (purpose === "summary") {
+        setSearchConfig(previous=>previous && ({...previous,summary_custom_prompt:body.prompt_text}));
+        setEditingSearchConfig(previous=>previous && ({...previous,summary_custom_prompt:body.prompt_text}));
+      } else {
+        setConfig(previous=>previous && ({...previous,analysis_rules:body.prompt_text}));
+        setEditingConfig(previous=>previous && ({...previous,analysis_rules:body.prompt_text}));
+      }
+      setTaskPromptMessage(appLanguage === "cs" ? "Instrukce byly uloženy pro další zpracování dokumentů." : "Instructions saved for subsequent document operations.");
+    } catch(error) { setTaskPromptMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setSavingTaskPrompt(null); }
   };
 
   // Re-indexing progress state
@@ -714,6 +763,7 @@ export default function Home() {
     endpoint: "reindex-all" | "reindex-full",
     initialPhase: "clearing_db" | "scanning_files" | "scanning" | "analyzing" | "ingesting" | null
   ) => {
+    if (!summaryModels.modelId || !classificationModels.modelId) return;
     try {
       setReindexProgress({
         status: "running",
@@ -727,7 +777,9 @@ export default function Home() {
       setShowReindexModal(true);
 
       const res = await fetch(`${BACKEND_URL}/api/documents/${endpoint}`, {
-        method: "POST"
+        method: "POST",
+        headers: getHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ summary_model_id: summaryModels.modelId || undefined, classification_model_id: classificationModels.modelId || undefined })
       });
       if (res.ok) {
         startPollingProgress();
@@ -851,6 +903,10 @@ export default function Home() {
     localStorage.removeItem("dolphin_auth_token");
     setAuthToken(null);
     setUserProfile(null);
+    setWorkspaceOpen(false);
+    setActiveSource(null);
+    setMessages([]);
+    setTaskPromptMessage("");
     setAuthModalOpen(true);
   };
 
@@ -921,7 +977,7 @@ export default function Home() {
   // Submit Query to FastAPI RAG endpoint
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || loading) return;
+    if (!query.trim() || loading || !chatModels.modelId || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)) return;
 
     if (!authToken) {
       setAuthModalOpen(true);
@@ -945,7 +1001,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           query: userQuery,
-          mode: chatMode,
+          model_id: chatModels.modelId,
+          search_index_id: searchStrategy !== "keyword" && userProfile?.groups?.includes("Management") && embeddingIndexes.selectedId ? embeddingIndexes.selectedId : undefined,
           locale: appLanguage,
           search_strategy: searchStrategy,
           freshness_filter: freshnessFilter,
@@ -958,7 +1015,10 @@ export default function Home() {
       });
 
       if (!res.ok) {
-        throw new Error(`Server returned error code: ${res.status}`);
+        const failure = await res.json().catch(() => ({}));
+        if ([403, 422, 503].includes(res.status)) await chatModels.reload();
+        if ([403, 404, 409, 422, 503].includes(res.status)) await embeddingIndexes.reload();
+        throw new Error(failure.detail || `Server returned error code: ${res.status}`);
       }
 
       const data = await res.json();
@@ -970,6 +1030,9 @@ export default function Home() {
         sources: data.sources,
         latency_ms: data.metadata.latency_ms,
         strategy: data.metadata.retrieval_strategy,
+        model_name: data.metadata.model_name,
+        embedding_model: data.metadata.embedding_model,
+        search_index_id: data.metadata.search_index_id,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -1019,6 +1082,10 @@ export default function Home() {
 
   // Call Analyze endpoint to get suggested metadata
   const triggerDraftAnalysis = async (file: File) => {
+    if (!classificationModels.modelId) {
+      setIngestStatus({ type: "error", message: appLanguage === "cs" ? "Vyberte dostupný klasifikační model." : "Select an available classification model." });
+      return;
+    }
     setFileToUpload(file);
     setAnalyzingDraft(true);
     setDraftResult(null);
@@ -1026,15 +1093,19 @@ export default function Home() {
     
     const formData = new FormData();
     formData.append("file", file);
+    if (classificationModels.modelId) formData.append("classification_model_id", classificationModels.modelId);
 
     try {
       const res = await fetch(`${BACKEND_URL}/api/documents/analyze-draft`, {
         method: "POST",
         body: formData,
+        headers: getHeaders(),
       });
 
       if (!res.ok) {
-        throw new Error(appLanguage === "cs" ? `Analýza konceptu selhala: ${res.status}` : `Draft analysis failed: ${res.status}`);
+        if ([403, 422, 503].includes(res.status)) await classificationModels.reload();
+        const failure = await res.json().catch(() => ({}));
+        throw new Error(failure.detail || (appLanguage === "cs" ? `Analýza konceptu selhala: ${res.status}` : `Draft analysis failed: ${res.status}`));
       }
 
       const data = await res.json();
@@ -1062,7 +1133,7 @@ export default function Home() {
   // Submit confirmed metadata to complete RAG ingestion
   const handleConfirmIngest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!draftResult || ingestingConfirmed) return;
+    if (!draftResult || ingestingConfirmed || !summaryModels.modelId) return;
 
     setIngestingConfirmed(true);
     setIngestStatus(null);
@@ -1080,15 +1151,15 @@ export default function Home() {
       },
       temp_file_path: draftResult.temp_file_path,
       original_filename: draftResult.original_filename,
+      classification_model_id: draftResult.classification_model_id,
+      summary_model_id: summaryModels.modelId || undefined,
       language: confirmedLanguage,
     };
 
     try {
       const res = await fetch(`${BACKEND_URL}/api/documents/ingest-confirmed`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
 
@@ -1140,9 +1211,7 @@ export default function Home() {
     try {
       const res = await fetch(`${BACKEND_URL}/api/documents/update-metadata`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
 
@@ -1479,6 +1548,12 @@ export default function Home() {
     );
   };
 
+  const modelScope = userProfile ? `${userProfile.tenant_id}:${userProfile.user_id || userProfile.email}` : "";
+  const chatModels = useModelCatalog(BACKEND_URL, authToken, "chat", modelScope);
+  const summaryModels = useModelCatalog(BACKEND_URL, authToken, "summary", modelScope);
+  const classificationModels = useModelCatalog(BACKEND_URL, authToken, "classification", modelScope);
+  const embeddingIndexes = useEmbeddingIndexes(BACKEND_URL, authToken, modelScope, Boolean(userProfile?.groups?.includes("Management")));
+
   // Dynamic list of all category group names for suggestions in tag input
   const uniqueGroups = (editingConfig || config)
     ? Array.from(new Set(
@@ -1494,7 +1569,7 @@ export default function Home() {
       {/* 1. Global Navigation Header */}
       <header
         style={{ backgroundColor: currentTheme.colors.topBarBg }}
-        className="flex items-center justify-between px-6 py-3 border-b border-white/10 backdrop-blur-md shrink-0 transition-colors duration-300"
+        className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-b border-white/10 backdrop-blur-md shrink-0 transition-colors duration-300"
       >
         <div className="flex items-center gap-3">
           <div className="h-11 px-2.5 py-1 bg-white/90 rounded-xl flex items-center justify-center border border-white/30 shadow-md">
@@ -1511,7 +1586,7 @@ export default function Home() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.5
+                v0.1.6
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -1521,7 +1596,7 @@ export default function Home() {
         </div>
 
         {/* Dynamic Tab Switcher */}
-        <div className="flex rounded-lg p-0.5 bg-black/40 border border-white/20">
+        <div className="flex max-w-full overflow-x-auto rounded-lg p-0.5 bg-black/40 border border-white/20">
           <button
             type="button"
             onClick={() => setActiveTab("chat")}
@@ -1579,15 +1654,19 @@ export default function Home() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("prompt")}
+            onClick={() => setActiveTab("models")}
             className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
-              activeTab === "prompt"
+              activeTab === "models"
                 ? "bg-white/25 text-white shadow-md font-bold"
                 : "text-white/70 hover:text-white"
             }`}
           >
-            {TRANSLATIONS[appLanguage].promptTab}
+            {TRANSLATIONS[appLanguage].modelsTab}
           </button>
+          {userProfile?.groups?.includes("Management") && <button type="button" onClick={() => setActiveTab("compare")}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${activeTab === "compare" ? "bg-white/25 text-white shadow-md font-bold" : "text-white/70 hover:text-white"}`}>
+            {appLanguage === "cs" ? "Porovnání výsledků" : "Compare results"}
+          </button>}
         </div>
 
         {/* Real-time system states */}
@@ -1655,12 +1734,17 @@ export default function Home() {
           </div>
         </div>
       </header>
+      {userProfile?.groups?.includes("Management") && (activeTab === "ingest" || activeTab === "chunking") && <div className="flex flex-wrap items-center gap-3 px-6 py-2 border-b border-white/10 text-xs text-zinc-400">
+        <span>{appLanguage === "cs" ? "Shrnutí" : "Summary"}: {summaryModels.models.find(m => m.id === summaryModels.modelId)?.name || "—"}</span>
+        <span>{appLanguage === "cs" ? "Klasifikace" : "Classification"}: {classificationModels.models.find(m => m.id === classificationModels.modelId)?.name || "—"}</span>
+        <button type="button" onClick={() => setActiveTab("models")} className="text-indigo-300 hover:text-indigo-200 underline">{appLanguage === "cs" ? "Změnit modely" : "Change models"}</button>
+      </div>}
 
       {/* 2. Main Workspace Layout Grid */}
       <div className="flex flex-1 overflow-hidden">
         
         {/* Left Sidebar: Live Ingested Documents List */}
-        <aside className="hidden lg:flex flex-col w-80 border-r border-white/[0.05] bg-[#070b13]/40 overflow-y-auto p-4 gap-4 shrink-0">
+        <aside className={`${activeTab === "models" || activeTab === "compare" ? "hidden" : "hidden lg:flex"} flex-col w-80 border-r border-white/[0.05] bg-[#070b13]/40 overflow-y-auto p-4 gap-4 shrink-0`}>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
               {TRANSLATIONS[appLanguage].accessibleFiles}
@@ -2030,6 +2114,8 @@ export default function Home() {
                       </div>
                       
                       {/* Message latency and metadata details */}
+                      {msg.model_name && <div className="text-[10px] text-zinc-400">{msg.model_name}</div>}
+                      {msg.embedding_model && <div className="text-[10px] text-zinc-400">Embedding: {msg.embedding_model} · index {msg.search_index_id?.slice(0, 8)}</div>}
                       {msg.role === "assistant" && msg.latency_ms && (
                         <div className="flex items-center gap-3 px-2 text-[10px] text-zinc-500 font-semibold font-mono">
                           <span>⚡ Latency: {msg.latency_ms} ms</span>
@@ -2069,6 +2155,12 @@ export default function Home() {
 
               {/* Bottom Chat Input Form Bar */}
               <div className="p-4 border-t border-white/[0.04] bg-[#070b13]/60 backdrop-blur-md">
+                <div className="max-w-4xl mx-auto mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
+                  <span>{appLanguage === "cs" ? "Model odpovědi" : "Answer model"}: <strong className="text-zinc-200">{chatModels.models.find(m => m.id === chatModels.modelId)?.name || (appLanguage === "cs" ? "Nevybrán" : "Not selected")}</strong></span>
+                  {userProfile?.groups?.includes("Management") && <span>{appLanguage === "cs" ? "Embeddingový index" : "Embedding index"}: {searchStrategy === "keyword" ? (appLanguage === "cs" ? "Nepoužívá se (keyword)" : "Not used (keyword)") : embeddingIndexes.selected ? `${embeddingIndexes.selected.model} · ${embeddingIndexes.selectedId.slice(0, 8)}${!embeddingIndexes.canQuery ? (appLanguage === "cs" ? " · nepřipravený" : " · not ready") : ""}` : (appLanguage === "cs" ? "Nevybrán / nedostupný" : "Not selected / unavailable")}</span>}
+                  <button type="button" onClick={() => setActiveTab("models")} className="text-indigo-300 hover:text-indigo-200 underline">{appLanguage === "cs" ? "Změnit model / index" : "Change model / index"}</button>
+                  {(chatModels.error || (searchStrategy !== "keyword" && embeddingIndexes.error)) && <p role="alert" className="w-full text-amber-300">{chatModels.error || embeddingIndexes.error}</p>}
+                </div>
                 <form onSubmit={handleSubmit} className="flex gap-3 max-w-4xl mx-auto relative">
                   <input
                     type="text"
@@ -2080,7 +2172,7 @@ export default function Home() {
                   />
                   <button
                     type="submit"
-                    disabled={loading || !query.trim()}
+                    disabled={loading || !query.trim() || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)}
                     className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px]"
                   >
                     {TRANSLATIONS[appLanguage].searchBtn}
@@ -2582,17 +2674,7 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* General LLM Analysis Rules */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wider block">
-                        {TRANSLATIONS[appLanguage].generalRulesLabel}
-                      </label>
-                      <textarea
-                        value={editingConfig.analysis_rules}
-                        onChange={(e) => handleRulesChange(e.target.value)}
-                        className="w-full bg-black/40 border border-white/[0.08] text-xs text-zinc-300 rounded px-3 py-2.5 h-20 resize-none focus:outline-none focus:border-indigo-500 leading-normal"
-                      />
-                    </div>
+                    <button type="button" className="text-xs text-indigo-300 underline" onClick={() => setActiveTab("models")}>{appLanguage === "cs" ? "Prompt pro klasifikaci upravíte v sekci Modely a vyhledávání → Prompty." : "Edit classification instructions in Models and search → Prompts."}</button>
 
                     <button
                       onClick={handleSaveConfig}
@@ -3428,24 +3510,7 @@ export default function Home() {
                           />
                         </div>
 
-                        {editingSearchConfig.enrich_with_summary && (
-                          <div className="space-y-1.5 pl-1">
-                            <label className="text-[10px] text-indigo-400 block uppercase tracking-wider font-bold">
-                              {appLanguage === "cs" ? "Vlastní instrukce pro AI shrnutí" : "Custom Summary Instructions"}
-                              <Tooltip text={TRANSLATIONS[appLanguage].tooltips.summary_custom_prompt} />
-                            </label>
-                            <textarea
-                              rows={2}
-                              placeholder={appLanguage === "cs" ? "např. Shrnutí generuj v angličtině / Zaměř se na sankce a lhůty..." : "e.g. Generate summaries in English / Focus on deadlines..."}
-                              value={editingSearchConfig.summary_custom_prompt || ""}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
-                                summary_custom_prompt: e.target.value
-                              })}
-                              className="w-full bg-[#111827] border border-indigo-500/30 text-xs text-zinc-200 rounded-xl p-3 focus:outline-none focus:border-indigo-500 font-medium resize-none"
-                            />
-                          </div>
-                        )}
+                        <button type="button" className="text-xs text-indigo-300 underline" onClick={() => setActiveTab("models")}>{appLanguage === "cs" ? "Prompt pro shrnutí upravíte v sekci Modely a vyhledávání → Prompty." : "Edit summary instructions in Models and search → Prompts."}</button>
                       </div>
 
                       {/* --- AGENTIC STRATEGY FIELDS --- */}
@@ -3779,16 +3844,55 @@ export default function Home() {
           </div>
         )}
 
-        {/* 6. Render System Prompt Management tab */}
-        {activeTab === "prompt" && (
-          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
-            <div className="w-full max-w-5xl space-y-6">
+        {userProfile?.groups?.includes("Management") && authToken && <main hidden={activeTab !== "compare"} className={`${activeTab === "compare" ? "block" : "hidden"} flex-1 min-w-0 min-h-0 bg-[#090d16]`}>
+          <ResultsComparison key={`compare:${BACKEND_URL}:${authToken}:${modelScope}`} url={BACKEND_URL} token={authToken} locale={appLanguage} models={chatModels.models} defaultModel={chatModels.modelId}
+            indexes={embeddingIndexes} folders={uniqueSourceFolders} renderAnswer={renderMessageContent} reloadModels={chatModels.reload}/>
+        </main>}
+
+        {/* Keep management panels mounted so tab changes preserve edits and in-flight preparation. */}
+          <main hidden={activeTab !== "models"} aria-label={TRANSLATIONS[appLanguage].modelsTab}
+            className={`${activeTab === "models" ? "flex" : "hidden"} flex-1 min-w-0 overflow-y-auto p-6 bg-[#090d16] justify-center`}>
+            <div className="w-full max-w-7xl space-y-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white">{TRANSLATIONS[appLanguage].modelsTitle}</h2>
+                  <p className="text-sm text-zinc-400 mt-2">{TRANSLATIONS[appLanguage].modelsSubtitle}</p>
+                </div>
+                <button type="button" onClick={() => setActiveTab("chat")} className="shrink-0 px-3 py-2 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+                  {appLanguage === "cs" ? "Přejít k vyhledávání" : "Go to search"}
+                </button>
+              </div>
+
+              <section className="glass-panel p-6 rounded-2xl bg-[#0c1222] border border-white/10 space-y-5">
+                <h3 className="font-bold text-white">{appLanguage === "cs" ? "Modely pro odpovědi a dokumenty" : "Models for answers and documents"}</h3>
+                <p className="text-xs text-zinc-400">{appLanguage === "cs" ? "Volba platí pro následující dotaz nebo zpracování dokumentu. Již uložené odpovědi a dokumenty se nemění." : "Selections apply to the next query or document operation. Existing answers and documents are unchanged."}</p>
+                <ModelPicker catalog={chatModels} locale={appLanguage} disabled={loading} label={appLanguage === "cs" ? "Model pro odpovědi" : "Answer model"} />
+                {userProfile?.groups?.includes("Management") && <div className="grid gap-5 md:grid-cols-2">
+                  <ModelPicker catalog={summaryModels} locale={appLanguage} disabled={analyzingDraft || ingestingConfirmed || loadingPreviewChunks} label={appLanguage === "cs" ? "Model pro shrnutí" : "Summary model"} />
+                  <ModelPicker catalog={classificationModels} locale={appLanguage} disabled={analyzingDraft || ingestingConfirmed} label={appLanguage === "cs" ? "Model pro klasifikaci" : "Classification model"} />
+                </div>}
+              </section>
+
+              {userProfile?.groups?.includes("Management") && authToken && <>
+                <section className="glass-panel p-6 rounded-2xl bg-[#0c1222] border border-white/10 space-y-5">
+                  <h3 className="font-bold text-white">{appLanguage === "cs" ? "Embeddingové modely a indexy" : "Embedding models and indexes"}</h3>
+                  <EmbeddingIndexPicker controller={embeddingIndexes} locale={appLanguage} disabled={loading || searchStrategy === "keyword"} />
+                  {searchStrategy === "keyword" && <p className="text-xs text-zinc-400">{appLanguage === "cs" ? "Lexikální hledání embeddingy nepoužívá. Pro porovnání indexů zvolte v Konfiguraci vyhledávání sémantickou nebo hybridní strategii." : "Keyword search does not use embeddings. Choose vector or hybrid in Search configuration to compare indexes."}</p>}
+                  <EmbeddingIndexPanel controller={embeddingIndexes} locale={appLanguage} />
+                </section>
+                <section className="glass-panel p-6 rounded-2xl bg-[#0c1222] border border-white/10 space-y-4">
+                  <h3 className="font-bold text-white">{appLanguage === "cs" ? "Dostupné modely a oprávnění" : "Available models and access"}</h3>
+                  <ModelManagementPanel key={`management:${BACKEND_URL}:${authToken}`} url={BACKEND_URL} token={authToken} locale={appLanguage} />
+                </section>
+              </>}
+
+              <section className="space-y-4 pt-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                  <h3 className="font-bold text-white flex items-center gap-2">
                     <span>📝</span>
-                    <span>{appLanguage === "cs" ? "Správa systémového promptu" : "System Prompt Management"}</span>
-                  </h2>
+                    <span>{appLanguage === "cs" ? "Prompty — odpovědi, shrnutí a klasifikace" : "Prompts — answers, summary and classification"}</span>
+                  </h3>
                   <p className="text-xs text-zinc-400 mt-1">
                     {appLanguage === "cs"
                       ? `Právě upravujete systémový prompt pro tenant: ${promptTenantInfo.tenant_id} (báze: ${promptTenantInfo.tenant_base})`
@@ -3798,6 +3902,7 @@ export default function Home() {
                 <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10">
                   <button
                     type="button"
+                    disabled={savingPrompt}
                     onClick={() => { setPromptLocale("cs"); setPromptEditorText(promptPromptsMap.cs || ""); }}
                     className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       promptLocale === "cs" ? "bg-indigo-600 text-white shadow-md" : "text-zinc-400 hover:text-white"
@@ -3807,6 +3912,7 @@ export default function Home() {
                   </button>
                   <button
                     type="button"
+                    disabled={savingPrompt}
                     onClick={() => { setPromptLocale("en"); setPromptEditorText(promptPromptsMap.en || ""); }}
                     className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       promptLocale === "en" ? "bg-indigo-600 text-white shadow-md" : "text-zinc-400 hover:text-white"
@@ -3837,7 +3943,11 @@ export default function Home() {
 
                 <textarea
                   value={promptEditorText}
-                  onChange={(e) => setPromptEditorText(e.target.value)}
+                  disabled={savingPrompt}
+                  onChange={(e) => {
+                    setPromptEditorText(e.target.value);
+                    setPromptPromptsMap(current => ({ ...current, [promptLocale]: e.target.value }));
+                  }}
                   rows={18}
                   className="w-full bg-black/60 border border-white/15 rounded-xl p-4 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 leading-relaxed shadow-inner"
                   placeholder="Zadejte systémový prompt..."
@@ -3860,13 +3970,33 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+              {userProfile?.groups?.includes("Management") && <div className="grid gap-5 md:grid-cols-2">
+                <div className="rounded-2xl bg-[#0c1222] border border-white/10 p-5 space-y-3">
+                  <h4 className="font-bold">{appLanguage === "cs" ? "Prompt pro shrnutí" : "Summary prompt"}</h4>
+                  <p className="text-xs text-zinc-400">{appLanguage === "cs" ? "Doplňující instrukce ke shrnutí dokumentu pro obohacení chunků. Použijí se při zapnutém AI shrnutí; prázdné pole ponechá základní instrukce." : "Additional document-summary instructions for chunk enrichment. Used when AI summary is enabled; leave empty for base instructions."}</p>
+                  <textarea aria-label={appLanguage === "cs" ? "Prompt pro shrnutí" : "Summary prompt"} maxLength={16000} rows={8} disabled={!editingSearchConfig || savingTaskPrompt !== null} value={editingSearchConfig?.summary_custom_prompt || ""} onChange={e => setEditingSearchConfig(previous => previous && ({...previous,summary_custom_prompt:e.target.value}))} className="w-full rounded-xl border border-white/15 bg-black/40 p-3 font-mono text-xs"/>
+                  <button type="button" disabled={!editingSearchConfig || savingTaskPrompt !== null} onClick={() => void saveTaskPrompt("summary")} className="rounded-lg bg-indigo-600 px-4 py-2 text-xs disabled:opacity-40">{appLanguage === "cs" ? "Uložit prompt pro shrnutí" : "Save summary prompt"}</button>
+                </div>
+                <div className="rounded-2xl bg-[#0c1222] border border-white/10 p-5 space-y-3">
+                  <h4 className="font-bold">{appLanguage === "cs" ? "Prompt pro klasifikaci" : "Classification prompt"}</h4>
+                  <p className="text-xs text-zinc-400">{appLanguage === "cs" ? "Obecná pravidla analýzy přidaná k systémovým instrukcím klasifikátoru. Kategorie, výstupní schéma a validace zůstávají řízené aplikací." : "General analysis rules appended to classifier instructions. Categories, output schema and validation remain controlled by the application."}</p>
+                  <textarea aria-label={appLanguage === "cs" ? "Prompt pro klasifikaci" : "Classification prompt"} maxLength={16000} rows={8} disabled={!editingConfig || savingTaskPrompt !== null} value={editingConfig?.analysis_rules || ""} onChange={e => handleRulesChange(e.target.value)} className="w-full rounded-xl border border-white/15 bg-black/40 p-3 font-mono text-xs"/>
+                  <button type="button" disabled={!editingConfig || savingTaskPrompt !== null} onClick={() => void saveTaskPrompt("classification")} className="rounded-lg bg-indigo-600 px-4 py-2 text-xs disabled:opacity-40">{appLanguage === "cs" ? "Uložit prompt pro klasifikaci" : "Save classification prompt"}</button>
+                </div>
+                {taskPromptMessage && <p role="status" className="text-sm text-indigo-300 md:col-span-2">{taskPromptMessage}</p>}
+              </div>}
+              </section>
             </div>
-          </div>
-        )}
+          </main>
 
       </div>
 
       {/* Dynamic Category Migration Modal */}
+      <dialog ref={comparisonSourceDialog} onClose={() => setWorkspaceOpen(false)} aria-label={appLanguage === "cs" ? "Citace z porovnání" : "Comparison citation"}
+        className="fixed inset-0 m-auto w-[min(750px,95vw)] max-h-[85vh] rounded-2xl border border-white/20 bg-slate-950 text-zinc-300 p-6 backdrop:bg-black/75">
+        {activeSource && <div className="space-y-4"><div className="flex justify-between gap-4"><h3 className="font-bold text-white">{activeSource.title} · {activeSource.page_number || "—"}</h3><button type="button" onClick={() => comparisonSourceDialog.current?.close()}>{appLanguage === "cs" ? "Zavřít" : "Close"}</button></div>
+          <p className="text-sm whitespace-pre-wrap">{activeSource.content}</p><button type="button" className="text-indigo-300 underline" onClick={() => void openAuthenticatedPdf(`${BACKEND_URL}/api/documents/view/${activeSource.document_id}${getSearchHash(activeSource)}`,authToken)}>{appLanguage === "cs" ? "Otevřít PDF" : "Open PDF"}</button></div>}
+      </dialog>
       {showMigrationModal && deletingCatIndex !== null && editingConfig && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="glass-panel max-w-md w-full p-6 space-y-4 border-white/[0.08] shadow-2xl bg-[#0c1222]">

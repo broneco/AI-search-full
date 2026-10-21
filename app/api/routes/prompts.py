@@ -1,7 +1,8 @@
 import logging
 from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from app.api.dependencies import get_db_session
 from app.core.config import settings
@@ -10,6 +11,29 @@ from app.api.identity import require_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class TaskPromptUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prompt_text: str = Field(max_length=16000)
+
+
+@router.put("/tasks/{purpose}", dependencies=[Depends(require_manager)])
+async def update_task_prompt(purpose: Literal["summary", "classification"], request: TaskPromptUpdate):
+    """Patch only instructions, preserving the latest category/search configuration."""
+    if purpose == "summary":
+        from app.core.search_config import SearchConfigManager
+        manager = SearchConfigManager()
+        config = await manager.load_config()
+        field = "summary_custom_prompt"
+    else:
+        from app.ingestion.tagger import MetadataTagger
+        manager = MetadataTagger(llm_provider=object())  # Configuration only; never instantiate/call a model.
+        config = await manager.load_config()
+        field = "analysis_rules"
+    config[field] = request.prompt_text.strip()
+    await manager.save_config(config)
+    return {"purpose": purpose, "prompt_text": config[field]}
 
 
 class PromptUpdateRequest(BaseModel):

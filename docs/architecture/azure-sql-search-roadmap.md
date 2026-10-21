@@ -87,7 +87,7 @@ Recall ANN měří kvalitu indexu vůči exact. Budoucí porovnání kvality emb
 ## Povinné regresní scénáře a prostředí
 
 - Dva různé profily se stejným rozměrem a profil s jiným rozměrem: záměna musí selhat před hledáním.
-- Lokální profil: SQL Server 2022 Developer pro běžné schéma, CRUD a úplnou streamovanou JSON cosine referenci bez capu kandidátů; modelové volání stále vyžaduje Azure OpenAI konfiguraci. Benchmark run používá připravenou query cache bez modelových volání.
+- Lokální profil: SQL Server 2022 Developer pro běžné schéma, CRUD a úplnou streamovanou JSON cosine referenci bez capu kandidátů; výchozí provider používá Azure OpenAI, JHU navíc podporuje [Nomic embeddingy](../development/local-embeddings.md) a vlastní inference službu. Benchmark run používá připravenou query cache bez modelových volání.
 - Test profil: izolované rychlé SQLite/unit testy a mocked providery, bez cloudových secrets. Nenahrazuje Azure integrační testy.
 - Azure testovací databáze: nativní VECTOR, indexy, synchronizace, transakce, prefiltry a performance. Oddělit od produkčních dat a nasazení podle `.agents/rules/azure-deployment-handshake.md`.
 - Splněná automatická kontrola nebo statická dokumentace není důkaz výkonu na Azure SQL Basic 5 DTU.

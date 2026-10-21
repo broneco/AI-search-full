@@ -1,5 +1,9 @@
 # Implementation Notes
 
+- Editable output limits live in model_runtime_settings, never in immutable registry snapshots/embedding identity. The effective catalog overlays nullable limits with CAS revision, NULL reset retains its revision. Local context reserves input/overhead and rejects oversize prompts without truncation. Azure and JHU adapters honor the ceiling including internal max_tokens and legacy num_predict. New operations apply the limit; a running provider keeps its snapshot. Cloud needs migrate_model_limits.py with exact target guards; do not auto-create this table on Azure startup.
+
+- Admin comparison sends two ordinary chat requests with independent thread IDs and one model/index each. Snapshot settings per turn; both variants sharing the local inference/embedding slot execute sequentially, other pairs may run concurrently. Never send a queued request after logout/unmount. model_descriptions is revisioned public presentation data, not embedding identity. Cloud startup excludes this table; migrate_model_metadata.py requires reviewed expected host/db/tenant. Prompt task PUT changes only the existing summary/classification instruction field without ACL/category operations. See docs/development/admin-comparison.md.
+
 - Tenant data identity is exact and case-sensitive where supported. Configuration directory aliases are centralized in app/core/tenant_identity.py; aliasing never grants access or changes persisted IDs.
 - Search prefilters are shared across vector and keyword branches. Eligibility includes server-derived tenant/groups, both ACL levels, metadata and freshness before top K. Hydration/context/history recheck access and revisions.
 - Embedding profiles identify the space, not the endpoint. Same dimensions do not imply compatibility. Text changes invalidate all profile embeddings; chunk deletion cascades. Native exact and optional DiskANN use the same catalog/profile/revision checks.
@@ -17,3 +21,5 @@
 - Azure VECTOR JSON parameters need NVARCHAR(MAX); vector-index DDL needs its own AUTOCOMMIT connection, not a user transaction. Preserve correlated ACL EXISTS/type bindings when compiling textual ANN batches.
 - Native keyword uses bounded Unicode CONTAINSTABLE terms and deferred legacy embedding hydration. Local SQL 2022 reference uses JSON cosine/LIKE and does not prove native Azure fulltext/ANN performance.
 - Python reference version is 3.12. Next.js dependency versions are pinned by package locks. Current frontend builds are static exports.
+
+- JHU embeddings use embedding_config.json, digest-pinned Nomic 768 and separate query/document prefixes over Basic /api/embed with truncate:false. The active index selects query/ingestion provider. Backfill an inactive index before explicit activation; stop writes and verify coverage, including when rolling back to Azure. Never silently fall back or rewrite chunk IDs just to add an embedding model. Shared JHU process budget covers inference and embedding.

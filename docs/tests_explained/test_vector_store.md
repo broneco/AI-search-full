@@ -27,3 +27,9 @@ SQL compilation test používá mssql dialect a kontroluje jediný finální TOP
 Příkazy jsou v `docs/development/search-slice-3-testing.md`; podmínky cloudového ověření v příslušném Azure handoffu. Nativní test byl v tomto pracovním běhu připraven, nikoli proveden.
 
 Celá lokální sada se SQL Server opt-in prošla: 149 passed, 4 skipped. Po posledních guard/test doplněních prošla cílená sada vector-store/access/rechunk: 86 passed, 2 skipped. Skutečný lokální index měl pokrytí 3/3 a reálný modelový chat i dvě PDF citace HTTP 200; po startu se ukázky znovu neindexovaly. Native opt-in harness zahrnuje i 1536rozměrný zápis/dotaz do samostatného experimentálního profilu a odmítnutí jeho neúplné aktivace.
+
+## Modelové profily
+
+Náhradní splitter ve rollback regresi explicitně deklaruje vypnuté shrnutí; selhání po vector write nadále ověřuje původní transakční návrat.
+
+Admin backfill nyní přijímá volitelný autorizační callback před dávkou a po modelovém volání. Dosavadní CLI běží beze změny bez callbacku; regresní revokaci/zachování vektorů ověřuje test_admin_indexes.

@@ -1,4 +1,4 @@
-# ADR-0006: <Decision title>
+# ADR-0038: <Decision title>
 
 - Status: proposed | accepted | superseded | rejected
 - Date: YYYY-MM-DD

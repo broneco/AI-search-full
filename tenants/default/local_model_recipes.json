@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "recipes": [
+    {
+      "models": ["nomic-embed-text"],
+      "version": "nomic-task-prefix-v1",
+      "query_prefix": "search_query: ",
+      "document_prefix": "search_document: "
+    },
+    {
+      "models": ["mxbai-embed-large"],
+      "version": "mxbai-retrieval-prefix-v1",
+      "query_prefix": "Represent this sentence for searching relevant passages: ",
+      "document_prefix": ""
+    }
+  ]
+}

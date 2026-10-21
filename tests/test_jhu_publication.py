@@ -43,7 +43,8 @@ def source(tmp_path):
     for directory in ("publication", ".agents"):
         shutil.copytree(ROOT/directory, source/directory)
     for name in ("tenants/jhu/branding.json", "tenants/jhu/prompts.json", "tenants/jhu/logo.webp",
-                 "tenants/default/search_config.json", "tenants/default/classification_config.json"):
+                 "tenants/default/search_config.json", "tenants/default/classification_config.json",
+                 "tenants/jhu/model_config.json", "tenants/jhu/embedding_config.json", "tenants/default/local_model_recipes.json"):
         target = source/name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT/name, target)
@@ -92,6 +93,8 @@ def test_committed_snapshot_excludes_worktree_history_and_secrets(source, tmp_pa
     assert not any(name.startswith((".git/", "publication/", "scripts/", ".agents/memory/archive/")) for name in payload)
     assert {name.split('/')[1] for name in payload if name.startswith('tenants/')} == {"jhu"}
     assert "tenants/jhu/search_config.json" in payload
+    assert "tenants/jhu/embedding_config.json" in payload
+    assert b"JHU_LLM_PASSWORD" not in payload["tenants/jhu/embedding_config.json"]
     assert b'CLIENT_THEMES.dolphin' not in payload['frontend-user/app/page.tsx']
     assert manifest["version"].encode() in payload["README.md"]
     assert sha.encode() not in b''.join(payload.values())

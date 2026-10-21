@@ -5,3 +5,5 @@
 Syntetický secret leží pod JHU. Test kontroluje všechny skutečně přibalené JSON soubory a nevyžaduje `tenants/default` ani jiné klienty; podporuje tak i samostatný JHU export.
 
 Poté wheel rozbalí mimo checkout a importuje aplikaci izolovaným Python procesem s vyčištěnými cloudovými proměnnými. Kontroluje i JHU alias prompty a cestu k ukázkovým PDF. Nejde pouze o kontrolu textu manifestu. Běžný unit běh tento integrační build přeskakuje; způsob zapnutí je v README.
+
+Embeddingová slice navíc ověřuje načtení JHU Nomic katalogu z nainstalovaného wheelu mimo checkout; profil 768 musí být dostupný bez soukromého prostředí.

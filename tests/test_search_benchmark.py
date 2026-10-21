@@ -283,7 +283,6 @@ async def test_prepare_and_run_cli_roundtrip_uses_cache_not_models(vector_db, tm
     activate_index(db, profile_index(db))
     db.commit()
     monkeypatch.setattr(cli, "SessionLocal", sessionmaker(bind=db.bind))
-    monkeypatch.setattr(cli, "create_embedding_profile", lambda: PROFILE)
     provider = SimpleNamespace(profile=PROFILE, embed_query=AsyncMock(return_value=[1.0, 0.0]))
     monkeypatch.setattr(cli, "create_embedding_provider", lambda: provider)
     monkeypatch.setattr(cli.SearchConfigManager, "load_config", AsyncMock(return_value={"search_strategy": "vector"}))
@@ -322,6 +321,37 @@ async def test_inactive_index_is_evaluated_without_activating_it(vector_db):
     assert active_index(db, "alpha", PROFILE).index_id == previous.index_id
     with pytest.raises(BenchmarkError, match="profile mismatch"):
         evaluation.benchmark_plan(db, "alpha", PROFILE, "exact", candidate.index_id)
+
+
+@pytest.mark.anyio
+async def test_cli_prepares_cache_using_selected_experimental_space(vector_db, tmp_path, monkeypatch):
+    import benchmark_search as cli
+    db = vector_db
+    items = add_vectors(db, document(db), [[1.0, 0.0]])
+    previous = profile_index(db)
+    activate_index(db, previous)
+    experimental = replace(PROFILE, model_id="experimental", dimensions=3)
+    candidate = provision_index(db, "alpha", experimental, native=False)
+    write_embeddings(db, candidate, experimental, [{"chunk_id": items[0].chunk_id,
+        "input_revision": items[0].content_hash, "embedding": [1.0, 0.0, 0.0]}])
+    db.commit()
+    monkeypatch.setattr(cli, "SessionLocal", sessionmaker(bind=db.bind))
+    default = SimpleNamespace(profile=PROFILE, embed_query=AsyncMock(side_effect=AssertionError("Wrong model")))
+    chosen = SimpleNamespace(profile=experimental, embed_query=AsyncMock(return_value=[1.0, 0.0, 0.0]))
+    monkeypatch.setattr(cli, "create_embedding_provider", lambda: default)
+    def select_provider(tenant, *, space, session=None):
+        assert tenant == "alpha" and space == experimental
+        return chosen
+    monkeypatch.setattr(cli, "catalog_embedding_provider", select_provider)
+    source, output = tmp_path / "dataset.json", tmp_path / "experimental-cache.json"
+    write_report(source, dataset().model_dump(mode="json"))
+    args = SimpleNamespace(command="prepare", dataset=source, output=output, index=candidate.index_id,
+        expect_host=cli.settings.AZURE_SQL_HOST, expect_db=cli.settings.AZURE_SQL_DB, expect_tenant=cli.settings.TENANT_ID)
+    result = await cli.run(args)
+    assert result["profile_id"] == experimental.profile_id
+    assert chosen.embed_query.await_count == 2
+    default.embed_query.assert_not_called()
+    assert active_index(db, "alpha", PROFILE).index_id == previous.index_id
 
 
 @pytest.mark.anyio

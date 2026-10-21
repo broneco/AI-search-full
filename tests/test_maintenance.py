@@ -31,6 +31,9 @@ def maintenance(tmp_path, monkeypatch):
     monkeypatch.setattr("app.storage.db.SessionLocal", factory)
     provider = SimpleNamespace(profile=EmbeddingProfile("audit", "1", 2),
         embed_documents=AsyncMock(side_effect=lambda texts: [[1., 0.] for _ in texts]))
+    monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_MODEL", "audit")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_MODEL_REVISION", "1")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_EMBEDDING_DIMENSIONS", 2)
     monkeypatch.setattr("app.ingestion.pipeline.create_embedding_provider", lambda: provider)
     monkeypatch.setattr("app.providers.blob_storage.BlobStorageProvider.is_configured", lambda self: False)
     for tenant, name in [("ju-prod", "current"), ("other-prod", "foreign")]:

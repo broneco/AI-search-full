@@ -1,7 +1,9 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("start-db", "stop-db", "backend", "test")]
-    [string]$Action
+    [string]$Action,
+    [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$')]
+    [string]$Tenant
 )
 
 $ErrorActionPreference = "Stop"
@@ -65,6 +67,8 @@ function Import-LocalEnvironment {
             Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2]
         }
     }
+
+    if ($Tenant) { $env:TENANT_ID = $Tenant }
 
     if ($env:APP_ENV -ne "local" -or $env:DATABASE_BACKEND -ne "sqlserver") {
         throw ".env.local musí používat APP_ENV=local a DATABASE_BACKEND=sqlserver."

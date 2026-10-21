@@ -38,6 +38,8 @@ class DocumentConfirmedIngestRequest(BaseModel):
     temp_file_path: str = Field(..., description="Path to the temporary file on disk")
     original_filename: str = Field(..., description="Original filename")
     language: str = Field("cs", description="Document language (cs or en)")
+    summary_model_id: Optional[str] = Field(None, max_length=100)
+    classification_model_id: Optional[str] = Field(None, max_length=100)
 
 
 class CategoryItem(BaseModel):

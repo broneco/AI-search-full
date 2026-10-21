@@ -40,3 +40,7 @@ export_jhu.py
 prepare_jhu_publication.py
 docker-compose.yml
 Dockerfile
+
+probe_jhu_model.py
+probe_jhu_embeddings.py
+migrate_model_access.py

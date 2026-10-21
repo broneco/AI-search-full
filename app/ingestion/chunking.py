@@ -1,6 +1,7 @@
 import logging
 from typing import Any, List, Optional
 from app.ingestion.extraction import ExtractedPage
+from app.core.model_config import ModelError
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,8 @@ class RecursiveCharacterTextSplitter:
         agentic_params: Optional[dict] = None,
         embedding_provider: Optional[Any] = None,
         llm_provider: Optional[Any] = None,
+        summary_provider: Optional[Any] = None,
+        strict_summary: bool = False,
     ) -> None:
         from typing import Any
         self.chunk_size = chunk_size
@@ -49,6 +52,8 @@ class RecursiveCharacterTextSplitter:
         self.agentic_params = agentic_params or {}
         self.embedding_provider = embedding_provider
         self.llm_provider = llm_provider
+        self.summary_provider = summary_provider or llm_provider
+        self.strict_summary = strict_summary
         self.separators = ["\n\n", "\n", " ", ""]
 
     def _split_character_only_with_params(self, text: str, size: int, overlap: int) -> List[str]:
@@ -310,8 +315,10 @@ class RecursiveCharacterTextSplitter:
                     final_splits.append(llm_out.strip())
                 else:
                     final_splits.extend(self._split_text(batch, self.separators))
-            except Exception as e:
-                logger.error(f"True agentic LLM boundary splitting failed: {e}")
+            except ModelError:
+                raise
+            except Exception:
+                logger.error("Agentic LLM boundary splitting failed")
                 final_splits.extend(self._split_text(batch, self.separators))
 
         return final_splits if final_splits else self._split_text(text, self.separators)
@@ -560,7 +567,7 @@ class RecursiveCharacterTextSplitter:
         if self.enrich_with_summary:
             for c in chunks:
                 summary_text = None
-                if force_ai and self.llm_provider and hasattr(self.llm_provider, "generate"):
+                if (force_ai or self.strict_summary) and self.summary_provider:
                     try:
                         import asyncio
                         import concurrent.futures
@@ -586,17 +593,21 @@ class RecursiveCharacterTextSplitter:
                         if loop and loop.is_running():
                             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                                 future = executor.submit(
-                                    lambda: asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
+                                    lambda: asyncio.run(self.summary_provider.generate(messages, model_profile="flash"))
                                 )
                                 summary_text = future.result()
                         else:
-                            summary_text = asyncio.run(self.llm_provider.generate(messages, model_profile="flash"))
+                            summary_text = asyncio.run(self.summary_provider.generate(messages, model_profile="flash"))
                     except Exception as e:
-                        logger.error(f"Summary enrichment LLM call failed: {e}")
+                        if self.strict_summary:
+                            raise
+                        logger.error("Summary enrichment LLM call failed")
 
                 if summary_text and summary_text.strip():
                     c.content = f"[AI Shrnutí: {summary_text.strip()}]\n\n{c.content}"
                 else:
+                    if self.strict_summary:
+                        raise ValueError("AI summary is empty; document was not replaced.")
                     words = " ".join(c.content.split()[:8]) + "..."
                     c.content = f"[AI Shrnutí (Klikněte na 'Znovu vygenerovat' pro AI zpracování): {words}]\n\n{c.content}"
 

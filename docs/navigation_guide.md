@@ -1,6 +1,8 @@
 # Mapa repozitáře
 
-Aktuální verzované soubory a adresáře pro v0.1.5 (2026-10-16); závislosti, cache a soukromá data se do zdrojového stromu nezahrnují. Při přesunu, přidání nebo smazání zdroje tuto mapu aktualizujte podle skutečné cesty.
+- `docs/releases/v0.1.6.md` — Souhrn vydání modelových katalogů, embeddingových indexů, administračního porovnání a provozních hranic v0.1.6.
+
+Aktuální zdrojové soubory a adresáře vydání v0.1.6 (2026-10-21); závislosti, cache a soukromá data se do zdrojového stromu nezahrnují. Při přesunu, přidání nebo smazání zdroje tuto mapu aktualizujte podle skutečné cesty.
 
 ## Verzované zdroje
 
@@ -216,8 +218,8 @@ Aktuální verzované soubory a adresáře pro v0.1.5 (2026-10-16); závislosti,
     - `frontend-admin/app/favicon.ico` — Zdrojový soubor komponenty nebo stránky administračního frontendu (favicon.ico).
     - `frontend-admin/app/globals.css` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (globals.css).
     - `frontend-admin/app/layout.tsx` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (layout.tsx).
-    - `frontend-admin/app/page.tsx` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (page.tsx).
-    - `frontend-admin/app/translations.ts` — Zdrojový soubor komponenty nebo stránky uživatelského frontendu (translations.ts).
+    - `frontend-admin/app/page.tsx` — Administrační konzole s chatem, dokumenty a společnou záložkou pro modely, embeddingové indexy a systémový prompt.
+    - `frontend-admin/app/translations.ts` — České a anglické texty administrační konzole včetně záložky Modely a vyhledávání.
   - `frontend-admin/public/` — Statické veřejné soubory této webové aplikace.
     - `frontend-admin/public/logos/` — Loga podporovaných tenantů pro webové rozhraní.
       - `frontend-admin/public/logos/logo-dolphin-blue-background.jpg` — Grafické logo společnosti Dolphin Consulting s modrým pozadím.
@@ -425,3 +427,94 @@ Aktuální verzované soubory a adresáře pro v0.1.5 (2026-10-16); závislosti,
 - `scripts/publication/jhu.py` — Nástroj či automatizované ověření publikace JHU.
 - `scripts/publication/sync.py` — Nástroj či automatizované ověření publikace JHU.
 - `tests/test_jhu_publication.py` — Nástroj či automatizované ověření publikace JHU.
+
+## Katalog modelů — nové zdroje
+
+- `.agents/inbox/2026-10-16-jhu-model-selection-handoff.md` — Konkrétní cíle, blockery a oddělené schválení Azure modelů, SQL migrace a síťové cesty.
+- `app/api/routes/models.py` — Autentizovaný katalog modelů a správa tenantových skupinových oprávnění s kontrolou revize.
+- `app/core/model_config.py` — Striktní schéma a načítání tenantových inferenčních profilů bez secrets.
+- `app/core/model_selection.py` — Výběr modelu podle účelu a opětovné ověření současných serverových oprávnění.
+- `app/providers/model_runtime.py` — Adaptéry konkrétních Azure/JHU profilů s limity, řízenými chybami a bez změny provideru při selhání.
+- `app/providers/vpn.py` — Kontrola Windows VPN trasy před lokálním HTTP požadavkem na JHU.
+- `docs/adr/ADR-0031-tenant-inference-model-catalog.md` — Rozhodnutí oddělit modelový katalog, připojení, embeddingy a runtime oprávnění.
+- `docs/architecture/model-catalog-roadmap.md` — Schválené slices, architektura modelových profilů a integrační omezení.
+- `docs/development/model-selection.md` — Lokální spuštění, konfigurace, ověření modelů a správa jejich oprávnění.
+- `docs/tests_explained/test_model_catalog.md` — Vysvětlení modelových regresí a hranic živého VPN smoke testu.
+- `frontend-admin/app/components/ModelManagementPanel.tsx` — Společný přehled modelů, zveřejnění, revizovaných popisů a skupinových oprávnění.
+- `frontend-admin/app/components/ModelPicker.tsx` — Typovaný tenantový katalog a výběr modelu s obnovou po změně oprávnění.
+- `frontend-user/app/components/ModelPicker.tsx` — Typovaný tenantový katalog a uživatelský výběr dalšího odpovědního modelu.
+- `migrate_model_access.py` — Čtecí plán a explicitně chráněné vytvoření SQL tabulky oprávnění modelů.
+- `probe_jhu_model.py` — Syntetické ověření JHU API přes VPN se skrytým heslem a volitelným ignorovaným env.
+- `publication/jhu/templates/docs/architecture/model-catalog-roadmap.md` — Aktuální JHU předávací šablona dokumentace pro katalog a výběr modelů.
+- `publication/jhu/templates/docs/development/model-selection.md` — Aktuální JHU předávací šablona dokumentace pro katalog a výběr modelů.
+- `tenants/default/model_config.json` — Výchozí veřejný katalog obou GPT modelů a modelové defaults pro jednotlivé účely.
+- `tenants/jhu/model_config.json` — Úplný JHU katalog cloudových modelů a Qwenu s odděleným připojením.
+- `tests/test_model_catalog.py` — Izolované regrese katalogu, směrování, oprávnění, shrnutí a explicitní živý JHU smoke.
+
+## Lokální embeddingy — nové zdroje
+
+- `app/core/embedding_config.py` — Validovaný tenantový katalog embeddingových připojení a neměnných prostorů.
+- `app/core/embedding_selection.py` — Výběr query i ingest providera podle přesné identity aktivního indexu.
+- `app/providers/jhu_connection.py` — Sdílený procesový limit JHU služby a kontrola embeddingového připojení/VPN.
+- `app/providers/ollama_embeddings.py` — Dávkový Nomic adaptér s kontrolou digestu, vektorů a zákazem truncation/fallbacku.
+- `docs/adr/ADR-0032-local-embedding-index-routing.md` — Rozhodnutí doplnit lokální embeddingy do samostatných profilových indexů.
+- `docs/development/local-embeddings.md` — Postup VS Code pro probe, backfill, aktivaci a návrat z Nomic na Azure.
+- `docs/tests_explained/test_local_embeddings.md` — Význam mock, repository, API a živých JHU embeddingových regresí.
+- `probe_jhu_embeddings.py` — Syntetický probe JHU embeddingů bez databázových změn a výpisu secrets.
+- `publication/jhu/templates/docs/development/local-embeddings.md` — Aktuální zákaznický návod pro Nomic embeddingy a více indexů.
+- `tenants/default/embedding_config.json` — Výchozí embeddingový katalog zachovávající existující Azure profil.
+- `tenants/jhu/embedding_config.json` — Úplný JHU embeddingový katalog s Azure a digest-pinned Nomic 768.
+- `tests/test_local_embeddings.py` — Kontrakt adaptéru, profilové směrování, více indexů a opt-in skutečný JHU/SQL roundtrip.
+
+## Discovery modelů
+
+- `app/providers/model_discovery.py` — Omezené čtení JHU metadat s bezpečnou klasifikací účelu a bez schvalování modelů.
+- `frontend-admin/app/components/ModelDiscoveryPanel.tsx` — Dialog explicitního načtení API inventáře a přidání kompatibilních modelů.
+- `tests/test_model_discovery.py` — Regrese metadat, chyb, oprávnění a oddělení discovery od aplikačního katalogu.
+- `docs/adr/ADR-0033-model-discovery-and-explicit-index-choice.md` — Architektonické oddělení discovery, schválení a jediného indexu na dotaz.
+- `docs/development/model-discovery.md` — Inventář služby, aktuální panel a navazující slices checkboxů/selectoru indexu.
+- `docs/tests_explained/test_model_discovery.md` — Popis kontraktových a API testů discovery bez modelové inference.
+- `publication/jhu/templates/docs/development/model-discovery.md` — Aktuální JHU návod a roadmap správy objevených modelů a výběru indexu.
+
+## Porovnání embeddingů v administraci
+
+- `app/api/routes/search_indexes.py` — Management API katalogu a explicitní lokální přípravy embeddingových indexů.
+- `app/core/search_index_selection.py` — Ověření konkrétního UUID/profilu a úplného korpusu před query embeddingem.
+- `app/ingestion/admin_indexes.py` — Idempotentní příprava/doplnění lokálního indexu bez aktivace či změny chunků.
+- `frontend-admin/app/components/EmbeddingIndexes.tsx` — Admin panel přípravy a selector jednoho embeddingového indexu pro otázku.
+- `tests/test_admin_indexes.py` — API, SQL a opt-in živé regrese dvou prostorů bez fan-out a změny ingestace.
+- `docs/adr/ADR-0034-admin-embedding-index-comparison.md` — Rozhodnutí přidat lokální administrační porovnání s přesně jedním indexem na dotaz.
+- `docs/tests_explained/test_admin_indexes.md` — Význam regresí přípravy, oprávnění, pinned plánu a skutečných Nomic PDF embeddingů.
+
+## Tenantový registr lokálních modelů
+
+- `app/core/local_model_registry.py` — Schvalování lokálních profilů, přesná tenantová persistence, publikace a kontrola přístupu.
+- `migrate_model_registry.py` — Guarded vytvoření SQL tabulky modelového registru s výchozím read-only plánem.
+- `tenants/default/local_model_recipes.json` — Verzované query/document instrukce Nomic a MXBAI bez připojení či secrets.
+- `frontend-user/app/components/EmbeddingIndexPicker.tsx` — Výběr jednoho povoleného hotového indexu pro uživatelský dotaz.
+- `tests/test_local_model_registry.py` — Regrese registrace, publikace, digestu, oprávnění a jednoho zvoleného indexu.
+- `docs/adr/ADR-0035-local-model-registry.md` — Rozhodnutí ukládat tenantová schválení lokálních modelů do SQL.
+- `docs/development/local-model-registry.md` — Postup přidání dalších lokálních LLM a embeddingů v obou konzolích.
+- `docs/tests_explained/test_local_model_registry.md` — Význam bezpečnostních a integračních testů registru modelů.
+- `publication/jhu/templates/docs/development/local-model-registry.md` — Aktuální JHU návod ke schvalování modelů a indexovým volbám.
+- `.agents/inbox/2026-10-20-local-model-registry-handoff.md` — Oddělený cloudový handoff SQL registru, sítí a release konzolí.
+
+## Porovnání výsledků a sjednocená správa modelů
+
+- `frontend-admin/app/components/ResultsComparison.tsx` — Dvě samostatné konverzace s jednou otázkou, nezávislými modely, filtry a jedinými indexy.
+- `app/core/model_metadata.py` — Přesná tenantová persistence veřejných popisů s revizí oddělená od identity modelů.
+- `migrate_model_metadata.py` — Read-only plán a guarded vytvoření SQL tabulky popisů modelů.
+- `tests/test_admin_models.py` — Regrese společného přehledu, oprávnění, CAS popisů a oddělených promptových zápisů.
+- `docs/tests_explained/test_admin_models.md` — Význam bezpečnostních, promptových a SQL regresí správy modelů.
+- `docs/development/admin-comparison.md` — Návod k porovnání dvou variant, správě modelů/popisu a třem promptům.
+- `docs/adr/ADR-0036-admin-model-comparison-and-descriptions.md` — Rozhodnutí zachovat dvě chatové cesty a oddělit popisy od immutable profilů.
+- `publication/jhu/templates/docs/development/admin-comparison.md` — Aktuální JHU návod k porovnání, popisům, oprávněním a promptům.
+- `.agents/inbox/2026-10-21-model-descriptions-handoff.md` — Oddělený cloudový handoff tabulky popisů a administračního releasu.
+
+## Správcovské limity výstupu modelů
+
+- `app/core/model_limits.py` — Revizované tenantové stropy generování, bezpečné lokální rozsahy a skládání efektivního profilu.
+- `migrate_model_limits.py` — Read-only plán a guarded vytvoření SQL tabulky provozních limitů modelů.
+- `docs/adr/ADR-0037-editable-model-output-limits.md` — Oddělení editovatelných generačních limitů od immutable profilů a vektorů.
+- `.agents/inbox/2026-10-21-model-output-limits-handoff.md` — Oddělený cloudový handoff runtime tabulky a administračního releasu.
+- `.agents/inbox/2026-10-21-jhu-connectivity-keyvault-handoff.md` — JHU audit secrets a návrh automatického lokálního připojení, nezávislé cloudové brány a přesunu credentials do Key Vaultu.

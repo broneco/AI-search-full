@@ -142,3 +142,7 @@ Confirmed-ingest testy používají vlastní dočasný staging adresář uvnitř
 ## Izolace vztahů
 
 Detekce nahrazení/úpravy posílá do modelu pouze aktuální dokumenty přesného tenantu. Vrácené UUID musí patřit této sadě, jinak se vztah odmítne; cizí tituly se do promptu nedostanou. Dvoutenantový prompt test je v `tests/test_maintenance.py`.
+
+## Modelové profily
+
+Klasifikační mocky jsou připojené k ProfileLLMProvider; nové API přijímá samostatné modely pro klasifikaci a shrnutí.

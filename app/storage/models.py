@@ -2,7 +2,7 @@ import datetime
 import json
 import uuid
 from typing import List, Optional
-from sqlalchemy import ForeignKey, String, Unicode, UnicodeText, DateTime, Integer, Date, JSON, Uuid, Text, Index
+from sqlalchemy import ForeignKey, String, Unicode, UnicodeText, DateTime, Integer, Date, JSON, Uuid, Text, Index, Boolean
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from app.core.config import settings
@@ -238,6 +238,55 @@ class DBChatMessage(Base):
     )
 
     thread: Mapped["DBChatThread"] = relationship("DBChatThread", back_populates="messages")
+
+
+class DBModelAccess(Base):
+    """Per-tenant overrides; null means all groups, an empty list denies everyone."""
+    __tablename__ = "model_access_policies"
+    tenant_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    model_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    allowed_groups: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+
+class DBTenantModel(Base):
+    """Approved immutable local profiles; publication is separate from group ACL."""
+    __tablename__ = "tenant_model_registry"
+    tenant_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    profile_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    user_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+
+class DBModelRuntimeSettings(Base):
+    """Mutable generation limits, separate from approved model/vector identity."""
+    __tablename__ = "model_runtime_settings"
+    tenant_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    max_output_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+
+class DBModelDescription(Base):
+    """Editable presentation metadata, separate from immutable model/vector identity."""
+    __tablename__ = "model_descriptions"
+    tenant_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[dict] = mapped_column(JSON, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
 
 # Register transaction-local ACL projection maintenance after all models exist.

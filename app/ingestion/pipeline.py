@@ -5,7 +5,8 @@ import datetime
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
-from app.providers.factory import create_embedding_provider, create_llm_provider
+from app.providers.factory import create_embedding_provider
+from app.core.embedding_selection import active_embedding_provider
 from app.providers.blob_storage import BlobStorageProvider
 from app.core.config import settings
 from app.retrieval.filters import exact_value
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class IngestionPipeline:
     """Orchestrates file text extraction, chunk splitting, vector embeddings generation, and database updates."""
 
-    def __init__(self, db_session: Session) -> None:
+    def __init__(self, db_session: Session, summary_provider=None, principal=None) -> None:
         self.db = db_session
         self.extractor = DocumentExtractor()
         
@@ -27,8 +28,16 @@ class IngestionPipeline:
         from app.core.search_config import SearchConfigManager
         manager = SearchConfigManager()
         config = manager.load_config_sync()
-        self.embedding_provider = create_embedding_provider()
-        self.llm_provider = create_llm_provider()
+        self.embedding_provider = active_embedding_provider(db_session, settings.TENANT_ID,
+                                                           fallback=create_embedding_provider())
+        self.llm_provider = None
+        if config.get("chunking_strategy") == "agentic":
+            from app.core.model_selection import model_provider
+            self.llm_provider = model_provider(db_session, settings.TENANT_ID, "classification", principal=principal)
+        if summary_provider is None and config.get("enrich_with_summary", False):
+            from app.core.model_selection import model_provider
+            summary_provider = model_provider(db_session, settings.TENANT_ID, "summary", principal=principal)
+        self.summary_provider = summary_provider
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=config.get("chunk_size", 1500),
             chunk_overlap=config.get("chunk_overlap", 250),
@@ -43,7 +52,9 @@ class IngestionPipeline:
             token_params=config.get("token_params"),
             agentic_params=config.get("agentic_params"),
             embedding_provider=self.embedding_provider,
-            llm_provider=self.llm_provider
+            llm_provider=self.llm_provider,
+            summary_provider=summary_provider,
+            strict_summary=True,
         )
         self.blob_provider = BlobStorageProvider()
 
@@ -157,6 +168,11 @@ class IngestionPipeline:
         try:
             # Parse created_at and clean up metadata_json to prevent database JSON serialization errors
             metadata = dict(metadata_json or {})
+            metadata.pop("summary_model_id", None)
+            if self.splitter.enrich_with_summary and self.summary_provider is not None:
+                profile = getattr(self.summary_provider, "profile", None)
+                if profile:
+                    metadata["summary_model_id"] = profile.id
             created_at_val = metadata.get("created_at", None)
             
             created_at_dt = datetime.datetime.utcnow()

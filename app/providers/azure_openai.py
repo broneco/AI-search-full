@@ -20,7 +20,7 @@ class AzureOpenAIProvider(LLMProvider):
             self.client = AsyncAzureOpenAI(
                 azure_endpoint=self.endpoint,
                 api_key=self.api_key,
-                api_version="2024-05-01-preview",
+                api_version=settings.AZURE_OPENAI_API_VERSION,
                 timeout=settings.AZURE_OPENAI_TIMEOUT,
             )
         else:
@@ -37,8 +37,9 @@ class AzureOpenAIProvider(LLMProvider):
         """Map generic model profiles to concrete deployment names."""
         if model_profile == "thinking":
             return settings.AZURE_OPENAI_THINKING_DEPLOYMENT
-        # Default to flash deployment
-        return settings.AZURE_OPENAI_FLASH_DEPLOYMENT
+        if model_profile == "flash":
+            return settings.AZURE_OPENAI_FLASH_DEPLOYMENT
+        raise ValueError("Unknown legacy model profile.")
 
     async def generate(
         self,
@@ -58,11 +59,11 @@ class AzureOpenAIProvider(LLMProvider):
         completion_args = {
             "model": deployment,
             "messages": formatted_messages,
-            "temperature": temperature,
+            "reasoning_effort": "none",
             **kwargs,
         }
         if max_tokens is not None:
-            completion_args["max_tokens"] = max_tokens
+            completion_args["max_completion_tokens"] = max_tokens
 
         response = await client.chat.completions.create(**completion_args)
         return response.choices[0].message.content or ""
@@ -85,12 +86,12 @@ class AzureOpenAIProvider(LLMProvider):
         completion_args = {
             "model": deployment,
             "messages": formatted_messages,
-            "temperature": temperature,
+            "reasoning_effort": "none",
             "stream": True,
             **kwargs,
         }
         if max_tokens is not None:
-            completion_args["max_tokens"] = max_tokens
+            completion_args["max_completion_tokens"] = max_tokens
 
         response_stream = await client.chat.completions.create(**completion_args)
 
@@ -112,7 +113,7 @@ class AzureOpenAIEmbeddingProvider(EmbeddingProvider):
             self.client = AsyncAzureOpenAI(
                 azure_endpoint=self.endpoint,
                 api_key=self.api_key,
-                api_version="2024-05-01-preview",
+                api_version=settings.AZURE_OPENAI_API_VERSION,
                 timeout=settings.AZURE_OPENAI_TIMEOUT,
             )
         else:

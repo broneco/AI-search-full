@@ -104,7 +104,7 @@ def test_scan_date_candidates():
 
 
 @pytest.mark.anyio
-@patch("app.providers.azure_openai.AzureOpenAIProvider.generate")
+@patch("app.providers.model_runtime.ProfileLLMProvider.generate")
 async def test_tagger_classification_and_date(mock_generate):
     # Setup mock returns
     # First call: date extraction, second call: category, third call: relationships
@@ -163,7 +163,7 @@ def test_categories_api_endpoints():
     client.post("/api/documents/categories", json=original_config)
 
 
-@patch("app.providers.azure_openai.AzureOpenAIProvider.generate")
+@patch("app.providers.model_runtime.ProfileLLMProvider.generate")
 @patch("app.ingestion.extraction.DocumentExtractor.extract")
 def test_analyze_draft_api_endpoint(mock_extract, mock_generate, db_setup, tmp_path):
     from unittest.mock import MagicMock

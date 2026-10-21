@@ -43,9 +43,11 @@ sys.path.insert(0,sys.argv[1])
 import app.main
 from app.core.prompts import get_tenant_prompts_map
 from app.ingestion.local_demo import FIXTURE_ROOT
+from app.core.embedding_config import embedding_entry
 assert get_tenant_prompts_map('ju-prod') == get_tenant_prompts_map('jhu')
 assert 'univerzity' in get_tenant_prompts_map('ju-prod')['cs']
 assert FIXTURE_ROOT.is_dir()
+assert embedding_entry('ju-prod', 'jhu-nomic').space().dimensions == 768
 print('wheel-import-ok')
 """
     result = subprocess.run([sys.executable, "-I", "-c", code, str(installed)], cwd=tmp_path,

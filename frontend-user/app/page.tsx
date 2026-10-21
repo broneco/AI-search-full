@@ -1,5 +1,7 @@
 "use client";
 
+import { ModelPicker, useModelCatalog } from "./components/ModelPicker";
+import { EmbeddingIndexPicker, useQueryIndexes } from "./components/EmbeddingIndexPicker";
 import React, { useState, useEffect, useRef } from "react";
 import { TRANSLATIONS } from "./translations";
 import { CLIENT_THEMES, DEFAULT_THEME_ID } from "./config/themes";
@@ -28,6 +30,9 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: CitationSource[];
+  model_name?: string;
+  embedding_model?: string;
+  search_index_id?: string;
 }
 
 export default function UserSearchPage() {
@@ -82,6 +87,9 @@ export default function UserSearchPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+
+  const modelCatalog = useModelCatalog(BACKEND_URL, authToken, "chat", userProfile ? `${userProfile.tenant_id}:${userProfile.user_id || userProfile.email}` : "");
+  const queryIndexes = useQueryIndexes(BACKEND_URL, authToken, userProfile ? `${userProfile.tenant_id}:${userProfile.user_id || userProfile.email}` : "");
 
   // Thread History State & Document Library State
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -234,6 +242,9 @@ export default function UserSearchPage() {
           role: m.role,
           content: m.content,
           sources: m.sources || [],
+          model_name: m.generation?.model_name || (appLanguage === "cs" ? "Model nezaznamenán" : "Model not recorded"),
+          embedding_model: m.generation?.embedding_model,
+          search_index_id: m.generation?.search_index_id,
         }));
 
         setMessages(
@@ -339,7 +350,7 @@ export default function UserSearchPage() {
 
   // Submit Query to Backend API
   const handleSubmit = async (userQuery: string) => {
-    if (!userQuery.trim() || loading) return;
+    if (!userQuery.trim() || loading || !modelCatalog.modelId || !queryIndexes.canQuery) return;
 
     if (!authToken) {
       setAuthModalOpen(true);
@@ -362,6 +373,8 @@ export default function UserSearchPage() {
         headers: getHeaders(),
         body: JSON.stringify({
           query: trimmedQuery,
+          model_id: modelCatalog.modelId,
+          search_index_id: queryIndexes.selectedId,
           thread_id: activeThreadId,
           locale: appLanguage,
         }),
@@ -373,6 +386,9 @@ export default function UserSearchPage() {
           role: "assistant",
           content: data.answer || "Odpověď nebyla nalezena.",
           sources: data.sources || [],
+          model_name: data.metadata?.model_name,
+          embedding_model: data.metadata?.embedding_model,
+          search_index_id: data.metadata?.search_index_id,
         };
         setMessages([...newMessages, assistantMessage]);
 
@@ -388,6 +404,8 @@ export default function UserSearchPage() {
         }
       } else {
         const errData = await res.json().catch(() => ({}));
+        if (res.status === 403 || res.status === 422 || res.status === 503) await modelCatalog.reload();
+        if ([403, 404, 409, 422, 503].includes(res.status)) await queryIndexes.reload();
         setMessages([
           ...newMessages,
           {
@@ -571,7 +589,7 @@ export default function UserSearchPage() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.5
+                v0.1.6
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -670,6 +688,8 @@ export default function UserSearchPage() {
                       : "glass-panel bg-[#111827]/80 border-white/10 text-zinc-200 rounded-tl-none"
                   }`}
                 >
+                  {msg.model_name && <div className="text-[10px] text-zinc-400 mb-1">{msg.model_name}</div>}
+                  {msg.embedding_model && <div className="text-[10px] text-zinc-400 mb-1">Embedding: {msg.embedding_model} · {msg.search_index_id?.slice(0,8)}</div>}
                   {renderMessageContent(msg)}
                 </div>
 
@@ -723,6 +743,8 @@ export default function UserSearchPage() {
 
           {/* Bottom Search Input Bar */}
           <div className="p-6 bg-[#0c1222]/90 border-t border-white/10 backdrop-blur-md shrink-0">
+            <div className="max-w-5xl mx-auto mb-3"><ModelPicker catalog={modelCatalog} locale={appLanguage} disabled={loading} /></div>
+            <div className="max-w-5xl mx-auto mb-3"><EmbeddingIndexPicker catalog={queryIndexes} locale={appLanguage} disabled={loading} /></div>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -739,7 +761,7 @@ export default function UserSearchPage() {
               />
               <button
                 type="submit"
-                disabled={loading || !query.trim()}
+                disabled={loading || !query.trim() || !modelCatalog.modelId || !queryIndexes.canQuery}
                 className="px-6 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
               >
                 <span>🔍</span>
@@ -748,7 +770,7 @@ export default function UserSearchPage() {
             </form>
             <p className="text-[10px] text-zinc-500 text-center mt-2 font-medium flex items-center justify-center gap-2">
               <span>{TRANSLATIONS[appLanguage].disclaimer}</span>
-              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.5</span>
+              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.6</span>
             </p>
           </div>
         </main>

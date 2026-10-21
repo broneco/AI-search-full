@@ -8,6 +8,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tenant", help="Exact configured TENANT_ID, including environment suffix")
     parser.add_argument("--data-dir", help="Explicit PDF/TXT source directory")
+    parser.add_argument("--summary-model-id")
+    parser.add_argument("--classification-model-id")
     parser.add_argument("--apply", action="store_true", help="Apply replacements and remove stale documents after success")
     parser.add_argument("--expect-host")
     parser.add_argument("--expect-db")
@@ -38,7 +40,7 @@ def main(argv=None):
         raise ValueError("Database host differs from the reviewed target.")
     if args.expect_db is not None and args.expect_db != database:
         raise ValueError("Database name differs from the reviewed target.")
-    asyncio.run(refresh_documents(tenant, files))
+    asyncio.run(refresh_documents(tenant, files, model_selection={"summary_model_id": args.summary_model_id, "classification_model_id": args.classification_model_id}))
     return 0
 
 

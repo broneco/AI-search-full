@@ -6,7 +6,51 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
-Zatím bez změn po vydání v0.1.5.
+Zatím bez dalších změn.
+
+## [v0.1.6] - 2026-10-21
+
+[Souhrn vydání](releases/v0.1.6.md). Cloudové a lokální modely, více embeddingových indexů a porovnání výsledků; publikace zdrojů do hlavního GitHub repozitáře. Azure a izolované JHU předání jsou samostatné operace.
+
+Finální ověření v0.1.6: **492 passed / 20 expected skips** včetně izolovaných lokálních SQL databází a skutečného wheelu. Oba produkční frontend buildy/TypeScript prošly. Čistá JHU projekce má **270 souborů**, pouze JHU, a její cílená sada **97 passed / 14 expected skips**. Všech **404 veřejných zdrojových souborů** je dokumentováno; syntaxe, verze, projekce, cesty, kontrola známých privátních hodnot a whitespace prošly. Živé JHU/native Azure kontroly byly vypnuté, žádné cloudové nasazení z toho nevyplývá.
+
+### Changed
+- Administrace nabízí **Porovnání výsledků**: jedna otázka pro dvě samostatná vlákna s nezávislým modelem, filtry a jediným indexem UUID. Výsledky/citace a chyby stran se nezávisle zachovají; změny nastavení platí až pro další otázku. Dvě varianty používající JHU LLM nebo embedding sdílejí slot a spustí se postupně; jiné mohou souběžně. Časy nejsou benchmark modelů.
+- Dostupnost a oprávnění modelů jsou v jednom stálém přehledu. **Obnovit z API** otevře dialog pro explicitní přidání modelů. Admin modelové volby podporují hledání podle názvu, popisu a provozních limitů. Poslední sekce sdružuje RAG, summary a classification instrukce; dokumentové prompty se ukládají samostatně bez přepisu kategorií/ACL/chunkování.
+- README a šablona JHU předání uvádějí explicitní `$tenant` pro backend i obě konzole, rozlišují vzhled od oprávnění a používají přímé `next.cmd` kvůli předávání přepínačů v PowerShellu.
+- Administrace soustřeďuje volbu modelů odpovědí/shrnutí/klasifikace, načítání modelů z API, oprávnění, embeddingové indexy a systémový prompt do záložky **Modely a vyhledávání**. Nahrazuje původní promptový tab a globální modelové panely; chat ukazuje aktuální model/index s odkazem pro změnu. Volby a rozepsané prompty přežijí přepnutí tabů. Backend, oprávnění a pravidlo jednoho indexu na dotaz se nemění.
+
+### Added
+- JHU síťová analýza doplněna o non-root VPN-to-proxy jako kandidáta k omezenému Docker spike a případnému ACA sidecaru bez nové VM. Dokumentuje skutečný konflikt `comp-lzo`, komunitní alternativy, provozní náklady a podmínky akceptace; žádný klient nebyl instalován ani nasazen.
+- JHU audit a návrh automatického VPN/HTTPS připojení, inventář lokálních a cloudových secrets a konkrétní Key Vault handoff `2026-10-21-jhu-connectivity-keyvault-handoff.md`. Potvrzuje již fungující cloudové KV reference a existující roli backendu; rozlišuje lokální opt-in, síť gateway a případnou VNet migraci. Jde pouze o plán, bez změn aplikace, credentials nebo Azure.
+- Management nastaví v modelovém přehledu **Maximální délku výstupu (tokeny)** pro JSON i registrované LLM a obnoví výchozí hodnotu. Přesně tenantové SQL runtime overrides mají vlastní CAS revizi, aplikují se na nově zahájený chat/shrnutí/klasifikaci a nemění modelový snapshot ani embeddingy. Lokální kontext omezuje rozsah i vstupní rozpočet; Azure a JHU adaptéry skutečně vynucují strop. Cloudová tabulka vyžaduje guarded `migrate_model_limits.py`; lokální startup ji vytvoří. ADR-0037.
+- Editovatelné CS/EN popisy LLM i embeddingů v tenantové SQL tabulce `model_descriptions`, vlastní CAS revize, veřejná autorizovaná metadata a Management API společného přehledu. Popis nemění immutable profil ani vektory. Lokální startup vytvoří tabulku; Azure vyžaduje oddělenou guarded migraci `migrate_model_metadata.py`. ADR-0036 a návod `docs/development/admin-comparison.md` popisují chování a hranice.
+- Tenantový SQL registr lokálních modelů: explicitní přidání jednotlivých/všech kompatibilních profilů z API, vyhledání názvem a revizované checkboxy dostupnosti pro uživatele. Digest-pinned LLM jsou použitelné pro chat/shrnutí/klasifikaci bez omezení na jediný Qwen. Nomic zachovává dosavadní profil, MXBAI má vlastní instrukce a index; uživatelská konzole vybírá jediný publikovaný, skupinově povolený a úplný index. Registrace neprovádí generování, stahování ani backfill. Cloudová tabulka vyžaduje samostatnou guarded migraci.
+- Administrace připraví/doplní lokální embeddingový index nad existujícími chunky a u otázky vybere konkrétní Azure/Nomic UUID. Backend připíná jediný prostor a tabulku, ověřuje tenant/profil/pokrytí a vrací i ukládá použitý index/model; výchozí ingestace se nemění. Neúplné/zakázané/cizí indexy nemají fallback. Příprava je pouze lokální SQL, cloudový DDL zůstává oddělený.
+- Management přehled JHU modelů: read-only API discovery přes tags/show, automatické načtení při otevření panelu, explicitní refresh, oddělení chat kandidátů/embeddingů/rerankerů a vazby na stávající profily. Nalezené modely se automaticky nepovolují; roadmap zachycuje další checkboxy a výběr jednoho konkrétního indexu bez fan-out/fallbacku.
+- Discovery ověření 2026-10-20: skutečné API vrátilo 17 modelů (13 chat kandidátů, 2 embeddingy, 2 rerankery); cílené regrese 86 passed / 6 skipped, TypeScript a produkční build administrace prošly. Navazující registr, checkboxy a uživatelský selector jsou nyní implementované; aktuální ověření je níže.
+- JHU Nomic embedding provider přes stávající Basic/VPN službu, samostatný embedding_config, digest-pinned profil 768 s query/document prefixy a odmítnutím tichého truncation/fallbacku. Explicitní CLI backfill přidává další index nad stejnými chunky; aktivní index řídí query i ingestaci. Žádná automatická aktivace ani cloudový zápis.
+- Tenantový model_config.json, veřejný katalog a explicitní model_id pro chat; GPT-5.4-mini, GPT-5.4 a pouze v JHU Qwen. U odpovědí a historie se zobrazuje použitý model.
+- JHU Ollama generate adaptér s Basic autentizací, řízenými chybami, omezením souběhu a bez automatického cloudového fallbacku. Opakovatelný probe s chráněným zadáním hesla a ignorovaným lokálním env.
+- Samostatný výběr modelu pro shrnutí a klasifikaci, serverová provenance analýzy konceptu, dokumentová provenance a předání modelů do preview/reindex/CLI.
+- Management editor model × skupina, tenantová SQL pravidla s optimistickou revizí a guarded migrate_model_access.py. Lokální dev.ps1 podporuje -Tenant bez přepsání env souboru.
+
+### Fixed
+- Lokální demo při doplnění jiného embeddingového profilu zachovává UUID chunků, původní vektory a jejich provenance. Samotná keyword otázka již zbytečně nevolá embeddingovou službu.
+- Selhání produkčního shrnutí se propaguje před embeddingem/náhradou; do korpusu se neukládá zástupný text náhledu. JHU klasifikace provádí dílčí generace postupně, aby se neblokovaly limitem souběhu.
+- Azure parametry respektují GPT profily a skutečný model odpovědi se ověřuje proti deklarovanému profilu. Neznámé legacy modelové profily se nepřevádějí na flash.
+
+### Security
+- API modelů nevrací URL ani credentials; každé uživatelské modelové volání znovu ověřuje aktuální serverové skupiny/pravidla. Zakázaný model nelze obejít přímým requestem.
+- Lokální HTTP JHU volání vyžaduje explicitní konfiguraci a ověřenou Windows VPN trasu. Cloud potřebuje vlastní ochranu a samostatný deployment handoff. Modelové secrets lze číst přes stávající Key Vault přístup bez změn RBAC.
+
+Ověření se zaznamenává v roadmap a projektové paměti; zdrojová implementace sama neznamená Azure nasazení.
+
+Registr modelů (2026-10-20): kompletní SQL/wheel sada **462 passed / 20 skipped**, finální cílené modelové/indexové/security regrese **88 passed / 5 skipped** a oba produkční frontend buildy prošly. Čistý JHU kandidát: **262 souborů, 72 passed / 11 skipped** včetně wheelu. Živý syntetický MXBAI → izolovaná SQL → skutečná Llama 3.2 3B RAG odpověď: **1 passed / 1 SQLite skip**. Metadata dovolila všech 13 chatových a oba embeddingové modely, 2 rerankery vyřadila. Browser testy ověřily admin registraci/publikaci a normální user volbu jednoho modelu/indexu; nešlo o měření kvality všech modelů. Aplikační korpus ani cloudové schéma se neměnily.
+
+Admin porovnání indexů (2026-10-20): kompletní sada včetně lokálního SQL a wheelu **448 passed / 18 skipped**, TypeScript a produkční build administrace prošly. Skutečný Nomic nad oběma PDF přes admin přípravu a chatové API v izolovaném lokálním SQL **1 passed / 1 SQLite skip**; Azure reference a odpovědní LLM byly nahrazené. Čistý JHU kandidát včetně wheelu **66 passed / 20 skipped**. Aplikační index ani výchozí ingestace se při ověřování neměnily; cloud a výkon nejsou tímto ověřené.
+
+Embeddingová slice (2026-10-19): finální offline sada včetně wheelu **332 passed / 91 skipped**; cílené SQLite/lokální SQL/maintenance/benchmark regrese **187 passed / 9 skipped**, následné katalog/model/wheel kontroly **55 passed / 3 skipped**. Skutečný JHU Nomic → izolovaný lokální SQL retrieval a návrat profilu **1 passed / 1 skip**. JHU-only kandidát **73 passed / 6 skipped** včetně wheelu. Skips jsou nepovolené integrace/dialect varianty; žádný aplikační ani Azure index se nepřepnul a nejde o native/performance/relevanční přijetí.
 
 ## [v0.1.5] - 2026-10-16
 

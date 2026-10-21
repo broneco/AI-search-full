@@ -1,18 +1,21 @@
 import logging
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile, File, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.api.dependencies import get_db_session
 from app.core.config import settings
 from app.providers.factory import create_embedding_provider
+from app.core.embedding_selection import active_embedding_provider
 from app.schemas.documents import DocumentIngestRequest, DocumentIngestResponse, CategoryConfigRequest, DocumentConfirmedIngestRequest
 from app.storage.models import DBDocument, DBChunk
 from app.api.identity import Principal, get_principal, require_manager
 from app.retrieval.access import access_context, visible_document, safe_data_path
 from app.retrieval.filters import document_filters, eligibility_filters, exact_value
 from app.storage.vector_store import write_chunks
+from app.core.model_selection import model_provider
+from app.core.model_config import ModelError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -36,23 +39,27 @@ reindex_progress = {
 async def ingest_document(
     request: DocumentIngestRequest,
     db: Session = Depends(get_db_session),
+    principal: Principal = Depends(require_manager),
 ) -> DocumentIngestResponse:
-    """Ingest a single document and generate embeddings using Azure OpenAI.
+    """Ingest a single document using the active index's embedding space.
 
     This represents the core ingestion flow in Phase 0.
     """
     try:
         # Generate embedding vector
         logger.info(f"Generating embeddings for document: {request.title}")
-        document_embeddings = await embedding_provider.embed_documents([request.content])
+        document_provider = active_embedding_provider(db, principal.tenant_id, fallback=embedding_provider)
+        document_embeddings = await document_provider.embed_documents([request.content])
         if len(document_embeddings) != 1:
             raise ValueError("Embedding provider did not return exactly one document embedding.")
         embedding = document_embeddings[0]
+    except ModelError:
+        raise
     except Exception as e:
         logger.error(f"Failed to generate embedding: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Azure OpenAI Embedding generation failed: {str(e)}",
+            detail="Document embedding generation failed.",
         )
 
     try:
@@ -75,7 +82,7 @@ async def ingest_document(
         write_chunks(db, [{"chunk_id": chunk_id, "document_id": doc.document_id,
             "chunk_index": 0, "content": request.content, "embedding": embedding,
             "language": request.language, "security_acl": request.security_acl,
-            "metadata_json": request.metadata_json}], embedding_provider.profile)
+            "metadata_json": request.metadata_json}], document_provider.profile)
         db.commit()
 
         logger.info(f"Ingested document and chunk successfully. Doc ID: {doc.document_id}")
@@ -85,6 +92,8 @@ async def ingest_document(
             title=doc.title,
             status="ingested",
         )
+    except ModelError:
+        raise
     except Exception as e:
         logger.error(f"Database insertion failed: {e}")
         db.rollback()
@@ -126,6 +135,8 @@ async def list_documents(
                 "metadata_json": doc.metadata_json,
             })
         return result
+    except ModelError:
+        raise
     except Exception as e:
         logger.error(f"Failed to query document list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -383,6 +394,8 @@ async def view_document(
                     annotated_data = pdf_doc.write()
                     pdf_doc.close()
                     data = annotated_data
+            except ModelError:
+                raise
             except Exception as e:
                 logger.error(f"Failed to dynamically highlight PDF chunk {highlight_chunk_id}: {e}")
 
@@ -395,6 +408,8 @@ async def view_document(
             headers={"Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}"}
         )
 
+    except ModelError:
+        raise
     except Exception as e:
         if isinstance(e, HTTPException):
             raise
@@ -419,6 +434,8 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
     # 1. Load the old config to detect group/role renames
     try:
         old_config = await tagger.load_config()
+    except ModelError:
+        raise
     except Exception as e:
         logger.warning(f"Could not load old config for rename propagation: {e}")
         old_config = {"categories": []}
@@ -599,6 +616,8 @@ async def update_document_metadata(
         logger.info(f"Successfully updated document {doc_uuid} metadata to category {request.category} and freshness {request.freshness_status}")
         return {"status": "success", "message": "Metadata dokumentu byla úspěšně upravena."}
         
+    except ModelError:
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to update document metadata: {e}")
@@ -608,7 +627,9 @@ async def update_document_metadata(
 @router.post("/analyze-draft", dependencies=[Depends(require_manager)])
 async def analyze_draft(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db_session)
+    db: Session = Depends(get_db_session),
+    classification_model_id: Optional[str] = Form(None),
+    principal: Principal = Depends(require_manager),
 ):
     """Save upload to temp location and run metadata auto-tagger LLM analysis."""
     import os
@@ -627,8 +648,16 @@ async def analyze_draft(
         with open(temp_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        tagger = MetadataTagger(db_session=db)
+        provider = model_provider(db, principal.tenant_id, "classification", classification_model_id, principal)
+        tagger = MetadataTagger(db_session=db, llm_provider=provider)
         suggestions = await tagger.analyze_file(temp_path)
+        suggestions["classification_model_id"] = provider.profile.id
+        import json, hashlib
+        with open(temp_path, "rb") as content:
+            checksum = hashlib.sha256(content.read()).hexdigest()
+        with open(temp_path + ".model.json", "w", encoding="utf-8") as receipt:
+            json.dump({"tenant_id": principal.tenant_id, "user_id": str(principal.user_id),
+                       "model_id": provider.profile.id, "checksum": checksum}, receipt)
         
         # Restore original filename in the suggested title
         suggestions["title"] = os.path.splitext(original_filename)[0]
@@ -637,6 +666,8 @@ async def analyze_draft(
         suggestions["temp_file_path"] = temp_path
         
         return suggestions
+    except ModelError:
+        raise
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -647,7 +678,8 @@ async def analyze_draft(
 @router.post("/ingest-confirmed", dependencies=[Depends(require_manager)])
 async def ingest_confirmed(
     request: DocumentConfirmedIngestRequest,
-    db: Session = Depends(get_db_session)
+    db: Session = Depends(get_db_session),
+    principal: Principal = Depends(require_manager),
 ):
     """Ingest the document with confirmed/edited metadata and apply replacement archival rules."""
     import os
@@ -657,6 +689,26 @@ async def ingest_confirmed(
 
     if safe_data_path(request.temp_file_path) is None or not os.path.exists(request.temp_file_path):
         raise HTTPException(status_code=400, detail="Dočasný soubor nebyl nalezen. Nahrajte dokument znovu.")
+
+    classification_id = None
+    receipt_path = request.temp_file_path + ".model.json"
+    if os.path.exists(receipt_path):
+        import json, hashlib
+        with open(receipt_path, encoding="utf-8") as receipt:
+            provenance = json.load(receipt)
+        with open(request.temp_file_path, "rb") as content:
+            checksum = hashlib.sha256(content.read()).hexdigest()
+        if (provenance.get("tenant_id") != principal.tenant_id or
+                provenance.get("user_id") != str(principal.user_id) or provenance.get("checksum") != checksum):
+            raise HTTPException(403, "Analýza dokumentu nepatří aktuálnímu uživateli nebo se dokument změnil.")
+        classification_id = provenance["model_id"]
+        if request.classification_model_id and request.classification_model_id != classification_id:
+            raise HTTPException(422, "Změna klasifikačního modelu vyžaduje novou analýzu dokumentu.")
+        model_provider(db, principal.tenant_id, "classification", classification_id, principal)
+    elif request.classification_model_id:
+        raise HTTPException(422, "Chybí záznam analýzy dokumentu. Spusťte analýzu znovu.")
+
+    summary = model_provider(db, principal.tenant_id, "summary", request.summary_model_id, principal)
 
     try:
         # 1. Resolve security ACL and metadata from the selected category using config
@@ -691,6 +743,8 @@ async def ingest_confirmed(
             "freshness_status": "current",
             "relationship_type": request.relationship.relationship_type,
         }
+        if classification_id:
+            metadata["classification_model_id"] = classification_id
 
         # Check and apply archival operations if it replaces an existing document
         target_doc = None
@@ -719,6 +773,8 @@ async def ingest_confirmed(
                     
                     # Keep DB changes in active transaction block
                     db.flush()
+            except ModelError:
+                raise
             except Exception as e:
                 logger.error(f"Error executing archival process for replaced document: {e}")
                 db.rollback()
@@ -729,7 +785,7 @@ async def ingest_confirmed(
             metadata["modifies_document_title"] = request.relationship.target_document_title
 
         # 2. Run standard ingestion pipeline
-        pipeline = IngestionPipeline(db)
+        pipeline = IngestionPipeline(db, summary_provider=summary, principal=principal)
         
         # We rename the temp file to the confirmed final title during ingestion to clean up filename
         _, ext = os.path.splitext(request.original_filename)
@@ -778,24 +834,29 @@ async def ingest_confirmed(
             if os.path.exists(confirmed_file_path):
                 os.remove(confirmed_file_path)
 
+    except ModelError:
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Error in confirmed ingestion endpoint: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Chyba při dokončení ingestu: {str(e)}")
     finally:
+        if os.path.exists(receipt_path):
+            os.remove(receipt_path)
         # Clean up original temp upload file if it still exists
         if os.path.exists(request.temp_file_path):
             os.remove(request.temp_file_path)
 
 
-async def run_reindex_full_task(tenant_id: str | None = None):
+async def run_reindex_full_task(tenant_id: str | None = None, model_selection=None, principal=None):
     from app.ingestion.refresh import refresh_files, refresh_documents
     tenant_id = tenant_id or settings.TENANT_ID
     reindex_progress.update(status="running", type="reindex_full", phase="scanning_files",
                             total_files=0, processed_files=0, current_file=None, error=None)
     try:
         files = refresh_files(tenant_id)
-        await refresh_documents(tenant_id, files, reindex_progress)
+        await refresh_documents(tenant_id, files, reindex_progress, model_selection=model_selection, principal=principal)
         reindex_progress["status"] = "completed"
     except Exception:
         logger.exception("Tenant full refresh failed; stale cleanup was not completed.")
@@ -811,15 +872,18 @@ async def get_reindex_progress():
 @router.post("/reindex-full", dependencies=[Depends(require_manager)])
 async def reindex_full_endpoint(
     background_tasks: BackgroundTasks,
+    selection: Optional[Dict[str, Optional[str]]] = None,
     db: Session = Depends(get_db_session),
     principal: Principal = Depends(require_manager),
 ):
     """Trigger background full re-indexing of all local documents in the data folder (with LLM metadata analysis)."""
-    background_tasks.add_task(run_reindex_full_task, principal.tenant_id)
+    for purpose in ("summary", "classification"):
+        model_provider(db, principal.tenant_id, purpose, (selection or {}).get(purpose + "_model_id"), principal)
+    background_tasks.add_task(run_reindex_full_task, principal.tenant_id, selection or {}, principal)
     return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů (s analýzou metadat) byla spuštěna na pozadí."}
 
 
-async def run_reindex_all_task(tenant_id: str | None = None):
+async def run_reindex_all_task(tenant_id: str | None = None, model_selection=None, principal=None):
     logger.info("Starting background fast re-indexing (re-chunking) of all documents...")
     import os
     from app.storage.db import SessionLocal
@@ -854,7 +918,9 @@ async def run_reindex_all_task(tenant_id: str | None = None):
         reindex_progress["total_files"] = len(docs)
         reindex_progress["phase"] = "ingesting"
 
-        pipeline = IngestionPipeline(db)
+        selection = model_selection or {}
+        summary = model_provider(db, tenant_id, "summary", selection.get("summary_model_id"), principal) if model_selection is not None else None
+        pipeline = IngestionPipeline(db, summary_provider=summary, principal=principal) if summary else IngestionPipeline(db)
 
         for idx, doc in enumerate(docs):
             reindex_progress["current_file"] = doc.title
@@ -894,11 +960,16 @@ async def run_reindex_all_task(tenant_id: str | None = None):
                 db.query(DBChunk).filter(DBChunk.document_id == doc.document_id,
                     exact_value(DBChunk.tenant_id, tenant_id, db.bind.dialect.name)).delete()
                 
+                replacement_metadata = dict(doc.metadata_json or {})
+                replacement_metadata.pop("summary_model_id", None)
+                if pipeline.splitter.enrich_with_summary and getattr(pipeline.summary_provider, "profile", None):
+                    replacement_metadata["summary_model_id"] = pipeline.summary_provider.profile.id
+                    doc.metadata_json = replacement_metadata
                 write_chunks(db, [{"document_id": doc.document_id, "chunk_index": chunk_idx,
                     "content": chunk.content, "embedding": embeddings[chunk_idx],
                     "language": doc.language, "section_title": chunk.section_title,
                     "page_number": chunk.page_number, "security_acl": doc.security_acl,
-                    "metadata_json": doc.metadata_json, "freshness_status": doc.freshness_status}
+                    "metadata_json": replacement_metadata, "freshness_status": doc.freshness_status}
                     for chunk_idx, chunk in enumerate(chunks)], pipeline.embedding_provider.profile)
                 
                 db.commit()
@@ -913,6 +984,8 @@ async def run_reindex_all_task(tenant_id: str | None = None):
         reindex_progress["current_file"] = None
         reindex_progress["phase"] = None
 
+    except ModelError:
+        raise
     except Exception as e:
         logger.error(f"Fast re-indexing failed: {e}")
         reindex_progress["status"] = "failed"
@@ -925,11 +998,14 @@ async def run_reindex_all_task(tenant_id: str | None = None):
 @router.post("/reindex-all", dependencies=[Depends(require_manager)])
 async def reindex_all_endpoint(
     background_tasks: BackgroundTasks,
+    selection: Optional[Dict[str, Optional[str]]] = None,
     db: Session = Depends(get_db_session),
     principal: Principal = Depends(require_manager),
 ):
     """Trigger background fast re-indexing (re-chunking and embedding only) of all active documents."""
-    background_tasks.add_task(run_reindex_all_task, principal.tenant_id)
+    for purpose in ("summary", "classification"):
+        model_provider(db, principal.tenant_id, purpose, (selection or {}).get(purpose + "_model_id"), principal)
+    background_tasks.add_task(run_reindex_all_task, principal.tenant_id, selection or {}, principal)
     return {"status": "success", "message": "Znovunačtení a reindexace všech dokumentů (chunky a embeddingy) byla spuštěna na pozadí."}
 
 
@@ -1001,8 +1077,7 @@ async def preview_document_chunks(
     token_params = payload.get("token_params")
     agentic_params = payload.get("agentic_params")
     
-    from app.providers.factory import create_llm_provider
-    llm_provider = create_llm_provider()
+    llm_provider = model_provider(db, principal.tenant_id, "classification", principal=principal) if chunking_strategy == "agentic" and force_ai else None
     
     if not document_id:
         raise HTTPException(status_code=400, detail="Missing document_id")
@@ -1063,8 +1138,10 @@ async def preview_document_chunks(
         structure_params=structure_params,
         token_params=token_params,
         agentic_params=agentic_params,
-        embedding_provider=embedding_provider,
-        llm_provider=llm_provider
+        embedding_provider=active_embedding_provider(db, principal.tenant_id, fallback=embedding_provider),
+        llm_provider=llm_provider,
+        summary_provider=model_provider(db, principal.tenant_id, "summary", payload.get("summary_model_id"), principal) if enrich_with_summary else None,
+        strict_summary=bool(force_ai and enrich_with_summary),
     )
     chunks = splitter.split_pages(pages, force_ai=force_ai)
     

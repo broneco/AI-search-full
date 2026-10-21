@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "default_profile": "azure-default",
+  "profiles": [
+    { "id": "azure-default", "provider": "azure_openai" },
+    {
+      "id": "jhu-nomic",
+      "provider": "ollama_embed",
+      "batch_size": 8,
+      "timeout_seconds": 180,
+      "max_input_chars": 12000,
+      "profile": {
+        "model_id": "nomic-embed-text:latest",
+        "model_revision": "sha256:0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f",
+        "dimensions": 768,
+        "normalization": "l2",
+        "query_transform_version": "nomic-task-prefix-v1",
+        "document_transform_version": "nomic-task-prefix-v1",
+        "query_prefix": "search_query: ",
+        "document_prefix": "search_document: "
+      }
+    }
+  ]
+}
