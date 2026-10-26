@@ -1,5 +1,9 @@
 # Současná architektura vyhledávání
 
+Provozní stav JHU má Management-only GET /api/models/connection nezávislý na backend health. Explicitní POST /refresh atomicky načte nový ověřený snapshot po restartu helperu; nemění modely, indexy ani oprávnění. Ztráta ready přeruší aktivní upstream a nepřepošle otázku znovu; souběžné požadavky se odmítají před externím lookupem. HTTP klienti jsou samostatní, sdílí se pouze ověřený SSLContext pro omezení režie trust bundle. [Odolnost a testy](../development/jhu-connection-resilience.md).
+
+Lokální opt-in managed spojení má společný transport pro generate/embed/tags/show, oddělený non-root Docker helper, pevný VPN upstream a capability gateway publikovanou pouze na loopback. Backend jednou ověří Docker owner/target/protokol/mapování a API Key Vault snapshot; každá operace kontroluje heartbeat. Direct HTTPS/Windows VPN zůstává výchozí. Managed v cloudu zatím není aktivní; skutečná konektivita a provozní akceptace jsou samostatné. [Start a diagnostika](../development/jhu-managed-local.md).
+
 FastAPI koordinuje ingestaci a RAG přes explicitní embedding/LLM rozhraní a factory. Implementované adaptéry používají Azure OpenAI a JHU Ollama pro inference i embeddingy. Automatické porovnávání modelů není implementované. Oba Next.js frontendy jsou samostatné statické exporty. Datová cesta je Azure SQL + Blob Storage; podporované lokální prostředí je SQL Server 2022 Developer.
 
 EmbeddingProfile identifikuje model, revizi, rozměry, normalizaci a verzované zpracování query/document vstupu. Endpoint a credentials jsou oddělené od profilu. Shodné rozměry neznamenají kompatibilní prostor. Katalog indexů odděluje profil a tenantí korpus; jeden index na tenant je explicitně aktivní. Vektorové tabulky neduplikují texty a ACL.

@@ -29,9 +29,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tenant", default="jhu")
     parser.add_argument("--embedding-profile", default="jhu-nomic")
+    parser.add_argument("--managed", action="store_true", help="Use the running helper and Key Vault API credentials")
+    parser.add_argument("--vault", default="ju-ai-search-kv-prod")
     args = parser.parse_args()
-    # A local probe must never load cloud tenant env or resolve Key Vault.
+    # Keep SQL/config local; only explicit managed mode resolves scoped API secrets.
     os.environ["APP_ENV"] = "local"
+    if args.managed:
+        from scripts.vpn_spike.runtime import configure_managed_environment
+        configure_managed_environment(args.tenant, args.vault)
     from app.core.model_config import ModelError
     try:
         asyncio.run(run(args.tenant, args.embedding_profile))

@@ -48,6 +48,10 @@ Startup lokálního SQL také převede existující názvy dokumentů/konverzac�
 
 ## Zastavení a testy
 
+Backendový autoreload v `dev.ps1` sleduje pouze `app/`. Změny testů, `.local/` a vygenerovaných kopií projektu jej nespouštějí znovu; při změně startovacího příkazu ukonči starý backend přes Ctrl+C a spusť jej znovu. Přepnutí modelu/indexu tím není dotčené.
+
+Pytest bez dalších přepínačů ukládá pracovní data pod `.local/tmp/pytest/`, do samostatných číslovaných adresářů se zámkem aktivní relace. Nastavení uchovává tři poslední běhy, cache zůstává v `.local/pytest-cache/`. Operátor může umístění explicitně přepsat pomocí `PYTEST_DEBUG_TEMPROOT` nebo `--basetemp`; při běžném spouštění je nepoužívej. Pevný `--basetemp` pytest před použitím maže, proto jej nesdílej mezi běhy ani nesměřuj na uživatelské soubory.
+
 Slice 3 přidává profilový katalog a úplné přesné hledání. U starších neoznačených dat je nutný jednorázový explicitní backfill; postup, kontrola pokrytí a aktivace jsou v [návodu slice 3](search-slice-3-testing.md). Nový lokální start připraví profilový index pro dokumenty Aurora; pokrytí závisí na aktuálním korpusu a nemá pevný počet chunků. Lokální SQL Server 2022 používá streamovanou JSON referenci; Azure native VECTOR se ověřuje samostatně.
 
 Pro opakovatelnou lokální kontrolu latence bez generování odpovědí použij [benchmark slice 5](search-slice-5-testing.md). `prepare` jednou vytvoří cache osmi otázek přes aktuální embedding provider; `run` používá tuto cache a potřebuje jen SQL DB, ne běžící FE/BE ani modelová volání. Konkrétní příkazy a interpretace blokované ANN brány jsou v návodu.

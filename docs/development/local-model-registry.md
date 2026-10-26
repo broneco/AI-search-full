@@ -2,7 +2,7 @@
 
 ## Lokální spuštění a ovládání
 
-1. Připoj JHU VPN a spusť databázi. Restartuj aktualizovaný backend pro JHU (`.\dev.ps1 -Action backend -Tenant jhu`); tím se pouze v lokální SQL vytvoří tabulka registru. Obnov obě konzole a přihlas se odpovídajícím účtem.
+1. Spusť databázi a aktualizovaný backend pro JHU. S [managed připojením](jhu-managed-local.md) použij `.\dev.ps1 -Action backend -Tenant jhu -JhuManaged` bez ruční systémové VPN; legacy direct režim zůstává `.\dev.ps1 -Action backend -Tenant jhu` s JHU VPN. Startup pouze v lokální SQL vytvoří tabulku registru. Obnov obě konzole a přihlas se odpovídajícím účtem.
 2. V administraci pod `Management` otevři **Modely a vyhledávání → Dostupné modely a oprávnění → Obnovit z API**. V dialogu vyhledej model názvem; po zavření zůstane společný přehled konfigurace, oprávnění a upravitelných CS/EN popisů. [Porovnání výsledků a tři prompty](admin-comparison.md) jsou ve stejné administraci.
 3. Použij **Přidat pro testování**, případně **Přidat všechny kompatibilní modely pro testování**. Tím se uloží tenantový snapshot profilu. Modely se nestahují a žádné generování se automaticky nespustí. Přidané chatové modely se objeví ve výběru odpovědí, shrnutí a klasifikace; výchozí Azure model se nemění.
 4. Checkbox **Zobrazit v uživatelské aplikaci** povolí nově přidaný model také běžným uživatelům. Platí současně skupinová oprávnění modelu. Změny přežijí restart; souběžná zastaralá změna vrátí konflikt a vyžaduje obnovu přehledu. Přidání modelu není nezávislé potvrzení jeho kvality — nejprve jej vyzkoušej v administraci.

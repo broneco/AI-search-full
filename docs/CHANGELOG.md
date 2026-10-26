@@ -6,7 +6,37 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
-Zatím bez dalších změn.
+## [v0.1.7] - 2026-10-26
+
+[Souhrn vydání](releases/v0.1.7.md). Automatické lokální JHU připojení, scoped Key Vault, řízená obnova a testovací hygiena. Jde o vydání zdrojů do hlavního GitHub repozitáře; cloudové VPN připojení, Azure rollout a čistá Forgejo publikace zůstávají samostatné kroky.
+
+Release ověření: úplná izolovaná sada s wheelem **513 passed / 116 expected skips**, oba produkční frontend buildy/TypeScript prošly. Po poslední testovací izolaci benchmarkový modul20/6 v obou stromech; finální čistá JHU sada **153 passed / 16 expected skips**,445 veřejných /298 předaných cest, verze/odkazy/syntaxe/whitespace a kontrola privátních hodnot prošly.
+
+### Added
+- Lokální akceptace odolnosti: skutečný výpadek během generace, obnova pro další dotaz, explicitní refresh, pětiminutový rekey a samostatný schválený restart Rancheru. Závěrečná sada s lokální SQL a wheelem606/23; cited Llama/Nomic RAG1/1 skip. Jde o lokální důkaz s limity popsanými v ADR-0040, nikoli Azure aktivaci nebo dlouhodobé SLA.
+- Správní `GET /api/models/connection` odděluje stav JHU od backend health; `POST /refresh` explicitně a atomicky načte ověřený helper a aktuální API KV snapshot bez restartu backendu. Vyžaduje aktuální Management a JHU tenant, nevrací endpoint/credentials a při vytížené službě vrací 429. Viz ADR-0040 a `docs/development/jhu-connection-resilience.md`.
+- Opt-in `-JhuManaged` a VS Code úloha **AI Search: start JHU local app** zapojují chat, dokumentové modely, embeddingy a discovery do společného ověřeného helperu. Loopback gateway povoluje pouze tags/show/generate/embed, vyžaduje per-container capability a před modelovou operací kontroluje heartbeat. API credentials z Key Vaultu se načítají jednou pro backend, odděleně od VPN páru helperu; žádný fallback ani modelové retry. Viz ADR-0039 a `docs/development/jhu-managed-local.md`. Živá akceptace2026-10-23 prošla bez systémové VPN:17 modelů, Nomic index, Llama RAG s citací a provenance v izolované SQL databázi (1 passed/1 SQLite skip); Azure zůstává samostatný.
+- Samostatný lokální `jhu_connection.py` spravuje jediný vlastní helper (start/status/reconnect/restart/stop), sanitized heartbeat, maximálně tři pokusy a úklid tmpfs při terminálním selhání. `jhu_secrets.py` odděluje VPN/API reference, explicitní CLI/managed identity a chybové kódy bez env fallbacku; viz ADR-0038 a návod helperu.
+- Izolovaný experiment `probe_jhu_vpn.py` s připnutým oficiálním OpenVPN 2.7.8 a userspace forwarderem: non-root Docker bez TUN/capabilities, profil/credentials přes stdin do tmpfs, negativní test jména certifikátu a syntetický generate/embed. Nejde o automatické připojení aplikace ani Azure rollout; postup a výsledky jsou v `docs/development/jhu-vpn-spike.md`.
+
+### Security
+- Git/Docker/wheel/JHU export nově vylučují `.ovpn` a `.auth`; experimentální probe a jeho interní test se nepublikují do čistého JHU handoffu. Přidány regrese validace profilu a privátních souborů.
+
+### Fixed
+- Regrese benchmarkového souběhu používá řízené hodiny a skutečné async yield místo předpokladu, že 1ms timer Windows nikdy neprobudí dřív. Ověřuje přesné latence všech dávek i hranici souběhu; produkční benchmark se nemění.
+- Syntetický CLI/cache benchmarkový test nevyžaduje default tenant katalog, takže funguje také v čistém JHU předání s jediným tenantem.
+- Lokální backend omezuje autoreload na `app/`; kopie Python souborů v testovacích adresářích již nezpůsobují restartovací smyčku ani opakované načítání KV při každém restartu.
+- Výchozí pytest workspace je pod `.local/tmp/pytest/`, s číslováním/zámky a retencí tří posledních běhů. Ruční diagnostické přepínače se respektují; cache zůstává `.local/pytest-cache/`. Po kontrole rozsahu odstraněno53 starých kořenových `.tmp-pytest*` adresářů. Ověření:513 izolovaných testů včetně wheelu a15 dev-script/wheel testů čisté JHU projekce prošlo.
+
+### Changed
+- Doplněn read-only JHU cloud preflight a konkrétní handoff pro navazující sidecar/bootstrap, additive modelové migrace a aktualizaci obou konzolí. Dokumentace rozlišuje otestovaný lokální transport od dosud neimplementované cloudové integrace; žádné Azure změny nebyly provedené.
+- Supervisor při ztrátě VPN odvolá ready a ukončí aktivní HTTP upstreamy. Gateway má celkový bounded watchdog, serializované uzavření descriptoru a `auto_open=0`; otázky se neopakují. Status obsahuje sanitizované čítače skutečných TLS kanálů a chráněné součty operací pro fault testy. JHU slot se zabírá před externím lookupem a refresh jej drží i po odpojení volajícího do konce workeru.
+- Neúspěšný upstream health probe odvolá ready okamžitě, ale VPN restartuje až po třech souvislých chybách. Krátká nedostupnost při rekey nemusí spotřebovat reconnect pokus; úspěch obnoví ready bez nové generation. Zánik procesu a terminální auth/cert chyby se řeší bez této tolerance.
+- JHU klienti sdílejí pouze stejný ověřený TLS kontext, aby nečetli certifikáty při každém requestu. Certifikáty/hostname se stále ověřují; samotní HTTP klienti a event loopy se nesdílejí. Lokálně změřená konstrukce klienta klesla z 215–359 ms na 0,0–0,2 ms po vytvoření kontextu; nejde o modelový nebo cloudový benchmark.
+- Managed modelový CLI probe nově rozlišuje bezpečné HTTP/timeout/invalid/empty/model-mismatch chyby; neprovádí automatické opakování generace. Doplněny regrese CLI transportu a startupu backendu při úspěchu i volitelné KV chybě.
+- Discovery sdílí procesový slot s inference a embeddingy. Oba běžné JHU probes podporují explicitní `--managed`; čistý JHU export nově obsahuje veřejný helper/build context a aktuální návod, nikdy soukromý profil či auth. Po explicitním restartu helperu načti nový capability klíč správním refresh API nebo restartem backendu.
+- Jednorázový VPN probe nově standardně načítá také API credentials z Key Vaultu přes společný resolver; starý testovací zdroj je dostupný pouze explicitním `--api-credentials env`. Selhání KV nikdy neaktivuje env fallback.
+- Upřesněn implementační plán automatického JHU připojení v agentovém handoffu a paměti: nejprve ověření non-root VPN-to-proxy, potom scoped Key Vault, společný transport/VS Code, odolnost a oddělená Azure akceptace. Pouze plán; runtime ani cloud se nemění.
 
 ## [v0.1.6] - 2026-10-21
 

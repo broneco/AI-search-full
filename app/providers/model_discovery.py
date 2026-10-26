@@ -7,7 +7,7 @@ import threading
 import httpx
 
 from app.core.model_config import ModelError
-from app.providers.jhu_connection import embedding_connection
+from app.providers.jhu_connection import embedding_connection, jhu_client, slots as service_slots
 
 _scan_slot = threading.BoundedSemaphore(1)
 _NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$")
@@ -49,13 +49,16 @@ def public_model(tag: dict, metadata: dict) -> dict:
 
 async def discover_models() -> dict:
     """No inference, embedding, pull or configuration/database writes."""
-    connection = await embedding_connection()  # same Basic auth, URL and VPN guard
     if not _scan_slot.acquire(blocking=False):
         raise ModelError("model_discovery_busy", "Načítání katalogu již probíhá. Zkuste to za chvíli.", 429)
+    service_acquired = False
     try:
+        service_acquired = service_slots.acquire(blocking=False)
+        if not service_acquired:
+            raise ModelError('model_busy', 'JHU služba právě zpracovává jiný požadavek.', 429)
+        connection = await embedding_connection()  # same Basic auth, URL and VPN guard
         async with asyncio.timeout(60):
-            async with httpx.AsyncClient(auth=httpx.BasicAuth(connection["username"], connection["password"]),
-                    timeout=httpx.Timeout(15, connect=5), trust_env=False, follow_redirects=False,
+            async with jhu_client(connection, httpx.Timeout(15, connect=5),
                     limits=httpx.Limits(max_connections=3)) as client:
                 result = await client.get(connection["endpoint"] + "/api/tags")
                 result.raise_for_status()
@@ -91,4 +94,6 @@ async def discover_models() -> dict:
     except Exception:
         raise ModelError("model_discovery_failed", "JHU katalog není dostupný nebo vrátil neplatná metadata.", 502) from None
     finally:
+        if service_acquired:
+            service_slots.release()
         _scan_slot.release()

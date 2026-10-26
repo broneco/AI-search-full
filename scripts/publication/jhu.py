@@ -15,7 +15,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 REMOTE = "https://forgejo.jcu.cz/dconsulting/jhu-ai-search.git"
 TEMPLATES = "publication/jhu/templates/"
 INTERNAL = ("scripts/", "publication/", "docs/", ".agents/memory/", ".agents/inbox/", ".github/")
-INTERNAL_FILES = {"export_jhu.py", "prepare_jhu_publication.py", "tests/test_jhu_publication.py", ".agents/workflows/jhu-publication.md"}
+INTERNAL_FILES = {"export_jhu.py", "prepare_jhu_publication.py", "probe_jhu_vpn.py", "tests/test_vpn_spike.py", "tests/test_jhu_helper.py", "tests/test_jhu_publication.py", ".agents/workflows/jhu-publication.md"}
 FORBIDDEN = {".git", ".local", ".venv", "node_modules", ".next", "out", "__pycache__", "data", "data - full backup", "data-full backup", "scratch"}
 
 
@@ -36,7 +36,7 @@ def safe_name(name: str) -> bool:
     return (not ({part.casefold() for part in path.parts} & FORBIDDEN)
             and (not path.name.casefold().startswith(".env") or name == ".env.example")
             and not path.name.casefold().endswith(".manifest.json")
-            and path.suffix.lower() not in {".pem", ".key", ".pfx", ".pyc", ".log", ".zip"})
+            and path.suffix.lower() not in {".pem", ".key", ".pfx", ".ovpn", ".auth", ".pyc", ".log", ".zip"})
 
 
 def read_zip(data: bytes) -> dict[str, bytes]:
@@ -85,7 +85,7 @@ def project(original: dict[str, bytes]) -> tuple[dict[str, bytes], str]:
     """Explicit JHU variants; template/code drift fails before any destination write."""
     version = "v" + tomllib.loads(original["pyproject.toml"].decode("utf-8-sig"))["project"]["version"]
     payload = {name: data for name, data in original.items()
-               if not name.startswith(INTERNAL) and name not in INTERNAL_FILES
+               if (not name.startswith(INTERNAL) or name.startswith('scripts/vpn_spike/')) and name not in INTERNAL_FILES
                and (not name.startswith("tenants/") or name.startswith("tenants/jhu/"))
                and ("/public/logos/" not in name or name.endswith("/logo-JHU.webp"))}
     for filename in ("search_config.json", "classification_config.json", "model_config.json", "embedding_config.json", "local_model_recipes.json"):

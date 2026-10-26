@@ -63,6 +63,10 @@ Nástroj nic nepushuje. Vytvoří ZIP a sousední `.manifest.json`; existující
 
 Povinné vlastnosti exportu:
 
+- Lokální hygiena musí zachovat `--reload-dir` omezený na `app/`, současný `tests/conftest.py` s výchozím `.local/tmp/pytest/` a číslováním/zámky a retenci v `pyproject.toml`. Dokumentace předání popisuje stejné umístění; nové testovací běhy neumisťuj do kořene. Dočasné adresáře/cache jsou mimo snapshot. Při změně této konfigurace ověř běžný pytest bez `--basetemp` i skutečný dev-script startup.
+
+- Odolnost připojení předává také `app/api/routes/jhu_connection.py`, současný common transport/gateway a template `docs/development/jhu-connection-resilience.md`. Správní refresh je pouze local/test a nemá měnit SQL/katalog/ACL. Testy čistého předání zahrnou test_jhu_connection_status, test_jhu_transport a skutečné loopback cancellation případy; explicitní live/Rancher restart flags musí zůstat vypnuté při běžných exportních regresích. Nepředávej skutečný profil, credentials ani provozní receipt.
+- Při managed konektivitě musí snapshot obsahovat veřejný `jhu_connection.py`, `scripts/vpn_spike/` včetně runtime/manager/service/gateway/Dockerfile/.dockerignore a aktuální template `docs/development/jhu-managed-local.md`. Manager nesmí importovat neexportovaný experimentální root probe. `.ovpn`/`.auth`, gateway klíč, credentials a lokální stav nikdy nepředávej. Ověř transport/gateway/dev-script/export testy i skutečný wheel bez soukromých env. Managed je zatím local/test a neznamená ACA aktivaci.
 - Pouze `tenants/jhu`, bez privátních env; chybějící search/classification/model/embedding konfigurace se zmaterializují z aktuálních default souborů. Nomic profil/digest/prefixy a aktuální embeddingový návod musí být součástí exportu; private JHU connection env nikoli.
 - Jediný JHU motiv a logo obou frontendů. Lokální identita jhu a demo login JHU; cloudová přesná identita ju-prod se nikdy nezkracuje.
 - Ostatní runtime změny smí být jen explicitní projekce definovaná v nástroji. Změna očekávaného formátu způsobí chybu a vyžaduje revizi, nikoli tiché hádání.

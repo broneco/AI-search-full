@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     APP_ENV: str = _APP_ENV
     DATABASE_BACKEND: Literal["auto", "azure_sql", "sqlserver", "postgresql"] = "auto"
     APP_NAME: str = "ai-search-app"
-    APP_VERSION: str = "v0.1.6"
+    APP_VERSION: str = "v0.1.7"
     LOG_LEVEL: str = "INFO"
     TENANT_ID: str = "dolphin"
     JWT_SECRET: str = Field(default="dolphin-ai-search-secret-key-2026", repr=False, exclude=True)
@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     JHU_LLM_ALLOW_HTTP: bool = False
     JHU_LLM_VPN_INTERFACE: str = "OpenVPN"
     JHU_LLM_VERIFIED_MODEL: Optional[str] = None
+    # Explicit local opt-in: only the two JHU API secrets may resolve from KV.
+    JHU_CONNECTION_MODE: Literal['direct', 'managed'] = 'direct'
+    JHU_KEY_VAULT_NAME: Optional[str] = None
+    JHU_API_USERNAME_SECRET: Optional[str] = None
+    JHU_API_PASSWORD_SECRET: Optional[str] = None
+    JHU_HELPER_WORKSPACE: Optional[str] = None
 
     # PostgreSQL
     POSTGRES_HOST: str = "localhost"

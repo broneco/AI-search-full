@@ -7,7 +7,7 @@ from app.core.embedding_config import EmbeddingEntry
 from app.core.model_config import ModelError
 from app.providers.embeddings import EmbeddingProvider
 from app.providers.embeddings import EmbeddingProfile
-from app.providers.jhu_connection import embedding_connection, slots
+from app.providers.jhu_connection import embedding_connection, slots, jhu_client
 
 
 class OllamaEmbeddingProvider(EmbeddingProvider):
@@ -39,13 +39,11 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
             return []
         if any(len(text) > self.entry.max_input_chars for text in inputs):
             raise ModelError("embedding_input_too_large", "Text překračuje vstupní limit embeddingového profilu.", 422)
-        conn = await embedding_connection()
         if not slots.acquire(blocking=False):
             raise ModelError("model_busy", "JHU služba právě zpracovává jiný požadavek. Zkuste to znovu.", 429)
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(self.entry.timeout_seconds, connect=10),
-                    auth=httpx.BasicAuth(conn["username"], conn["password"]), trust_env=False,
-                    follow_redirects=False) as client:
+            conn = await embedding_connection()
+            async with jhu_client(conn, httpx.Timeout(self.entry.timeout_seconds, connect=10)) as client:
                 await self._verify_digest(client, conn["endpoint"])
                 vectors = []
                 for start in range(0, len(inputs), self.entry.batch_size):

@@ -133,18 +133,23 @@ def test_measured_gates_never_grant_automatic_cloud_activation():
 
 
 @pytest.mark.anyio
-async def test_load_arrivals_include_event_loop_wait_and_abort_failures():
+async def test_load_arrivals_include_event_loop_wait_and_abort_failures(monkeypatch):
+    # The event loop may wake a 1ms timer early within its clock resolution.
+    # Yield deterministically, then advance the measured clock for each result.
+    clock = [0.0]
+    monkeypatch.setattr(evaluation.time, "perf_counter", lambda: clock[0])
     data, active, maximum = dataset(), 0, 0
     async def request(case, vector, mode, **kwargs):
         nonlocal active, maximum
         active += 1
         maximum = max(maximum, active)
-        await asyncio.sleep(.001)
+        await asyncio.sleep(0)
+        clock[0] += .01
         active -= 1
         return {"ids": [], "diagnostics": {}}
     samples = await load_phase(SimpleNamespace(execute=request), data, cache_for(data), "exact", 3, 8)
     assert len(samples) == 8 and maximum == 3
-    assert all(sample["latency_ms"] >= 1 for sample in samples)
+    assert [round(sample["latency_ms"]) for sample in samples] == [10, 20, 30, 10, 20, 30, 10, 20]
     failed = SimpleNamespace(execute=AsyncMock(side_effect=SearchIndexError("PRIVATE SQL")))
     samples = await load_phase(failed, data, cache_for(data), "ann", 3, 200)
     assert len(samples) == 3 and all(sample["error"] == "invalid_search" for sample in samples)
@@ -285,6 +290,12 @@ async def test_prepare_and_run_cli_roundtrip_uses_cache_not_models(vector_db, tm
     monkeypatch.setattr(cli, "SessionLocal", sessionmaker(bind=db.bind))
     provider = SimpleNamespace(profile=PROFILE, embed_query=AsyncMock(return_value=[1.0, 0.0]))
     monkeypatch.setattr(cli, "create_embedding_provider", lambda: provider)
+    # This CLI/cache test uses a synthetic two-dimensional space, not the
+    # runtime tenant catalog (which can legitimately contain only JHU).
+    def select_active(session, tenant, *, fallback):
+        assert tenant == "alpha" and session.bind is db.bind and fallback is provider
+        return provider
+    monkeypatch.setattr(cli, "active_embedding_provider", select_active)
     monkeypatch.setattr(cli.SearchConfigManager, "load_config", AsyncMock(return_value={"search_strategy": "vector"}))
     source, cache, output = (tmp_path / name for name in ("dataset.json", "cache.json", "result.json"))
     write_report(source, dataset().model_dump(mode="json"))

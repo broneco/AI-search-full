@@ -55,6 +55,9 @@ def source(tmp_path):
     (source/"docs/releases").mkdir(parents=True)
     (source/"docs/releases/internal.md").write_text("private development diary", encoding="utf-8")
     (source/"scripts").mkdir()
+    shutil.copytree(ROOT/'scripts/vpn_spike', source/'scripts/vpn_spike',
+                    ignore=shutil.ignore_patterns('__pycache__'))
+    shutil.copyfile(ROOT/'jhu_connection.py', source/'jhu_connection.py')
     (source/"scripts/internal.txt").write_text("internal operator", encoding="utf-8")
     (source/".env.example").write_text("APP_ENV=dev\n", encoding="utf-8")
     (source/"tests").mkdir()
@@ -90,7 +93,12 @@ def test_committed_snapshot_excludes_worktree_history_and_secrets(source, tmp_pa
     assert "uncommitted.txt" not in payload
     assert "tenants/jhu/.env.prod" not in payload
     assert "docs/releases/internal.md" not in payload
-    assert not any(name.startswith((".git/", "publication/", "scripts/", ".agents/memory/archive/")) for name in payload)
+    assert not any(name.startswith((".git/", "publication/", ".agents/memory/archive/")) for name in payload)
+    assert 'scripts/internal.txt' not in payload
+    assert 'jhu_connection.py' in payload
+    for name in ('runtime.py', 'manager.py', 'gateway.py', 'service.py', 'profile.py', 'Dockerfile', '.dockerignore'):
+        assert 'scripts/vpn_spike/' + name in payload
+    assert b'from probe_jhu_vpn import' not in payload['scripts/vpn_spike/manager.py']
     assert {name.split('/')[1] for name in payload if name.startswith('tenants/')} == {"jhu"}
     assert "tenants/jhu/search_config.json" in payload
     assert "tenants/jhu/embedding_config.json" in payload

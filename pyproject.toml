@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-search-app"
-version = "0.1.6"
+version = "0.1.7"
 description = "Full-stack AI Search Application Backend"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,6 +39,8 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 cache_dir = ".local/pytest-cache"
+tmp_path_retention_count = 3
+tmp_path_retention_policy = "all"
 
 [tool.setuptools]
 include-package-data = false
@@ -52,5 +54,5 @@ tenants = ["**/*.json", "**/*.png", "**/*.webp"]
 fixtures = ["local-university/*.pdf", "local-university/*.json"]
 
 [tool.setuptools.exclude-package-data]
-"*" = [".env", ".env.*", "**/.env*", "*.pem", "*.key", "*.pfx", "*.pyc"]
+"*" = [".env", ".env.*", "**/.env*", "*.pem", "*.key", "*.pfx", "*.ovpn", "*.auth", "*.pyc"]
 

@@ -6,6 +6,7 @@ from app.api.routes import health, chat, documents, auth, threads, prompts
 from app.storage.db import init_db
 from app.api.routes import models
 from app.api.routes import search_indexes
+from app.api.routes import jhu_connection
 from app.core.model_config import ModelError
 from fastapi.responses import JSONResponse
 
@@ -20,6 +21,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up FastAPI application...")
+    if settings.JHU_CONNECTION_MODE == 'managed':
+        import asyncio
+        from app.providers.jhu_managed import managed_connection, reset_managed_connection
+        from app.providers.jhu_secrets import JHUConnectionError
+        reset_managed_connection()
+        try:
+            await asyncio.to_thread(managed_connection)
+        except JHUConnectionError as error:
+            logger.warning('Volitelné JHU připojení není připravené: %s', error.code)
     for attempt in range(1, 4):
         try:
             init_db()
@@ -87,6 +97,7 @@ app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(prompts.router, prefix="/api/prompts", tags=["Prompts"])
 app.include_router(models.router, prefix="/api/models", tags=["Models"])
+app.include_router(jhu_connection.router, prefix="/api/models/connection", tags=["JHU connection"])
 app.include_router(search_indexes.router, prefix="/api/search-indexes", tags=["Search indexes"])
 
 

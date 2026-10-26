@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 # Import application settings in an isolated profile before any application module loads.
 os.environ["APP_ENV"] = "test"
@@ -9,6 +10,19 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import app.storage.db as db_module
 from app.storage.models import Base
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config):
+    """Keep numbered, lock-protected pytest workspaces out of the repo root."""
+    if config.option.basetemp is not None or "PYTEST_DEBUG_TEMPROOT" in os.environ:
+        return
+    root = Path(__file__).resolve().parents[1] / ".local" / "tmp" / "pytest"
+    root.mkdir(parents=True, exist_ok=True)
+    patch = pytest.MonkeyPatch()
+    patch.setenv("PYTEST_DEBUG_TEMPROOT", str(root))
+    config.add_cleanup(patch.undo)
+
 
 # Create isolated in-memory SQLite engine for pytest
 test_engine = create_engine(

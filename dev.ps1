@@ -1,9 +1,12 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("start-db", "stop-db", "backend", "test")]
+    [ValidateSet("start-db", "stop-db", "backend", "test", "start-jhu", "status-jhu", "stop-jhu")]
     [string]$Action,
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$')]
-    [string]$Tenant
+    [string]$Tenant,
+    [switch]$JhuManaged,
+    [string]$JhuVault = "ju-ai-search-kv-prod",
+    [string]$JhuVpnProfile = (Join-Path $env:USERPROFILE "OpenVPN\config\Client\Client.ovpn")
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,6 +84,27 @@ function Import-LocalEnvironment {
     }
 }
 
+function Invoke-JhuHelper {
+    param([string]$HelperAction)
+    if (-not (Test-Path -LiteralPath $PythonPath)) { throw "Chybí projektová .venv." }
+    if ((($env:TENANT_ID -split '-')[0]).ToLowerInvariant() -notin @('jhu', 'ju')) {
+        throw "Spravované JHU připojení je dostupné jen pro JHU tenant. Použij -Tenant jhu."
+    }
+    $env:JHU_CONNECTION_MODE = "managed"
+    $env:JHU_HELPER_WORKSPACE = $ProjectRoot
+    if (-not $env:JHU_KEY_VAULT_NAME) { $env:JHU_KEY_VAULT_NAME = $JhuVault }
+    if (-not $env:JHU_API_USERNAME_SECRET) { $env:JHU_API_USERNAME_SECRET = "ju-ai-search-jhu-api-username-prod" }
+    if (-not $env:JHU_API_PASSWORD_SECRET) { $env:JHU_API_PASSWORD_SECRET = "ju-ai-search-jhu-api-password-prod" }
+    $helperArguments = @((Join-Path $ProjectRoot 'jhu_connection.py'), $HelperAction, '--tenant', $env:TENANT_ID)
+    if ($HelperAction -eq 'start') {
+        $helperArguments += @('--vault', $env:JHU_KEY_VAULT_NAME, '--profile', $JhuVpnProfile, '--wait')
+    }
+    $ErrorActionPreference = 'Continue'
+    $PSNativeCommandUseErrorActionPreference = $false
+    & $PythonPath @helperArguments 2>&1 | ForEach-Object { Write-Host $_.ToString() }
+    return $LASTEXITCODE
+}
+
 switch ($Action) {
     "start-db" {
         Import-LocalEnvironment
@@ -126,11 +150,18 @@ switch ($Action) {
         if (-not (Test-Path -LiteralPath $PythonPath)) {
             throw "Chybí .venv. Vytvoř prostředí příkazem: python -m venv .venv; .venv\Scripts\python.exe -m pip install -r requirements.txt"
         }
-        & $PythonPath -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+        if ($JhuManaged -or $env:JHU_CONNECTION_MODE -eq 'managed') {
+            $helperExit = Invoke-JhuHelper -HelperAction 'start'
+            if ($helperExit -ne 0) {
+                Write-Warning 'JHU helper není připravený. Backend se spustí s ostatními modely; JHU bude nedostupné.'
+            }
+        }
+        & $PythonPath -m uvicorn app.main:app --reload --reload-dir (Join-Path $ProjectRoot "app") --host 127.0.0.1 --port 8000
         exit $LASTEXITCODE
     }
     "test" {
         $env:APP_ENV = "test"
+        $env:JHU_CONNECTION_MODE = 'direct'
         Get-ChildItem Env: | Where-Object { $_.Name -match '^AZURE_(OPENAI|SQL|STORAGE|KEY_VAULT)' } | ForEach-Object {
             Remove-Item -Path "Env:$($_.Name)"
         }
@@ -139,5 +170,17 @@ switch ($Action) {
         }
         & $PythonPath -m pytest
         exit $LASTEXITCODE
+    }
+    "start-jhu" {
+        Import-LocalEnvironment
+        exit (Invoke-JhuHelper -HelperAction 'start')
+    }
+    "status-jhu" {
+        Import-LocalEnvironment
+        exit (Invoke-JhuHelper -HelperAction 'status')
+    }
+    "stop-jhu" {
+        Import-LocalEnvironment
+        exit (Invoke-JhuHelper -HelperAction 'stop')
     }
 }

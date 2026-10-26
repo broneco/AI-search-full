@@ -1,5 +1,7 @@
 # Testy discovery modelů
 
+Discovery nově sdílí jeden procesový slot s generováním a embeddingy. Test obsadí tento slot, ověří 429 bez HTTP požadavku a po uvolnění úspěšný scan; interní limit tří metadata requestů zůstává.
+
 `tests/test_model_discovery.py` mockuje pouze vnější metadata HTTP. Ověřuje skutečnou klasifikaci chat/embedding/reranker, zákaz odvozování embeddingové podpory z LLM hidden dimensions, whitelist bez systémových promptů/templates/cest, neplatné názvy/digesty/duplicity, omezený inventář a částečné selhání jednoho modelu.
 
 Timeout a chyby služby nevyvolají retry ani leak private řetězců; procesový scan slot odmítne souběžnou práci ještě před HTTP. Požadavky směřují jen na tags/show, nikdy generate/embed/pull. VPN/URL guard je sdílen se stávajícím připojením a jeho vlastní regrese zůstávají v embeddingových testech.

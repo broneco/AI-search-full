@@ -43,6 +43,10 @@ Pytest nyní používá ignorovanou `.local/pytest-cache`; nová cache tak nevzn
 
 ## Zachované soubory a další kandidáti
 
+Aktualizace 2026-10-26: odstraněno dalších **53 kořenových `.tmp-pytest*` adresářů**, 50 816 souborů o souhrnné logické velikosti přibližně 221 MiB. Před smazáním byly ověřené přímé cesty uvnitř workspace, absence sledovaných souborů, symbolických odkazů/junctions a běžících pytest procesů. Soukromé env, korpus, `.local/deployments/`, závislosti a Docker volumes zůstaly zachované.
+
+`tests/conftest.py` nyní pro standardní spuštění směruje pytest do `.local/tmp/pytest/`. Používá běžné číslování, zámky a retenci tří relací pytest; operátorovy explicitní temp volby respektuje. Při běžných bězích nepoužívej ruční `--basetemp`, který obchází automatickou retenci a svůj cíl před použitím maže. `dev.ps1` omezuje autoreload na `app/`, aby změny testovacích kopií nezpůsobovaly nové starty backendu.
+
 | Cesta | Co s ní |
 |---|---|
 | `.env.local`, `tenants/*/.env*` | Zachovat: lokální heslo a skutečná neveřejná připojení; žádné env se během úklidu nemění |

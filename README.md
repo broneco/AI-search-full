@@ -2,7 +2,7 @@
 
 AI vyhledávání nad dokumenty s citacemi a PDF náhledy. Backend používá Python/FastAPI, uživatelská aplikace a administrace Next.js/React. Aktuální cloudová cesta je Azure SQL + Blob Storage + Azure OpenAI; lokální vývoj má vlastní SQL Server v Dockeru.
 
-Aktuální vydání: **[v0.1.6](docs/releases/v0.1.6.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
+Aktuální vydání: **[v0.1.7](docs/releases/v0.1.7.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
 
 ## Rychlý start ve VS Code
 
@@ -38,6 +38,18 @@ AZURE_OPENAI_THINKING_DEPLOYMENT=<název chat deploymentu>
 Jména deploymentů musí odpovídat tvému Azure prostředí. Výchozí modelové připojení používá Azure. JHU navíc podporuje Qwen pro inference a Nomic pro embeddingy přes vlastní službu; aktivace embeddingového indexu je samostatná. Viz [lokální embeddingy a více indexů](docs/development/local-embeddings.md). Bez modelového připojení lze spustit API/UI a izolované testy. `.env.local` necommituj.
 
 ### Každodenní spuštění a restart počítače
+
+**JHU s automatickým připojením:** po [první přípravě helperu a Key Vaultu](docs/development/jhu-managed-local.md) vyber úlohu **AI Search: start JHU local app**. Spustí i administraci a vlastní VPN helper; systémovou OpenVPN ručně nezapínej. V ručním bloku backendu níže použij pro tento režim `-JhuManaged`:
+
+```powershell
+$tenant = "jhu"
+.\dev.ps1 -Action start-db
+.\dev.ps1 -Action backend -Tenant $tenant -JhuManaged
+# Stav: .\dev.ps1 -Action status-jhu -Tenant $tenant
+# Ukončení spojení: .\dev.ps1 -Action stop-jhu -Tenant $tenant
+```
+
+Výchozí spuštění bez přepínače zachovává dosavadní připojení. Lokální managed RAG byl živě ověřen bez systémové VPN. [Stav, obnova připojení a testování výpadků](docs/development/jhu-connection-resilience.md) popisuje správní refresh bez restartu backendu. Azure nasazení zůstává samostatný krok.
 
 Ve VS Code zvol **Terminal → Run Task… → AI Search: start local app**. Úloha spustí SQL Server, backend a uživatelský frontend s nastavením úlohy a `.env.local`.
 
@@ -107,7 +119,11 @@ Základní izolovaná sada:
 .\dev.ps1 -Action test
 ```
 
-Stejný příkaz nabízí VS Code úloha **AI Search: run isolated tests**. Pro lokální SQL regrese spusť v samostatném terminálu:
+Stejný příkaz nabízí VS Code úloha **AI Search: run isolated tests**.
+
+Dočasné pracovní soubory pytest ukládá pod `.local/tmp/pytest/`, cache pod `.local/pytest-cache/`. Výchozí číslované adresáře oddělují souběžné běhy; pytest uchovává tři poslední běhy s ochranou aktivních relací. Není potřeba zadávat `--basetemp`. Backend sleduje pro automatický restart pouze `app/`, takže testovací kopie zdrojů jej nerestartují.
+
+Pro lokální SQL regrese spusť v samostatném terminálu:
 
 ```powershell
 .\dev.ps1 -Action start-db
@@ -245,6 +261,10 @@ Pro přenos do nového repozitáře použij aktuální veřejné zdroje včetně
 Tenantový `model_config.json` definuje GPT-5.4-mini, GPT-5.4 a v JHU také Qwen. Obě konzole vybírají model pro další dotaz. V administraci záložka **Modely a vyhledávání** sdružuje modely odpovědí/shrnutí/klasifikace, načtení z JHU API, skupinová oprávnění, přípravu/výběr embeddingových indexů a systémový prompt. Chat ukazuje aktuální model/index s odkazem pro změnu. Výběr odpovědního modelu embeddingy nemění; explicitní volba indexu nemění výchozí ingestaci.
 
 [Spuštění a testování modelů](docs/development/model-selection.md), [architektura a slices](docs/architecture/model-catalog-roadmap.md). Pro lokální JHU backend použij `./dev.ps1 -Action backend -Tenant jhu` s připojenou OpenVPN. Azure potřebuje samostatně ověřenou cestu k JHU i migraci tabulky modelových oprávnění.
+
+Experiment automatického připojení bez systémové VPN je oddělený [Docker probe](docs/development/jhu-vpn-spike.md). Ověřuje vlastní tunel, modelové API, embeddingy a reconnect; zatím se nezapojuje do `dev.ps1` ani aplikace.
+
+Navazující [pomocná JHU služba a Key Vault](docs/development/jhu-connection-helper.md) už má samostatné příkazy `jhu_connection.py start/status/reconnect/restart/stop` a kontrolu čtyř secrets. Jde zatím o operátorský nástroj; běžná aplikace použije nový transport až v dalším slicu.
 
 
 Další lokální modely přidáš přes **Modely a vyhledávání → Dostupné modely a oprávnění → Obnovit z API**. Inventář se otevře v dialogu; trvalý přehled spojuje účely/parametry, publikaci, skupiny a editovatelný popis CS/EN. Pro embeddingy Nomic/MXBAI následně připrav konkrétní index. [Návod a lokální/cloudové hranice](docs/development/local-model-registry.md).

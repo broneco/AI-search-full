@@ -9,6 +9,8 @@ tenants/**/.env*
 *.pem
 *.key
 *.pfx
+*.ovpn
+*.auth
 
 # Local data and PDFs
 data/

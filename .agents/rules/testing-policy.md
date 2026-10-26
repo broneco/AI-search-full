@@ -4,6 +4,10 @@
 
 Every behavior change needs verification.
 
+## Temporary test workspaces
+
+Run pytest normally without a custom `--basetemp`: `tests/conftest.py` places numbered, lock-protected sessions under `.local/tmp/pytest/`. Pytest retains three recent sessions and protects active runs; its cache remains `.local/pytest-cache`. Do not create `.tmp-pytest*` directories in the repository root. If an explicit diagnostic base is necessary, use a unique child of `.local/tmp/pytest/`, never one shared fixed base or a directory containing user files: pytest deletes an explicit base before use. Respect operator overrides through `PYTEST_DEBUG_TEMPROOT` or `--basetemp`. Windows sandbox permission errors require the normal escalation workflow, not another root-level temporary directory. Delete old artefacts only after verifying their scope and that no test still uses them.
+
 ## Backend tests
 
 Prefer these test layers:

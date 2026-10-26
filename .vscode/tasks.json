@@ -2,6 +2,52 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "AI Search: JHU backend (managed)",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\dev.ps1", "-Action", "backend", "-Tenant", "jhu", "-JhuManaged"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "ai-search-jhu-backend",
+        "pattern": [{"regexp": ".*"}],
+        "background": {"activeOnStart": true, "beginsPattern": ".*Uvicorn running on.*", "endsPattern": ".*Application startup complete.*"}
+      }
+    },
+    {
+      "label": "AI Search: JHU user frontend",
+      "type": "shell",
+      "command": ".\\node_modules\\.bin\\next.cmd dev --webpack --hostname 127.0.0.1 --port 3000",
+      "options": {"cwd": "${workspaceFolder}\\frontend-user", "env": {"NEXT_PUBLIC_CLIENT_THEME": "jhu"}},
+      "isBackground": true,
+      "problemMatcher": {"owner": "ai-search-jhu-user", "pattern": [{"regexp": ".*"}], "background": {"activeOnStart": true, "beginsPattern": ".*Next.js.*", "endsPattern": ".*(Ready in|Local:).*"}}
+    },
+    {
+      "label": "AI Search: JHU admin frontend",
+      "type": "shell",
+      "command": ".\\node_modules\\.bin\\next.cmd dev --webpack --hostname 127.0.0.1 --port 3001",
+      "options": {"cwd": "${workspaceFolder}\\frontend-admin", "env": {"NEXT_PUBLIC_CLIENT_THEME": "jhu"}},
+      "isBackground": true,
+      "problemMatcher": {"owner": "ai-search-jhu-admin", "pattern": [{"regexp": ".*"}], "background": {"activeOnStart": true, "beginsPattern": ".*Next.js.*", "endsPattern": ".*(Ready in|Local:).*"}}
+    },
+    {
+      "label": "AI Search: start JHU local app",
+      "dependsOn": ["AI Search: local database", "AI Search: JHU backend (managed)", "AI Search: JHU user frontend", "AI Search: JHU admin frontend"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Search: JHU connection status",
+      "type": "process", "command": "powershell.exe",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\dev.ps1", "-Action", "status-jhu", "-Tenant", "jhu"],
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Search: stop JHU connection",
+      "type": "process", "command": "powershell.exe",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\dev.ps1", "-Action", "stop-jhu", "-Tenant", "jhu"],
+      "problemMatcher": []
+    },
+    {
       "label": "AI Search: local database",
       "type": "process",
       "command": "powershell.exe",

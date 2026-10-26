@@ -4,6 +4,8 @@
 
 V kořeni po instalaci requirements.txt spusť `./dev.ps1 -Action test` nebo `python -m pytest -q`. Testy používají SQLite, deterministické modelové mocky a dočasný konfigurační overlay. Nevyžadují privátní tenantí env ani Azure. Strukturální kontrola skutečných env přijme alespoň jeden vyplněný tenant; bez soukromé konfigurace přeskočí jen tuto kontrolu. Syntetická regrese běží vždy.
 
+Výchozí dočasné adresáře jsou pod `.local/tmp/pytest/`; pytest je čísluje a zamyká pro oddělení souběžných relací. Uchovává tři poslední běhy s ochranou aktivních relací; cache je odděleně v `.local/pytest-cache/`. Nepřidávej pracovní adresáře do kořene repozitáře. Explicitní `PYTEST_DEBUG_TEMPROOT` a `--basetemp` se respektují; pevný `--basetemp` se před použitím maže a nesmí se sdílet nebo obsahovat uživatelská data. Lokální backend sleduje pro autoreload jen `app/`.
+
 ## Lokální SQL
 
 Spusť `./dev.ps1 -Action start-db`. V samostatném terminálu nastav `$env:RUN_LOCAL_SQL_TESTS = "1"` a spusť testy; po dokončení použij `Remove-Item Env:RUN_LOCAL_SQL_TESTS`. Tyto testy vytvářejí izolované dočasné testovací databáze na localhostu, které uklidí. Nesměřují na aplikační korpus. Lokální SQL 2022 ověřuje dialect, transakce, ACL a JSON přesné hledání, nikoli native VECTOR/DiskANN/fulltext.

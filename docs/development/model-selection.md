@@ -10,6 +10,8 @@ Modely se definují v `tenants/default/model_config.json`; celý tenantový soub
 
 ## Spuštění z VS Code po restartu
 
+Pro nové opt-in automatické spojení použij [managed návod](jhu-managed-local.md) a úlohu **AI Search: start JHU local app** nebo backend s `-JhuManaged`; ruční OpenVPN v tomto režimu nezapínej. Následující postup popisuje původní direct variantu. Statický Qwen profil i nadále vyžaduje ověřený `JHU_LLM_VERIFIED_MODEL`; u profilů přidaných přes discovery se ověřuje jejich konkrétní digest.
+
 1. Spusť Rancher Desktop/Docker Engine a připoj OpenVPN JHU.
 2. Z kořene repozitáře spusť databázi a backend pro lokální tenant JHU:
 

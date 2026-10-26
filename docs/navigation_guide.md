@@ -6,6 +6,51 @@ Aktuální zdrojové soubory a adresáře vydání v0.1.6 (2026-10-21); závislo
 
 ## Verzované zdroje
 
+- `app/api/routes/jhu_connection.py` — Poskytuje správci tenantově chráněný stav a explicitní refresh lokálního JHU spojení.
+- `tests/test_jhu_connection_status.py` — Ověřuje oprávnění, atomickou obnovu, oddělení backend health a změnu credentials bez skutečných secrets.
+- `tests/test_jhu_resilience_live.py` — Opt-in testuje vlastní helper, výpadek generace, rekey, refresh a měření s odděleným souhlasem k restartu Rancheru.
+- `docs/adr/ADR-0040-jhu-connection-recovery.md` — Definuje přerušení HTTP bez replay, bounded watchdog a správní obnovu snapshotu.
+- `docs/development/jhu-connection-resilience.md` — Návod k diagnostice, refresh a reprodukovatelným testům odolnosti JHU.
+- `docs/tests_explained/test_jhu_connection_status.md` — Vysvětluje bezpečnostní a cache regrese správních endpointů připojení.
+- `docs/tests_explained/test_jhu_resilience_live.md` — Vymezuje skutečné fault/rekey/soak testy, opt-in a hranice měření.
+- `publication/jhu/templates/docs/development/jhu-connection-resilience.md` — Předává současný provozní návod odolnosti do čistého JHU repozitáře.
+
+- `app/providers/jhu_managed.py` — Ověřuje vlastnictví a loopback mapování helperu a drží procesový snapshot API credentials z KV.
+- `scripts/vpn_spike/runtime.py` — Sdílí veřejné Docker limity a explicitní konfiguraci managed probes bez SQL či env zápisů.
+- `scripts/vpn_spike/gateway.py` — Poskytuje capability chráněnou HTTP bránu pro čtyři operace na pevném VPN upstreamu.
+- `tests/test_jhu_transport.py` — Ověřuje společný transport, KV snapshot, mapping guard, health a odmítnutí fallbacku.
+- `tests/test_jhu_gateway.py` — Testuje skutečný loopback HTTP parser, omezení brány a sanitizovaná selhání.
+- `tests/test_jhu_managed_live.py` — Nabízí explicitní živou akceptaci discovery, druhého Nomic indexu a citovaného chatu v izolované lokální SQL.
+- `docs/tests_explained/test_jhu_managed_live.md` — Vysvětluje opt-in hranice skutečného helper/API/RAG testu a ochranu aplikačních dat.
+- `docs/adr/ADR-0039-jhu-managed-app-transport.md` — Vymezuje lokální opt-in transport, per-container klíč a hranice živé akceptace.
+- `docs/development/jhu-managed-local.md` — Popisuje přípravu, běžný start aplikace bez ruční VPN a diagnostiku spojení.
+- `docs/tests_explained/test_jhu_transport.md` — Vysvětluje regrese společného managed transportu.
+- `docs/tests_explained/test_jhu_gateway.md` — Vysvětluje HTTP a bezpečnostní regrese pevné gateway.
+- `publication/jhu/templates/docs/development/jhu-managed-local.md` — Předává aktuální managed návod do samostatného JHU repozitáře.
+
+- `jhu_connection.py` — Spravuje lokální JHU helper a explicitně ověřuje Key Vault bez importu aplikační konfigurace či SQL.
+- `app/providers/jhu_secrets.py` — Poskytuje oddělené VPN/API credentials s řízenými chybami a explicitní Azure identitou bez env fallbacku.
+- `scripts/vpn_spike/lifecycle.py` — Definuje stavy pomocné služby a omezený rozpočet opakovaného připojení.
+- `scripts/vpn_spike/service.py` — Udržuje vlastní OpenVPN relaci, sanitizovaný stav a credentials pouze v tmpfs kontejneru.
+- `scripts/vpn_spike/manager.py` — Řídí idempotentní Docker operace s kontrolou vlastnictví a immutable ID.
+- `tests/test_jhu_secrets.py` — Ověřuje oddělení secrets, výběr identity, redakci chyb a nepřítomnost skrytého fallbacku.
+- `tests/test_jhu_helper.py` — Testuje idempotenci, cizí kontejnery, retry rozpočet, restart a cleanup helperu bez skutečného Dockeru.
+- `docs/adr/ADR-0038-jhu-helper-secrets-lifecycle.md` — Vymezuje scoped Key Vault a lokální životní cyklus JHU služby před aplikační integrací.
+- `docs/development/jhu-connection-helper.md` — Návod na kontrolu secrets a samostatný start, stav, reconnect, restart a stop helperu.
+- `docs/tests_explained/test_jhu_secrets.md` — Vysvětluje izolované testy JHU secrets resolveru.
+- `docs/tests_explained/test_jhu_helper.md` — Popisuje testy lifecycle/ownership a oddělení živé Docker akceptace.
+
+- `probe_jhu_vpn.py` — Spouští explicitní izolovaný Docker spike JHU spojení s privátním profilem a VPN secrets z Key Vaultu.
+- `scripts/vpn_spike/` — Veřejný userspace VPN helper a oddělený experimentální probe s omezeným Docker contextem.
+  - `scripts/vpn_spike/Dockerfile` — Sestavuje připnutý oficiální OpenVPN a tunsocks pro non-root test bez TUN.
+  - `scripts/vpn_spike/.dockerignore` — Povoluje pouze veřejné soubory probe v Docker build contextu.
+  - `scripts/vpn_spike/bridge.py` — Mapuje OpenVPN packet descriptor na jediný lokální forward bez hostového fallbacku.
+  - `scripts/vpn_spike/profile.py` — Kontroluje omezený VPN profil a odmítá cizí hooky či soubory.
+  - `scripts/vpn_spike/container_probe.py` — Ověřuje izolaci, skutečný tunel a syntetické modelové API bez výpisu secrets a obsahu.
+- `tests/test_vpn_spike.py` — Regrese validace profilu, prostředí forwarderu, izolace kontejneru a ochrany exportu.
+- `docs/development/jhu-vpn-spike.md` — Reprodukovatelné příkazy, zdroje, důkazy a hranice prvního VPN spike.
+- `docs/tests_explained/test_vpn_spike.md` — Vysvětlení izolovaných VPN testů a odlišení živého probe.
+
 - `.agents/` — Kanonická pravidla, workflow, paměť a Azure handoffy pro AI agenty.
   - `.agents/inbox/` — Konkrétní integrační handoffy a provozní požadavky bez hodnot secrets.
     - `.agents/inbox/2026-06-08-dolphin-consulting-db-storage-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (2026-06-08-dolphin-consulting-db-storage-handoff.md).
@@ -306,7 +351,7 @@ Aktuální zdrojové soubory a adresáře vydání v0.1.6 (2026-10-21); závislo
     - `tenants/showcase/prompts.json` — Výchozí RAG systémové prompty (CZ a EN).
     - `tenants/showcase/search_config.json` — Výchozí metaparametry dělení textu a vyhledávání.
 - `tests/` — Izolované unit testy, lokální SQL regrese a opt-in Azure native testy.
-  - `tests/conftest.py` — Testovací modul pytest ověřující funkčnost conftest.py.
+  - `tests/conftest.py` — Izolované SQLite a tenantové fixtures a výchozí číslované pracovní adresáře pytest pod `.local/tmp/pytest/`.
   - `tests/native_sql_harness.py` — Umožňuje native integraci přes Entra CLI v novém izolovaném schématu existující testovací databáze.
   - `tests/test_ann_search.py` — Testuje DiskANN režimy, SQL prefiltry, diagnostiku, timeouty a volitelnou nativní Azure integraci.
   - `tests/test_ask_cli.py` — Ověřuje HTTP login/chat, bearer autorizaci, URL a bezpečné chyby CLI.
@@ -513,8 +558,10 @@ Aktuální zdrojové soubory a adresáře vydání v0.1.6 (2026-10-21); závislo
 
 ## Správcovské limity výstupu modelů
 
+- `docs/releases/v0.1.7.md` — Souhrn vydání automatického lokálního JHU připojení, odolnosti, testovací hygieny a hranic cloudového nasazení.
+
 - `app/core/model_limits.py` — Revizované tenantové stropy generování, bezpečné lokální rozsahy a skládání efektivního profilu.
 - `migrate_model_limits.py` — Read-only plán a guarded vytvoření SQL tabulky provozních limitů modelů.
 - `docs/adr/ADR-0037-editable-model-output-limits.md` — Oddělení editovatelných generačních limitů od immutable profilů a vektorů.
 - `.agents/inbox/2026-10-21-model-output-limits-handoff.md` — Oddělený cloudový handoff runtime tabulky a administračního releasu.
-- `.agents/inbox/2026-10-21-jhu-connectivity-keyvault-handoff.md` — JHU audit secrets a návrh automatického lokálního připojení, nezávislé cloudové brány a přesunu credentials do Key Vaultu.
+- `.agents/inbox/2026-10-21-jhu-connectivity-keyvault-handoff.md` — JHU audit secrets, lokální připojení a ověřený cloud preflight s plánem sidecaru, migrací, releasu a rollbacku.

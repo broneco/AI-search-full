@@ -14,6 +14,8 @@ ENV
 **/*.pem
 **/*.key
 **/*.pfx
+**/*.ovpn
+**/*.auth
 .local
 .pytest_cache
 __pycache__
@@ -43,4 +45,6 @@ Dockerfile
 
 probe_jhu_model.py
 probe_jhu_embeddings.py
+probe_jhu_vpn.py
+jhu_connection.py
 migrate_model_access.py

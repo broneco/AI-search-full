@@ -44,6 +44,20 @@ Jména deploymentů musí odpovídat tvému Azure prostředí. Lokální databá
 
 ### Každodenní spuštění a restart počítače
 
+**Automatické připojení JHU:** po [první přípravě helperu a Key Vaultu](docs/development/jhu-managed-local.md) vyber **AI Search: start JHU local app**. Systémovou OpenVPN ručně nezapínej. Ruční backend s tímto režimem:
+
+```powershell
+$tenant = "jhu"
+.\dev.ps1 -Action start-db
+.\dev.ps1 -Action backend -Tenant $tenant -JhuManaged
+# Stav: .\dev.ps1 -Action status-jhu -Tenant $tenant
+# Stop: .\dev.ps1 -Action stop-jhu -Tenant $tenant
+```
+
+[Stav, obnova připojení a testování výpadků](docs/development/jhu-connection-resilience.md) popisuje správní refresh bez restartu backendu. Managed režim je určen pro local/test; Azure nasazení vyžaduje samostatné ověření.
+
+Managed režim je zatím určen pouze pro local/test, Azure nasazení vyžaduje samostatné ověření a handoff. Bez přepínače zůstává původní direct připojení.
+
 Ve VS Code zvol **Terminal → Run Task… → AI Search: start local app**. Úloha spustí SQL Server, backend a uživatelský frontend s nastavením úlohy a `.env.local`. Pro explicitní výběr tenantu použij příkazy níže, každou službu ve vlastním terminálu. V každém bloku nastav stejný `$tenant`; proměnné se mezi terminály nesdílejí. Pro JHU používej malé `jhu`. Přepínač `-Tenant` přepíše lokální nastavení pouze pro spuštěný proces, `.env.local` nemění.
 
 ```powershell
@@ -102,6 +116,8 @@ Základní izolovaná sada:
 ```powershell
 .\dev.ps1 -Action test
 ```
+
+Dočasné pracovní soubory pytest ukládá pod `.local/tmp/pytest/`, cache pod `.local/pytest-cache/`. Výchozí číslované adresáře oddělují souběžné běhy; pytest uchovává tři poslední běhy s ochranou aktivních relací. Není potřeba zadávat `--basetemp`. Backend sleduje pro automatický restart pouze `app/`, takže testovací kopie zdrojů jej nerestartují.
 
 Stejný příkaz nabízí VS Code úloha **AI Search: run isolated tests**. Pro lokální SQL regrese spusť v samostatném terminálu:
 

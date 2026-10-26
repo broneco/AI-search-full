@@ -1,10 +1,8 @@
 """Bound inference adapters with no implicit model/provider fallback."""
 import asyncio
 import json
-import platform
 import re
 import time
-from urllib.parse import urlsplit
 
 import httpx
 from openai import AsyncAzureOpenAI, APITimeoutError, APIStatusError
@@ -13,13 +11,12 @@ from app.core.config import settings
 from app.core.model_config import ModelError, ModelProfile
 from app.providers.llm import LLMProvider
 
-from app.providers.jhu_connection import slots as _jhu_slots
+from app.providers.jhu_connection import slots as _jhu_slots, embedding_connection, jhu_client, jhu_configured
 
 
 def connection_settings(profile: ModelProfile) -> dict:
     if profile.connection == "jhu":
-        return dict(endpoint=settings.JHU_LLM_ENDPOINT, username=settings.JHU_LLM_USERNAME,
-                    password=settings.JHU_LLM_PASSWORD, deployment=profile.model)
+        return dict(deployment=profile.model)
     return dict(endpoint=settings.AZURE_OPENAI_ENDPOINT, key=settings.AZURE_OPENAI_API_KEY,
                 deployment=(settings.AZURE_OPENAI_FLASH_DEPLOYMENT if profile.connection == "azure_mini"
                             else settings.AZURE_OPENAI_THINKING_DEPLOYMENT))
@@ -30,13 +27,9 @@ def availability(profile: ModelProfile) -> tuple[bool, str | None]:
         return False, "disabled"
     conn = connection_settings(profile)
     if profile.connection == "jhu":
-        if not (conn["endpoint"] and conn["username"] and conn["password"]):
-            return False, "not_configured"
-        url = urlsplit(conn["endpoint"])
-        if url.username or url.password or url.query or url.fragment or url.scheme not in {"http", "https"}:
-            return False, "invalid_connection"
-        if url.scheme == "http" and not settings.JHU_LLM_ALLOW_HTTP:
-            return False, "secure_connection_required"
+        configured, reason = jhu_configured()
+        if not configured:
+            return False, reason
         if profile.model_digest is None and (not settings.JHU_LLM_VERIFIED_MODEL or settings.JHU_LLM_VERIFIED_MODEL != profile.model):
             return False, "model_not_verified"
     elif not (conn["endpoint"] and conn["key"] and conn["deployment"]):
@@ -74,18 +67,11 @@ class ProfileLLMProvider(LLMProvider):
         conn = connection_settings(self.profile)
         try:
             if self.profile.provider == "ollama_generate":
-                if conn["endpoint"].startswith("http:") and settings.APP_ENV == "local":
-                    if platform.system() != "Windows":
-                        raise ModelError("model_vpn_required", "Pro lokální HTTP test je vyžadována ověřená Windows VPN trasa.")
-                    from app.providers.vpn import verify_windows_vpn
-                    await asyncio.to_thread(verify_windows_vpn, urlsplit(conn["endpoint"]).hostname,
-                                            settings.JHU_LLM_VPN_INTERFACE)
                 if not _jhu_slots.acquire(blocking=False):
                     raise ModelError("model_busy", "JHU model právě zpracovává jiný požadavek. Zkuste to znovu.", 429)
                 try:
-                    async with httpx.AsyncClient(timeout=httpx.Timeout(self.profile.timeout_seconds, connect=10),
-                            trust_env=False, follow_redirects=False,
-                            auth=httpx.BasicAuth(conn["username"], conn["password"])) as client:
+                    conn = await embedding_connection()
+                    async with jhu_client(conn, httpx.Timeout(self.profile.timeout_seconds, connect=10)) as client:
                         async def verify_digest():
                             if self.profile.model_digest is None:
                                 return

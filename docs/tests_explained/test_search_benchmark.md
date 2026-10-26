@@ -6,6 +6,9 @@ Testy ověřují, že benchmark neopakuje modelová volání během měření, n
 
 ## Technické scénáře
 
+- Regrese souběžných dávek používá skutečné async yield a řízené hodiny místo nespolehlivého 1ms sleep na Windows. Kontroluje přesné latence10/20/30 ms pro každou dávku, maximum tří současných požadavků a ukončení fáze po první chybné dávce. Produkční měření nadále používá skutečný perf_counter.
+- CLI/cache roundtrip izoluje výběr svého syntetického dvourozměrného profilu od runtime tenant katalogu. Stejný test tak běží i v čisté JHU projekci bez `tenants/default`; skutečný výběr experimentálního prostoru má samostatnou regresi.
+
 - Recall@30 má jmenovatel podle dostupné exact reference do K; nula oproti nule je null, ANN proti prázdné referenci chyba. Nearest-rank p95 zahrnuje pomalé chybné requesty, nikoli jen úspěchy.
 - Dataset odmítá duplicitní case IDs, identické query/filter/user kombinace, klientské ACL skupiny a neplatné metadata. Cache kontroluje dataset/profile fingerprint, plnou definici profilu, revizi/rozměr a nenulové vektory. Stejně dlouhý jiný model/revize není kompatibilní.
 - Provider používá query režim jednou pro každou různou otázku; dokumentový režim ani generování odpovědi se nevolá. Provider chyba je bezpečně zabalená bez privátního detailu.

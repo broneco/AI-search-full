@@ -73,6 +73,19 @@ def discovery_http(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_scan_respects_shared_inference_embedding_slot(discovery_http):
+    from app.providers.jhu_connection import slots
+    assert slots.acquire(blocking=False)
+    try:
+        with pytest.raises(ModelError) as error:
+            await discover_models()
+        assert error.value.code == 'model_busy' and discovery_http[1] == []
+    finally:
+        slots.release()
+    assert len((await discover_models())['models']) == 2
+
+
+@pytest.mark.anyio
 async def test_inventory_is_metadata_only_and_partial_failure_is_explicit(discovery_http):
     state, calls = discovery_http
     result = await discover_models()

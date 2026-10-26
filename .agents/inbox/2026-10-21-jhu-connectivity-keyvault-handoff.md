@@ -1,6 +1,6 @@
 # JHU: automatické připojení modelů a přesun secrets do Key Vaultu
 
-- Status: draft — audit a návrh; implementace ani cloudové změny neprovedeny.
+- Status: slices 0–2 lokálně ověřeny; slice2 živá managed RAG akceptace prošla 2026-10-23. Cloudové změny čekají samostatně.
 - Created: 2026-10-21
 - Scope: pouze JHU, konfigurace `jhu`, skutečný cloudový tenant `ju-prod`.
 - Related: [modelové připojení](2026-10-16-jhu-model-selection-handoff.md), [ověřený rollout](../../docs/deployments/2026-10-15-jhu-search-rollout.md).
@@ -8,7 +8,13 @@
 
 **Aktualizované pořadí po upřesnění uživatele:** další VM a čekání na správce JHU jsou nežádoucí. Nejprve prověřit variantu D (VPN-to-proxy bez TUN v existujícím kontejnerovém prostředí). Jde o omezený technický spike, nikoli potvrzenou kompatibilitu nebo produkční doporučení konkrétního komunitního klienta. Varianty B/C zůstávají alternativy; novou VM nyní neplánovat jako výchozí krok.
 
+**Výsledek slice 0, 2026-10-22:** funguje izolovaný non-root Docker probe bez systémové VPN. Nově nalezená oficiální cesta OpenVPN 2.7.8 `dev-node unix:` nahrazuje níže zvažovaný starý Tuna fork; jediný userspace TCP forward poskytuje připnutý tunsocks. Proběhl skutečný cert-name negativní test, handshake, tags/show, dvě syntetické generace, dva Nomic embeddingy, rekey a SIGUSR1 reconnect s API kontrolou. Opraven timeout po reconnectu vynecháním persist-tun v odvozeném profilu. Uživatel vytvořil dvě VPN secrets a odpojil host VPN, agent pouze četl KV. GO pro pokračování prototypu, nikoli přijetí komunitní knihovny do produkce či cloudové akceptace. Podrobnosti a měření: [reprodukovatelný návod](../../docs/development/jhu-vpn-spike.md). Následuje slice 1. Níže uvedený původní audit a návrh slouží jako kontext; neznamená, že aplikace už používá nový tunel.
+
+**Výsledek slice 1:** hotový explicitní secrets resolver a samostatná služba jhu_connection.py; uživatel vytvořil i dvě API secrets, všechny čtyři + skutečné API použití ověřeny bez výpisu hodnot. Živý start/idempotence/reconnect/automatická obnova/rozpočet pokusů/úklid/restart/stop prošly bez systémové VPN. Stav a návody: [helper](../../docs/development/jhu-connection-helper.md), [ADR-0038](../../docs/adr/ADR-0038-jhu-helper-secrets-lifecycle.md). Původní API env kopie zatím zůstávají kvůli běžným konzumentům. Následuje **slice 2**, který teprve napojí aplikaci a dev.ps1/VS Code. Cloudový handoff níže zůstává návrhem bez provedených cloudových zápisů.
+
 ## Požadovaný výsledek
+
+Aktuální slice2 je přijatý: opt-in `-JhuManaged` a VS Code úloha **AI Search: start JHU local app**, common capability gateway/transport pro všechny JHU operace, API-only KV snapshot backendu. [Runbook](../../docs/development/jhu-managed-local.md), [ADR-0039](../../docs/adr/ADR-0039-jhu-managed-app-transport.md). Direct zůstává výchozí. Rancher healthcheck workaround odstranil Docker blocker po uživatelově Quit/start. Nová image, ready helper a skutečný managed discovery17/Nomic768/Llama RAG s citací a uloženou provenance prošly bez systémové VPN v izolované SQL (1 passed/1 SQLite skip); aktivní index/chunky zachovány. Nejde o cloudovou nebo širší provozní akceptaci. Po explicitním restartu helperu je nutný restart backendu. Následuje slice3 odolnost.
 
 Uživatel zvolí JHU model a odešle otázku. Ruční zapínání VPN není součástí běžné práce. Uživatel výslovně připustil libovolné řešení připojení na pozadí. To neznamená povolení nešifrovaného veřejného API. Volání LLM, embeddingů i discovery provádí backend, nikdy prohlížeč s credentials. Azure nesmí záviset na běžícím notebooku.
 
@@ -143,10 +149,87 @@ Nezaměňovat dvě možnosti: aplikační SDK resolution při startu vs nativní
 
 ## Navazující slices a akceptace
 
-1. **Doporučený další slice — omezený non-root VPN-to-proxy spike D.** Nejdříve kompatibilita a izolovaný Docker test se skutečným JHU připojením z privátních secrets, včetně reconnect a spotřeby. Až úspěch odůvodní integraci KV/transportu/VS Code do aplikace. Pokud test vyžaduje rozsáhlý fork nebo MFA/policy automatizaci nedovolí, zaznamenat blocker a přehodnotit cestu; neobcházet policy a nepokračovat automaticky k VM.
-2. **Úklid lokálních JHU secrets.** Ověřit každý konzument/probe/ingest/deploy planner, precedence, KV outage a restart; odstranit pouze prokázané inline kopie. Zachovat lokální SQL, cloudové podpisy/legacy, data, ostatní tenanty a stávající `.env` soubory s veřejnými hodnotami.
-3. **Cloudové připojení podle výsledku spike.** Při úspěchu D připravit sidecar ve stávající ACA; pokud D není udržitelné, vyhodnotit varianty B/C nebo existující SSH přístup. Před zápisy samostatný přesný Apply plán a souhlas. Funkční test z ACA s vypnutým notebookem prokáže nezávislost; syntetická inference i embedding, odpojení/obnovení tunelu, žádný přímý HTTP fallback. Pouze potřebné API povoleno, pull/delete zakázány.
-4. **Provoz a bootstrap hardening.** Teprve potom ACR managed identity/registry secret, případné dev prostředí, monitoring connection/reconnect, redakce, restart po změně secretu a řízený rollback.
+### Read-only cloud preflight 2026-10-26
+
+Uživatel požádal o postup aktualizace Container App a celé aplikace. Proběhlo pouze čtení aktuálního Azure stavu; implementace cloudového adaptéru, build/push image, SQL DDL, secrets, škálování, nové revize a frontend release nebyly provedené. Tento plán není připravený Apply artefakt.
+
+| Cíl | Ověřený aktuální stav |
+|---|---|
+| Subscription / directory | `24e4a9a6-bab0-43f7-ba20-3b774704fade` / `c35f5da4-9a03-44e6-8bf9-92833634f6a7` |
+| RG / region | `ju-ai-search-rg-prod` / Sweden Central |
+| Container App / environment | `ju-ai-search-ca-prod` / `ju-ai-search-cae2-prod` |
+| Přesný aplikační tenant | `ju-prod`; JSON konfigurace používá alias jhu |
+| Aktuální revize / image | `ju-ai-search-ca-prod--0000008` / `juaisearchcrprod.azurecr.io/ju-ai-search-ca-prod:prod-v014-20261015-145009` |
+| Kontejnery / kapacita | jeden backend, 0,5 CPU / 1 GiB |
+| Škálování / revize | min1 / max3; Single |
+| Registry | `juaisearchcrprod` |
+| SQL | `ju-ai-search-sql-prod.database.windows.net` / `ju-ai-search-sqldb-prod`; obsah/schéma v tomto preflightu neověřované |
+| Frontendy | `ju-ai-search-swa-user-prod` a `ju-ai-search-swa-admin-prod` |
+| Key Vault / identita | `ju-ai-search-kv-prod`; SystemAssigned principal `ccacbf26-dcd6-4f7b-af7b-e3e769137de8` má již vault-scoped `Key Vault Secrets User` |
+| Existující secrets | VPN username/password a JHU API username/password: všechny4 enabled; čtena jen metadata, nikoli hodnoty |
+| Privátní VPN profil | secret `ju-ai-search-vpn-client-config-prod` se při listování nenašel; navrhovaný nový secret obsahuje úplný externí Client.ovpn, ne hesla |
+| Model deploymenty | `gpt-5.4-mini` a `text-embedding-3-large` Succeeded; GPT-5.4 chybí |
+
+Konkrétní implementační mezery před rolloutem:
+
+1. `app/providers/jhu_managed.py` správně odmítá cloud APP_ENV a ověřuje lokální Docker přes inspect/exec. Nahradit pouze cloudovou větev samostatným explicitním adaptérem pro pevný loopback sidecar; místní Docker verifikaci nezrušit. V cloudu nesmí vzniknout Docker socket/daemon ani AzureCliCredential.
+2. Doplnit cloudový bootstrap helperu bez `docker exec`/stdin operátora: existující managed identity, oddělené VPN/API reference, chráněný runtime profil/capability a pevný JHU target. Image nesmí obsahovat profil/hesla, helper nemá public ingress. Zachovat bounded reconnect, fail-closed chování a zákaz replay/fallback.
+3. `deploy_backend.ps1` nyní výslovně vyžaduje jeden kontejner a mění jen image. Připravit nový guarded plan/apply pro dva kontejnery s expected subscription/directory/tenant/current revision/template, se zachováním stávajících secrets, identity, URL a rollbacku. Nepoužít historický PostgreSQL Bicep jako aktuální SQL šablonu.
+4. Předložit rozdělení prostředků: celkový počáteční cíl 0,5 CPU /1 GiB není zároveň garantované zachování současné kapacity samotného backendu po přidání helperu. Nezmenšit backend ani nezvýšit placený součet automaticky. Pro první cloud test předložit max1 repliku a ověřit VPN session policy; Single rollout může překrýt dvě revize i při max1. Lokální helper při skutečném cloud testu vypnout.
+5. Ověřit pouze existenci/chybějící SQL tabulky a připravit cílové plány `migrate_model_access.py`, `migrate_model_registry.py`, `migrate_model_metadata.py`, `migrate_model_limits.py`. Spustit jen potřebné additive DDL po schválení s přesným host/DB/tenant, zajistit dostupnost migration runneru v navržené execution cestě (současný Dockerfile kopíruje jen starší search CLI). Neměnit corpus/default embedding index, nespouštět reindex ani ANN.
+6. GPT-5.4 je volitelný chybějící deployment; jeho JSON profil ani neprázdné env jméno neprokazuje dostupnost. V plánu explicitně zajistit označení jako nedostupný, nebo samostatně schválit zřízení. Nevytvářet automaticky deployment/kvótu a neblokovat ostatní modely.
+7. Připravit shodné zdrojové vydání/backend+helper image a oba frontend buildy. Privátní `.env.prod` obsahuje zastaralý APP_VERSION v0.1.3; před releasem odděleně ověřit a sjednotit veřejnou runtime verzi. GitHub a čistá Forgejo publikace zůstávají zvlášť autorizované operace.
+
+Akceptace v pořadí: tags/show ze skutečné ACA → jeden syntetický generate/embed → token/login a GPT-mini RAG s citací → JHU RAG se stejným oprávněným korpusem → výpadek/rekey → oba frontendy/modelová práva. Notebook není relay. Nový cloudový embedding index se plní jako samostatný řízený backfill; současný admin `/prepare` je úmyslně pouze lokální. Přepnutí odpovědního modelu samo index nemění. Rollback vrací předchozí backend revision a oba frontend artefakty, nové additive tabulky ponechá. Secrets se nerotují ani nemažou; nedostupné JHU nesmí vyřadit cloudové odpovědi nebo způsobit jejich automatické použití místo zvoleného modelu.
+
+Podklady: [ACA kontejnery a sdílená síť](https://learn.microsoft.com/en-us/azure/container-apps/containers), [secrets/Key Vault](https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets), [dočasná storage](https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts), [Single revision rollout a překryv](https://learn.microsoft.com/en-us/azure/container-apps/revisions).
+
+Aktualizovaný implementační plán po vydání v0.1.6 (2026-10-21). Jde o návrh pořadí, nikoli provedenou implementaci či schválení cloudových zápisů. „Bez VPN“ znamená bez ručního ovládání systémové VPN: spojení zajistí vlastní pomocný proces. Vnější úsek z notebooku/ACA do JHU chrání VPN; nezměněné HTTP API uvnitř JHU tím nezískává end-to-end HTTPS.
+
+### Slice 0 — Důkaz proveditelnosti (spike, doporučený další krok)
+
+- Prověřit a připnout zdroj/verzi, licenci, bezpečnostní aktualizace a rozsah patchů klienta. První kandidát je Tuna/tunpipe + tunsocks; go-openvpn je kvůli comp-lzo zatím nevhodný. Žádný kandidát ještě není přijatou závislostí.
+- Reprodukovatelný Docker build a test nejprve bez credentials. Pak skutečný handshake s externím read-only profilem a bezpečně předanými secrets. Non-root, cap-drop ALL, no-new-privileges, bez TUN/host network a bez změn hostitelských rout.
+- Forward pouze k pevnému JHU API cíli/portu; žádný obecný proxy server. Při chybě tunelu nesmí existovat přímá síťová cesta z forwarderu na API. Profil nesmí v kontejneru spouštět libovolné hook skripty.
+- Ověřit certifikát/jméno a negativní test, tags/show, krátký syntetický generate/embed, restart i autentizační chybu; změřit CPU/RAM a cold/warm připojení. Neopakovat chybné přihlášení ve smyčce.
+- Finální lokální důkaz provést bez systémové VPN; její vypnutí domluvit s uživatelem, neodpojovat cizí relaci automaticky. Test při aktivní systémové VPN není důkaz nezávislosti. Změřit i přímou dosažitelnost VPN serveru z tohoto prostředí.
+- Výstup: reprodukovatelný probe, připnutý kandidát a výsledek GO/NO-GO. Při neudržovatelném forku, nutném oslabení ověřování nebo nepodporované autentizaci tuto cestu zastavit; nevytvářet vlastní VPN protokol ani automaticky novou VM.
+
+### Slice 1 — Secrets a životní cyklus pomocné služby
+
+- Úzce omezený JHU resolver čte čtyři výše uvedené secrets. Lokálně použije přihlášeného Azure CLI uživatele; cloud později existující managed identity. APP_ENV zůstává local a lokální SQL izolované.
+- Zdroj credentials je explicitní: KV režim nesmí při chybě tiše použít starou env kopii. Rozlišit chybějící secret, zamítnutý přístup, síťovou chybu a chybu VPN; logovat jen kód/stav.
+- VPN klient dostává pouze VPN credentials, backend pouze API credentials. Žádné hodnoty v image, argumentech příkazů nebo Docker inspect env; použít vhodný paměťový kanál/runtime soubor s omezenými právy podle ověřeného klienta. Ošetřit další výzvu auth-nocache i úklid po pádu.
+- Lokální profil mountovat z externí cesty. Pro cloud připravit privátní runtime distribuci, přednostně volitelný KV secret ju-ai-search-vpn-client-config-prod; rozhodnout přesný mechanismus v cloud handoffu. Profil se nesmí zabalit do wheelu, image ani JHU exportu.
+- Jedna spravovaná relace, stavy disabled/connecting/ready/degraded/auth_failed, omezené reconnect pokusy s prodlevou. Ztráta VPN nesmí vyřadit cloudové modely ani způsobovat restart celé aplikace.
+- Akceptace: chybové testy KV, redakce, restart a úklid bez zásahu do systémové VPN. Až ověřená cesta dovolí odstranit odpovídající inline API kopie; širší úklid ostatních secrets zůstává samostatný.
+
+### Slice 2 — Jeden JHU transport a lokální aplikace
+
+- Zavést společný JHU HTTP transport pro generate/embed/tags/show včetně kontrol digestu, summary/classification, CLI probe a backfillu. Výslovně rozlišit stávající Windows VPN režim, nový spravovaný forward a HTTPS. Globální HTTP_PROXY není řešení.
+- Preferovat pevný TCP forward za úzkým HTTP vstupem povolujícím pouze potřebné API operace; žádné pull/delete/CONNECT, libovolný upstream nebo následování redirectů mimo cíl. Lokálně host publish pouze na loopback; v ACA loopback sdíleného síťového prostoru bez ingress portu pro helper. Implementace musí ověřit konkrétní mapování, ne jen důvěřovat libovolnému proxy URL.
+- Zachovat autorizaci, Basic auth, timeouty, limity a společný JHU slot. Výpadek připojení vrátí řízenou chybu; neopakuje generování ani nepřepíná model/index/cestu.
+- Přidat do dev.ps1 a VS Code tasks opt-in start/status/stop pro JHU připojení. Běžný start backendu při zapnutém režimu idempotentně zajistí helper; pro ostatní tenanty se nespouští. Konkrétní názvy přepínačů stanovit až v implementaci a uvést v README.
+- Akceptace: po restartu počítače standardní start z VS Code, bez ručního OpenVPN; discovery, skutečná odpověď s citací a dotaz přes jeden připravený lokální embeddingový index. Model a profil/index identity se nemění, reindexace není nutná kvůli samotnému transportu.
+
+### Slice 3 — Provozní odolnost a balení
+
+- Ověřit ztrátu spojení během generace, automatické obnovení pro další dotaz, rekey/obnovení autentizace, restart Dockeru a rotaci secrets řízeným restartem. Žádné automatické opakování odeslaného modelového požadavku.
+- Požadavky při navazování mají omezené čekání; stav JHU poskytovat odděleně od zdraví backendu. Nevytvářet další tunel na otázku ani nekonečné fronty. Rekey doložit skutečným testem, ne pouze jednotkovým mockem.
+- Ověřit dlouhodobější paměť/CPU, latenci spojení oddělenou od generace a chování dvou administrátorských porovnání; VPN účet musí dovolit zamýšlený počet relací.
+- Úplné relevantní lokální regrese, buildy při UI změně, čistý wheel/JHU export a Docker context bez profilů/auth souborů. Zapsat přijaté ADR až podle důkazu kompatibility, runbook, test explanations a paměť. Samotná návrhová dokumentace není runtime akceptace.
+
+### Slice 4 — Samostatná Azure akceptace a aktivace
+
+**Stav po 2026-10-23:** slices 0–3 jsou implementované a lokálně ověřené; Azure slice 4 není nasazený ani automaticky schválený předchozím souhlasem s restartem Rancheru. Aktuální ADR-0040 a [runbook odolnosti](../../docs/development/jhu-connection-resilience.md) doplňují Management GET stavu a explicitní atomický refresh jako alternativu restartu backendu. Kompletní lokální SQL/wheel sada606/23, čistá JHU99/7; skutečný aktuální fault/rekey/refresh test302s a následný cited RAG17,10s prošly. Schválený globální restart Rancheru byl proveden jednou dříve v témže slicu a obnovil prostředí za92,2s. Skutečná rotace KV hesel nebyla provedena; jen syntetická nová hodnota v resolver testu. Krátké lokální výsledky nedokazují ACA síť/kapacitu ani dlouhodobou dostupnost. Viz aktuální project-state pro limity a nevyjasněná dřívější selhání.
+
+- Připravit konkrétní plan/apply handoff pro existující ju-ai-search-ca-prod: připnutý helper image, distribuce privátního profilu, secrets přes existující identitu, resource split, startup/health a rollback. Souhlas k publikaci Git v0.1.6 nezahrnuje tuto změnu.
+- Začít jednou testovací replikou a řízeným přechodem revizí; i dvě souběžné revize mohou vytvořit dvě VPN relace. Prověřit účet/policy před takovým rolloutem. Test ze samotné ACA ověří UDP egress a dostupnost JHU; notebook není relay.
+- Existujících 0,5 CPU / 1 GiB je první měřený rozpočet pro součet backendu a helperu, nikoli zaručená dostatečná kapacita. Změnu alokace/min replicas/ceny předložit samostatně podle výsledků. Cloudové modely musí fungovat i při nedostupném JHU; VPN health nesmí restartovat zdravý backend.
+- Akceptace: tags/show, syntetický generate/embed a skutečný oprávněný RAG dotaz z ACA při vypnutém notebooku, rekey/reconnect a redigovaná diagnostika. Cloudové modelové SQL migrace nebo další v0.1.6 změny posoudit samostatně proti aktuálně nasazenému obrazu.
+- Aktivovat až po funkčním testu, s návratem na předchozí kompatibilní revizi při neúspěchu. Pokud helper neprojde, cloudový JHU profil zůstane nedostupný, žádný veřejný HTTP fallback.
+
+Širší migrace OpenAI/Storage env kopií, ACR managed identity a cloudové dev prostředí neblokují první důkaz spojení a patří do samostatných pozdějších slices. Jejich konkrétní plán zůstává v auditní tabulce výše.
 
 ## Hodnoty k doplnění člověkem, nikdy secrets
 

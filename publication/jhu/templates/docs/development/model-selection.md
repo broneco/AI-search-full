@@ -6,9 +6,11 @@ V administraci jsou všechny modelové volby v záložce **Modely a vyhledáván
 
 Management přes **Dostupné modely a oprávnění → Obnovit z API** otevře dialog s živým inventářem. Discovery samo katalog nemění; explicitní přidání lokálních profilů, checkboxy a volbu embeddingů popisuje [tenantový registr](local-model-registry.md). Společný přehled umožňuje upravit CS/EN popisy, publikaci a skupiny; modelové volby podporují hledání podle popisu/parametrů. [Porovnání výsledků](admin-comparison.md) používá dvě oddělené konverzace na jednu otázku. Poslední sekce v Modely a vyhledávání sdružuje všechny tři prompty.
 
-Modely se definují v `tenants/default/model_config.json`; celý tenantový soubor jej může nahradit. Výchozí profily pro chat, shrnutí a klasifikaci jsou nezávislé. `ju-prod` načítá JHU konfiguraci, ale jeho skutečná databázová identita zůstává `ju-prod`.
+Modely se definují v `tenants/jhu/model_config.json`. Výchozí profily pro chat, shrnutí a klasifikaci jsou nezávislé. `ju-prod` načítá JHU konfiguraci, ale jeho skutečná databázová identita zůstává `ju-prod`.
 
 ## Spuštění z VS Code po restartu
+
+Pro opt-in automatické spojení použij [managed návod](jhu-managed-local.md) a úlohu **AI Search: start JHU local app** nebo backend s `-JhuManaged`; ruční OpenVPN v tomto režimu nezapínej. Následuje původní direct varianta. Statický Qwen profil vyžaduje ověřený `JHU_LLM_VERIFIED_MODEL`, registrované modely používají konkrétní digest.
 
 1. Spusť Rancher Desktop/Docker Engine a připoj OpenVPN JHU.
 2. Z kořene repozitáře spusť databázi a backend pro lokální tenant JHU:
