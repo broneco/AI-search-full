@@ -17,7 +17,7 @@ from app.storage.models import DBDocument
 from app.storage.db import SessionLocal
 from app.providers.blob_storage import BlobStorageProvider
 
-from app.core.tenant_config import load_tenant_json, save_tenant_json
+from app.core.tenant_config import load_tenant_json, save_tenant_json, uses_sql_settings
 from app.retrieval.filters import exact_value
 
 logger = logging.getLogger(__name__)
@@ -44,9 +44,9 @@ class MetadataTagger:
         self.blob_provider = BlobStorageProvider()
 
     async def load_config(self) -> Dict[str, Any]:
-        """Load the classification configuration from Blob Storage or local tenant folder (with fallback to default)."""
+        """Load cloud SQL overrides or local/test configuration with bundled defaults."""
         config_data = None
-        if self.blob_provider.is_configured():
+        if not uses_sql_settings("classification_config.json") and self.blob_provider.is_configured():
             try:
                 container = settings.AZURE_BLOB_CONTAINER_ORIGINALS or "originals"
                 blob_name = "config/classification_config.json"
@@ -59,7 +59,7 @@ class MetadataTagger:
                 logger.warning(f"Failed to load config from Azure Blob, falling back to local file: {e}")
         
         if config_data is None:
-            config_data = load_tenant_json(settings.TENANT_ID, "classification_config.json", default_data={
+            defaults = {
                 "categories": [
                     {
                         "key": "3f6b7c5e-8e9d-4c3a-8b2f-7a1b3c5e7d9f",
@@ -91,14 +91,21 @@ class MetadataTagger:
                     }
                 ],
                 "analysis_rules": "Zaměř se na vyhledávání důležitých názvů, čísel a dat."
-            })
+            }
+            if uses_sql_settings("classification_config.json"):
+                config_data = await asyncio.to_thread(load_tenant_json, settings.TENANT_ID, "classification_config.json", default_data=defaults)
+            else:
+                config_data = load_tenant_json(settings.TENANT_ID, "classification_config.json", default_data=defaults)
         return config_data
 
     async def save_config(self, config_data: Dict[str, Any]) -> None:
-        """Save the classification configuration to Blob Storage and local tenant folder."""
+        """Save cloud classification in SQL; local/test retain legacy overlays."""
+        if uses_sql_settings("classification_config.json"):
+            await asyncio.to_thread(save_tenant_json, settings.TENANT_ID, "classification_config.json", config_data)
+            return
         # First save locally in tenants/<tenant_id>/classification_config.json
         save_tenant_json(settings.TENANT_ID, "classification_config.json", config_data)
-            
+
         # Then upload to Azure Blob if configured
         if self.blob_provider.is_configured():
             try:

@@ -2,9 +2,56 @@
 
 - `docs/releases/v0.1.6.md` — Souhrn vydání modelových katalogů, embeddingových indexů, administračního porovnání a provozních hranic v0.1.6.
 
-Aktuální zdrojové soubory a adresáře vydání v0.1.6 (2026-10-21); závislosti, cache a soukromá data se do zdrojového stromu nezahrnují. Při přesunu, přidání nebo smazání zdroje tuto mapu aktualizujte podle skutečné cesty.
+Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cache a soukromá data se do zdrojového stromu nezahrnují. Při přesunu, přidání nebo smazání zdroje tuto mapu aktualizujte podle skutečné cesty.
 
 ## Verzované zdroje
+
+- `docs/releases/v0.1.8.md` — Shrnuje stabilizaci JHU, trvalá nastavení, ověření zachování dat a úplnou veřejnou dokumentaci předání.
+
+- `verify_deployment.py` — Pořizuje read-only otisky tenantových SQL/vektorových/Blob dat a offline porovnává zachování přes nasazení.
+- `tests/test_deployment_preservation.py` — Ověřuje nezapisující snapshoty, přepsání při stejných počtech, dva indexy, tenantové hranice a bezpečné CLI.
+- `docs/development/deployment-preservation-test.md` — Popisuje kontrolované zachycení před/po, přenos mimo kontejner, porovnání a funkční cloudovou akceptaci.
+- `docs/tests_explained/test_deployment_preservation.md` — Vysvětluje izolované SQL/Blob/CLI regrese a hranice native cloudového důkazu.
+- `publication/jhu/templates/docs/development/deployment-preservation-test.md` — Předává aktuální návod k read-only porovnání dat přes nasazení do JHU snapshotu.
+- `docs/deployments/2026-10-30-preservation-test-handoff.md` — Uchovává schválený a dokončený plán cloudového testu ochrany obou indexů a rollbacku.
+- `docs/deployments/2026-10-30-preservation-test.md` — Dokládá skutečný redeploy s úplnou shodou SQL/vektorových/Blob otisků, funkční QA a otevřenou relevancí Nomicu.
+
+- `app/storage/document_catalog.py` — Načítá dokumenty a oprávněné počty chunků dvěma dávkovými SQL dotazy bez N+1 přístupu.
+- `app/storage/sql_joins.py` — Omezuje SQL Server hash-join hint na konkrétní hlavní propojení tabulek bez přepsání vnořených ACL a JSON filtrů.
+- `frontend-admin/app/lib/` — Sdílí v administraci pomocné funkce načítání, obnovy a kontroly dostupnosti API.
+- `frontend-admin/app/lib/apiRequest.ts` — Ošetřuje gateway odpovědi, timeout, relace, volby modelů/indexů a nepřekrývající se health polling.
+- `frontend-user/app/lib/` — Sdílí v uživatelské konzoli pomocné funkce načítání a obnovy API.
+- `frontend-user/app/lib/apiRequest.ts` — Poskytuje stejné bezpečné načítání a obnovitelné volby pro uživatelské UI.
+- `tests/test_document_catalog.py` — Ověřuje konstantní počet SQL čtení, přesné ACL/tenanty a dostupnost health při zablokovaném SQL.
+- `tests/frontend_resilience.cjs` — Spouští izolované Node regrese chyb, relací, volby modelů/indexů a health pollingu obou konzolí.
+- `docs/tests_explained/test_document_catalog.md` — Vysvětluje databázové a souběžné regrese katalogu a retrievalu.
+- `docs/tests_explained/frontend_resilience.md` — Popisuje spuštění a hranice JavaScript regresí obou frontendů.
+- `docs/deployments/2026-10-30-cloud-stabilization.md` — Dokládá dokončený backend/SWA/S2 rollout, zachování dat, skutečné odezvy a otevřenou relevanci R_583.
+- `docs/deployments/2026-10-30-cloud-stabilization-handoff.md` — Uchovává schválené cíle, rozpočet, ochranu dat a rollback dokončeného stabilizačního rollout.
+
+- `app/storage/tenant_settings.py` — Ukládá a validuje přesně tenantované cloudové JSON overrides mimo aplikační image.
+- `migrate_tenant_settings.py` — Připravuje read-only plán a aditivní insert-only import správních nastavení s target guards.
+- `tests/test_tenant_settings.py` — Ověřuje zachování nastavení a SQL dat při nové image, izolaci tenantů a selhání importu či databáze.
+- `docs/adr/ADR-0042-durable-tenant-settings.md` — Zdůvodňuje trvalé cloudové nastavení v SQL se souborovými defaults.
+- `docs/development/non-destructive-updates.md` — Popisuje skutečnou perzistenci, první převod konfigurace, bezpečný release a rollback.
+- `docs/tests_explained/test_tenant_settings.md` — Vysvětluje regrese perzistence, správních API a guarded migrace.
+- `publication/jhu/templates/docs/development/non-destructive-updates.md` — Předává současný postup trvalé konfigurace a aktualizací do čistého JHU snapshotu.
+- `docs/deployments/2026-10-29-durable-settings-rollout.md` — Zaznamenává dokončený SQL převod, backend release a skutečné zachování dat/nastavení přes restart.
+
+- `.agents/memory/archive/2026-10-29-jhu-sidecar-predeployment.md` — Uchovává překonané přípravné checkpointy před dokončeným JHU cloudovým rolloutem.
+
+- `docs/deployments/2026-10-29-jhu-sidecar-rollout.md` — Zaznamenává provedený JHU backend/sidecar/SWA rollout, migrace, cloudové ověření, SQL omezení a návrat.
+- `app/providers/jhu_sidecar.py` — Ověřuje pevný ACA loopback kontrakt a přesný kontext aplikace, revize, repliky, tenantu a cíle.
+- `deploy_jhu_sidecar.py` — Poskytuje standardně read-only plán a explicitně hlídané nasazení JHU sidecar template.
+- `scripts/deployment/jhu_sidecar.py` — Sestavuje redigovaný cloudový plán a chráněný ARM template PATCH v paměti.
+- `scripts/vpn_spike/cloud.py` — Načítá výhradně vybrané VPN secrets a capability přes ACA managed identity.
+- `tests/test_jhu_sidecar.py` — Ověřuje MI bootstrap, ACA izolaci, společný transport a terminální selhání bez retry cyklu.
+- `tests/test_jhu_sidecar_deployment.py` — Testuje cílové a kapacitní deployment guards, zachování konfigurace a read-only CLI.
+- `docs/adr/ADR-0041-jhu-aca-sidecar.md` — Zaznamenává cloudovou userspace VPN architekturu a provozní hranice.
+- `docs/development/jhu-sidecar-azure.md` — Popisuje secrets, read-only plán, aktivaci, akceptaci a rollback ACA připojení.
+- `docs/tests_explained/test_jhu_sidecar.md` — Vysvětluje izolované regrese runtime cloudového připojení.
+- `docs/tests_explained/test_jhu_sidecar_deployment.md` — Vysvětluje regrese bezpečného deployment plánu a ARM zápisu.
+- `publication/jhu/templates/docs/development/jhu-sidecar-azure.md` — Předává současný cloudový provozní návod do čistého JHU snapshotu.
 
 - `app/api/routes/jhu_connection.py` — Poskytuje správci tenantově chráněný stav a explicitní refresh lokálního JHU spojení.
 - `tests/test_jhu_connection_status.py` — Ověřuje oprávnění, atomickou obnovu, oddělení backend health a změnu credentials bez skutečných secrets.

@@ -6,3 +6,4 @@
 !service.py
 !lifecycle.py
 !gateway.py
+!cloud.py

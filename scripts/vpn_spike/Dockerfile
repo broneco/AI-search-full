@@ -1,4 +1,4 @@
-# Experimental connectivity probe only; not an application/deployment image.
+# Pinned userspace VPN runtime: probe, local helper and ACA sidecar.
 FROM python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70 AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential autoconf automake libtool pkg-config git ca-certificates \
@@ -26,7 +26,9 @@ COPY --from=build /usr/local/bin/tunsocks /usr/local/bin/tunsocks
 COPY --from=build /src/openvpn/COPYRIGHT.GPL /usr/local/share/licenses/openvpn/COPYRIGHT.GPL
 COPY --from=build /src/tunsocks/lwip/COPYING /usr/local/share/licenses/tunsocks/COPYING
 COPY --from=build /src/tunsocks/README.md /usr/local/share/licenses/tunsocks/README.md
-COPY bridge.py profile.py container_probe.py service.py lifecycle.py gateway.py /opt/probe/
-RUN chmod 755 /opt/probe/bridge.py
+RUN pip install --no-cache-dir azure-identity==1.26.0 azure-keyvault-secrets==4.11.3
+COPY bridge.py profile.py container_probe.py service.py lifecycle.py gateway.py cloud.py /opt/probe/
+RUN chmod 755 /opt/probe/bridge.py \
+    && mkdir -p /run/probe && chown 65532:65532 /run/probe && chmod 700 /run/probe
 USER 65532:65532
 ENTRYPOINT ["python", "-u", "/opt/probe/container_probe.py"]

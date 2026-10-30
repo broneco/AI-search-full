@@ -8,6 +8,8 @@ Jediný přibalený tenant je `jhu`. Jeho search/classification konfigurace jsou
 
 [Architektura](docs/architecture/search.md) · [Testování](docs/development/testing.md) · [Nasazení](docs/deployment.md) · [Aktualizace](docs/updates.md) · [Mapa](docs/navigation_guide.md)
 
+Prompty a správní parametry se v cloudu ukládají mimo image do SQL. První nasazení změny potřebuje samostatnou migraci a import aktuálních hodnot; [postup zachování dat a nastavení](docs/development/non-destructive-updates.md).
+
 ## Rychlý start ve VS Code
 
 
@@ -185,3 +187,6 @@ Další lokální modely přidáš přes **Modely a vyhledávání → Dostupné
 **Porovnání výsledků** v administraci (`Management`) používá jednu otázku a dvě oddělené konverzace s vlastními modely, filtry a jedinými embeddingovými indexy. Modelové volby podporují vyhledání podle popisu/parametrů; poslední sekce obsahuje prompty odpovědí, shrnutí a klasifikace. Po aktualizaci restartuj lokální backend pro vytvoření tabulky popisů; cloud vyžaduje guarded `migrate_model_metadata.py`. [Podrobný návod](docs/development/admin-comparison.md).
 
 V modelovém přehledu pod **Konfigurace aplikace** může Management uložit **Maximální délku výstupu (tokeny)** nebo použít výchozí hodnotu. Platí pro nově zahájené chatové/dokumentové operace vybraného profilu. Lokální startup vytvoří `model_runtime_settings`; Azure vyžaduje samostatnou guarded migraci `migrate_model_limits.py`. Rozsah a vliv na kontext popisuje tentýž návod.
+
+
+Cloudové JHU připojení má samostatný [runbook pro dvoukontejnerový sidecar](docs/development/jhu-sidecar-azure.md). Nový `deploy_jhu_sidecar.py` nejprve vytvoří read-only plán; lokální managed start ani zdrojové vydání jej v Azure nezapínají.

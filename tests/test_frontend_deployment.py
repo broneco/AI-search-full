@@ -28,6 +28,10 @@ from pathlib import Path
 args=sys.argv[1:]
 with open(os.environ["CALLS"],"a") as f:f.write(json.dumps(args)+"\\n")
 command=args[0]; args=args[1:]
+if command=="npx":
+    if os.environ.get("SWA_CLI_DEPLOYMENT_TOKEN")!="synthetic-private-deployment-token":sys.exit(8)
+    if os.environ.get("SWA_CLI_DEBUG")!="error":sys.exit(8)
+    if "--deployment-token" in args:sys.exit(8)
 if os.environ.get("FAIL")==command or os.environ.get("FAIL")=="token" and args[:3]==["staticwebapp","secrets","list"]:sys.exit(7)
 if command!="az":sys.exit(0)
 if args[:2]==["account","show"]:result={"id":"subscription","tenantId":"directory"}
@@ -74,6 +78,7 @@ def test_frontend_apply_targets_only_existing_app(tmp_path, shell):
     assert result.returncode == 0, result.stderr
     assert any(call[0] == "npx" for call in calls)
     assert not any("create" in call for call in calls)
+    assert all(TOKEN not in json.dumps(call) and '--deployment-token' not in call for call in calls)
 
 
 @pytest.mark.parametrize("shell", SHELLS)

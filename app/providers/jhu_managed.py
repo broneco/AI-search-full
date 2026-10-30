@@ -1,4 +1,4 @@
-"""One process snapshot of a verified local helper and KV API credentials.
+"""One process snapshot of a verified local/ACA helper and KV API credentials.
 
 No Docker or vault subprocess is launched for each model call. Failure is sticky
 until restart/reset, never a reason to fall back to direct HTTP/env credentials.
@@ -14,7 +14,8 @@ from urllib.parse import urlsplit
 
 from app.core.config import settings
 from app.core.tenant_identity import tenant_config_name
-from app.providers.jhu_secrets import APISecretReferences, CredentialPair, JHUConnectionError, key_vault_resolver
+from app.providers.jhu_secrets import (APISecretReferences, SidecarAPISecretReferences,
+                                     CredentialPair, JHUConnectionError, key_vault_resolver)
 
 
 @dataclass(frozen=True)
@@ -34,10 +35,15 @@ def signature():
     return (settings.APP_ENV, settings.TENANT_ID, settings.JHU_CONNECTION_MODE,
             settings.JHU_LLM_ENDPOINT, settings.JHU_LLM_ALLOW_HTTP,
             settings.JHU_KEY_VAULT_NAME, settings.JHU_API_USERNAME_SECRET,
-            settings.JHU_API_PASSWORD_SECRET, settings.JHU_HELPER_WORKSPACE)
+            settings.JHU_API_PASSWORD_SECRET, settings.JHU_HELPER_WORKSPACE,
+            settings.JHU_GATEWAY_KEY_SECRET, settings.JHU_SIDECAR_APP_NAME)
 
 
 def validate_managed_config() -> None:
+    if settings.JHU_CONNECTION_MODE == 'sidecar':
+        from app.providers.jhu_sidecar import sidecar_context
+        sidecar_context(settings)
+        return
     if settings.APP_ENV not in {'local', 'test'} or tenant_config_name(settings.TENANT_ID) != 'jhu':
         raise JHUConnectionError('jhu_managed_local_only')
     try:
@@ -104,6 +110,13 @@ def managed_failure() -> str | None:
 
 def _load_connection() -> ManagedConnection:
     validate_managed_config()
+    if settings.JHU_CONNECTION_MODE == 'sidecar':
+        from app.providers.jhu_sidecar import ENDPOINT
+        refs = SidecarAPISecretReferences(settings.JHU_API_USERNAME_SECRET, settings.JHU_API_PASSWORD_SECRET,
+                                         settings.JHU_GATEWAY_KEY_SECRET)
+        with key_vault_resolver(settings.JHU_KEY_VAULT_NAME, refs, 'managed_identity') as resolver:
+            credentials, key = resolver.api_credentials(), resolver.gateway_key()
+        return ManagedConnection(ENDPOINT, credentials, key)
     endpoint, key = verify_helper()
     refs = APISecretReferences(settings.JHU_API_USERNAME_SECRET, settings.JHU_API_PASSWORD_SECRET)
     with key_vault_resolver(settings.JHU_KEY_VAULT_NAME, refs) as resolver:

@@ -46,6 +46,8 @@ Bez `-Apply` skript pouze čte. Název existující SWA bere z `AZURE_SWA_USER_N
 
 ### Migrace a stav hledání
 
+Cloudové prompty, search/chunkování a klasifikace nově používají SQL `tenant_settings`. Před prvním nasazením této verze proveď explicitní zachycení současných souborových/Blob nastavení a guarded insert-only import: [postup aktualizace](development/non-destructive-updates.md). `migrate_tenant_settings.py` standardně pouze plánuje; cloudový startup tabulku nevytváří. SQL převod ani jeho cloudová akceptace nejsou součástí publikace zdrojů.
+
 | Skript / dokument | Použití |
 |---|---|
 | `migrate_search_schema.py` | Explicitní tenant/Unicode/FTS migrace pro potvrzený cíl |
@@ -71,3 +73,7 @@ Zápis vyžaduje `--apply --expect-tenant ju-prod`, v cloudu také `--expect-hos
 Ověř připravenou revizi a verzi, přihlášení, dotaz s citacemi, načtení PDF a izolaci oprávnění. Backend image a obě SWA se vydávají samostatně. Pro návrat zachovej předchozí image; rollback aplikace nenahrazuje rollback schématu nebo bezpečný návrat heslových hashů.
 
 Přihlašovací údaje nevkládej do commitů ani logů. Backend může používat managed identity/Key Vault podle existující konfigurace; změny RBAC, kapacity, klíčů a databáze vyžadují vlastní schválený postup. Běžná publikace zdrojů do Forgejo Azure nemění.
+
+## JHU sidecar připojení
+
+Pro dvoukontejnerovou variantu používej [cloudový runbook](development/jhu-sidecar-azure.md) a `deploy_jhu_sidecar.py`, standardně read-only. Běžný `deploy_backend.ps1` zůstává single-container image releasem. Azure aktivaci, dvě nové KV reference, kapacitu, migrace a SWA rollout proveď podle samostatně schváleného plánu. JHU MI/VPN/modelová funkční akceptace prošla. Otevřený zůstává Management vector/hybrid SQL timeout10s; explicitní keyword funguje. Další rollout ověřte nezávisle, neodvozujte jej ze zdrojového snapshotu.

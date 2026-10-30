@@ -11,3 +11,7 @@ Poté wheel rozbalí mimo checkout a importuje aplikaci izolovaným Python proce
 Embeddingová slice navíc ověřuje načtení JHU Nomic katalogu z nainstalovaného wheelu mimo checkout; profil 768 musí být dostupný bez soukromého prostředí.
 
 Managed integrace kontroluje přibalení a import `jhu_managed.py` a `jhu_secrets.py` bez závislosti na hostitelském `scripts/` či root probe. Izolovaný import odstraňuje také JHU process variables; nesmí potřebovat Docker ani Key Vault.
+
+Cloudový runtime musí být také v instalovaném wheelu: kontrola vyžaduje app/providers/jhu_sidecar.py. Žádné .ovpn/.auth/env hodnoty se nebalí.
+
+Trvalá nastavení přidávají povinný modul `app/storage/tenant_settings.py`; izolovaný import aplikace musí fungovat i s jeho lazy vazbou na resolver, bez připojení k produkční databázi.

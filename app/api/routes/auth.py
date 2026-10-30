@@ -38,6 +38,7 @@ class RegisterRequest(BaseModel):
 
 class UserResponse(BaseModel):
     user_id: str
+    tenant_id: str
     email: str
     username: str
     role: str
@@ -167,6 +168,7 @@ async def login(
         access_token=token,
         user=UserResponse(
             user_id=str(user.user_id),
+            tenant_id=user.tenant_id,
             email=user.email,
             username=user.username,
             role=user.role,
@@ -229,6 +231,7 @@ async def register(
         access_token=token,
         user=UserResponse(
             user_id=str(new_user.user_id),
+            tenant_id=new_user.tenant_id,
             email=new_user.email,
             username=new_user.username,
             role=new_user.role,
@@ -238,7 +241,7 @@ async def register(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(
+def get_current_user(
     db: Session = Depends(get_db_session),
     principal: Principal = Depends(get_principal),
 ):
@@ -247,6 +250,7 @@ async def get_current_user(
 
     return UserResponse(
         user_id=str(user.user_id),
+        tenant_id=user.tenant_id,
         email=user.email,
         username=user.username,
         role=user.role,

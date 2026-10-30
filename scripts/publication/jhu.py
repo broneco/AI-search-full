@@ -14,9 +14,40 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 REMOTE = "https://forgejo.jcu.cz/dconsulting/jhu-ai-search.git"
 TEMPLATES = "publication/jhu/templates/"
-INTERNAL = ("scripts/", "publication/", "docs/", ".agents/memory/", ".agents/inbox/", ".github/")
+INTERNAL = ("scripts/", "publication/", ".agents/memory/", ".agents/inbox/", ".github/")
 INTERNAL_FILES = {"export_jhu.py", "prepare_jhu_publication.py", "probe_jhu_vpn.py", "tests/test_vpn_spike.py", "tests/test_jhu_helper.py", "tests/test_jhu_publication.py", ".agents/workflows/jhu-publication.md"}
 FORBIDDEN = {".git", ".local", ".venv", "node_modules", ".next", "out", "__pycache__", "data", "data - full backup", "data-full backup", "scratch"}
+
+
+def is_adr(name: str) -> bool:
+    """The JHU publication omits ADR documents, not the rest of the public manuals/history."""
+    path = PurePosixPath(name)
+    return "adr" in {part.casefold() for part in path.parts} or path.name.casefold().startswith("adr-")
+
+
+def documentation_links(payload: dict[str, bytes], original: dict[str, bytes], version: str) -> None:
+    """Keep prose; unlink omitted ADRs and link omitted development-only sources upstream."""
+    directories = {str(parent) for name in original for parent in PurePosixPath(name).parents}
+    for name, data in list(payload.items()):
+        if not name.endswith(".md"):
+            continue
+        def rewrite(match):
+            label, reference = match.group(1), match.group(2)
+            url = urlsplit(reference.strip("<>"))
+            if url.scheme or not url.path or "<" in reference:
+                return match.group(0)
+            target = posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(url.path)))
+            if is_adr(target):
+                return label
+            if target in payload or any(item.startswith(target.rstrip("/") + "/") for item in payload):
+                return match.group(0)
+            if target in original or target in directories:
+                suffix = ("#" + url.fragment) if url.fragment else ""
+                kind = "blob" if target in original else "tree"
+                return f"[{label}](https://github.com/broneco/AI-search-full/{kind}/{version}/{target}{suffix})"
+            return match.group(0)  # Unknown broken links still fail validation.
+        text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", rewrite, data.decode("utf-8-sig"))
+        payload[name] = text.encode("utf-8")
 
 
 def git(root: Path, *args: str) -> str:
@@ -68,8 +99,8 @@ def validate(payload: dict[str, bytes]) -> None:
     if any(not safe_name(name) for name in payload):
         raise ValueError("Private/generated content in handoff.")
     for name, data in payload.items():
-        if name.startswith((".agents/memory/archive/", "docs/releases/", "docs/deployments/")):
-            raise ValueError("Development history is not part of the handoff.")
+        if name.startswith(".agents/memory/archive/") or is_adr(name):
+            raise ValueError("Private agent history and ADR files are not part of the handoff.")
         if not name.endswith(".md"):
             continue
         for link in re.findall(r"\]\(([^)]+)\)", data.decode("utf-8-sig")):
@@ -85,7 +116,8 @@ def project(original: dict[str, bytes]) -> tuple[dict[str, bytes], str]:
     """Explicit JHU variants; template/code drift fails before any destination write."""
     version = "v" + tomllib.loads(original["pyproject.toml"].decode("utf-8-sig"))["project"]["version"]
     payload = {name: data for name, data in original.items()
-               if (not name.startswith(INTERNAL) or name.startswith('scripts/vpn_spike/')) and name not in INTERNAL_FILES
+               if (not name.startswith(INTERNAL) or name.startswith(('scripts/vpn_spike/', 'scripts/deployment/'))) and name not in INTERNAL_FILES
+               and not is_adr(name)
                and (not name.startswith("tenants/") or name.startswith("tenants/jhu/"))
                and ("/public/logos/" not in name or name.endswith("/logo-JHU.webp"))}
     for filename in ("search_config.json", "classification_config.json", "model_config.json", "embedding_config.json", "local_model_recipes.json"):
@@ -127,23 +159,35 @@ def project(original: dict[str, bytes]) -> tuple[dict[str, bytes], str]:
     templates = {name.removeprefix(TEMPLATES): data for name, data in original.items() if name.startswith(TEMPLATES)}
     if "README.md" not in templates or ".agents/AGENTS.md" not in templates:
         raise ValueError("Committed JHU documentation templates are missing.")
-    payload.update({name: data.decode("utf-8-sig").replace("@@VERSION@@", version).encode("utf-8")
-                    for name, data in templates.items()})
+    for name, data in templates.items():
+        if not is_adr(name) and (name not in payload or (not name.startswith("docs/") and name != "README.md")):
+            payload[name] = data.decode("utf-8-sig").replace("@@VERSION@@", version).encode("utf-8")
+    # Preserve the complete source README, with a small explicit note about the JHU-only runtime.
+    readme = payload["README.md"].decode("utf-8-sig")
+    notice = (f"> Předání JHU {version}: konfigurace a branding tohoto balíčku obsahují pouze JHU. "
+              "Níže je úplná veřejná dokumentace hlavního projektu; příklady jiných tenantů jsou obecný kontext. "
+              "ADR soubory jsou vynechané. Pro existující cloud se sidecarem použijte "
+              "[JHU cloudový postup](docs/development/jhu-sidecar-azure.md).\n\n")
+    payload["README.md"] = (notice + readme).encode("utf-8")
     for name, data in list(payload.items()):
         if name.startswith("tests/test_") and name.endswith(".py"):
             tree = ast.parse(data.decode("utf-8-sig"))
             functions = [node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                          and node.name.startswith("test_")]
             doc = "docs/tests_explained/" + PurePosixPath(name).stem + ".md"
+            if doc in payload:
+                continue  # Existing detailed explanations are documentation, not generated placeholders.
             payload[doc] = ("# " + PurePosixPath(name).stem + "\n\nAktuální testy v [" + name + "](../../" + name
                             + "). [Postup testování](../development/testing.md).\n\n"
                             + "\n".join("- `" + item + "`" for item in functions) + "\n").encode("utf-8")
     payload["docs/navigation_guide.md"] = b""
     lines = ["# Mapa aktuálního repozitáře", "", "Pouze předané zdroje a současná dokumentace.", ""]
+    descriptions = dict(re.findall(r"^- `([^`]+)` — (.+)$", original.get("docs/navigation_guide.md", b"").decode("utf-8-sig"), re.MULTILINE))
     for name in sorted(payload):
-        label = (payload[name].decode("utf-8-sig").splitlines() or ["Mapa aktuálního repozitáře"])[0].lstrip("# ") if name.endswith(".md") else "Součást aktuální implementace projektu."
+        label = descriptions.get(name) or ((payload[name].decode("utf-8-sig").splitlines() or ["Mapa aktuálního repozitáře"])[0].lstrip("# ") if name.endswith(".md") else "Součást aktuální implementace projektu.")
         lines.append("- `" + name + "` — " + label)
     payload["docs/navigation_guide.md"] = ("\n".join(lines) + "\n").encode("utf-8")
+    documentation_links(payload, original, version)
     validate(payload)
     return payload, version
 

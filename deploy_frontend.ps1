@@ -85,6 +85,8 @@ $npmPath = (Get-Command npm.cmd -ErrorAction Stop).Source
 $npxPath = (Get-Command npx.cmd -ErrorAction Stop).Source
 $previousUrl = [Environment]::GetEnvironmentVariable('NEXT_PUBLIC_BACKEND_URL')
 $previousTheme = [Environment]::GetEnvironmentVariable('NEXT_PUBLIC_CLIENT_THEME')
+$previousDeploymentToken = [Environment]::GetEnvironmentVariable('SWA_CLI_DEPLOYMENT_TOKEN')
+$previousDeployDebug = [Environment]::GetEnvironmentVariable('SWA_CLI_DEBUG')
 Push-Location -LiteralPath $appDir
 try {
     $env:NEXT_PUBLIC_BACKEND_URL = $BackendUrl
@@ -98,11 +100,16 @@ try {
     $secrets = Invoke-AzureRead -Arguments (@('staticwebapp', 'secrets', 'list', '--name', $StaticWebAppName, '--resource-group', $ResourceGroup) + $scope)
     $deploymentToken = $secrets.properties.apiKey
     if (-not $deploymentToken) { throw 'Deployment token unavailable; no deployment attempted.' }
-    Invoke-ReleaseCommand -Command $npxPath -Arguments @('@azure/static-web-apps-cli', 'deploy', './out', '--deployment-token', $deploymentToken, '--env', 'production') -Quiet
+    # Keep the token out of command arguments/process listings and debug output.
+    $env:SWA_CLI_DEPLOYMENT_TOKEN = $deploymentToken
+    $env:SWA_CLI_DEBUG = 'error'
+    Invoke-ReleaseCommand -Command $npxPath -Arguments @('@azure/static-web-apps-cli', 'deploy', './out', '--env', 'production') -Quiet
     Write-Output "Frontend deployment CLI completed for $($swa.defaultHostname). Verify live version, auth, citations and CORS."
 } finally {
     $deploymentToken = $null
     [Environment]::SetEnvironmentVariable('NEXT_PUBLIC_BACKEND_URL', $previousUrl)
     [Environment]::SetEnvironmentVariable('NEXT_PUBLIC_CLIENT_THEME', $previousTheme)
+    [Environment]::SetEnvironmentVariable('SWA_CLI_DEPLOYMENT_TOKEN', $previousDeploymentToken)
+    [Environment]::SetEnvironmentVariable('SWA_CLI_DEBUG', $previousDeployDebug)
     Pop-Location
 }

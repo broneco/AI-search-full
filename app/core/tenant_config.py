@@ -62,8 +62,19 @@ def resolve_tenant_file_path(tenant_id: str, filename: str) -> Tuple[str, bool]:
 
 def load_tenant_json(tenant_id: str, filename: str, default_data: Any = None) -> Any:
     """
-    Load JSON configuration file for a tenant with fallback to default tenant folder.
+    Load cloud mutable SQL overrides first, then bundled file-level defaults.
     """
+    if uses_sql_settings(filename):
+        from app.storage.db import SessionLocal
+        from app.storage.tenant_settings import read_setting, TenantSettingsError
+        from sqlalchemy.exc import SQLAlchemyError
+        try:
+            with SessionLocal() as db:
+                override = read_setting(db, tenant_id, filename)
+        except (SQLAlchemyError, ValueError):
+            raise TenantSettingsError() from None
+        if override is not None:
+            return override
     file_path, is_fallback = resolve_tenant_file_path(tenant_id, filename)
     if os.path.exists(file_path):
         try:
@@ -77,9 +88,21 @@ def load_tenant_json(tenant_id: str, filename: str, default_data: Any = None) ->
 
 def save_tenant_json(tenant_id: str, filename: str, data: Any) -> str:
     """
-    Save JSON configuration file for a tenant in tenants/<tenant_base>/<filename>.
-    Ensures directory exists.
+    Save cloud mutable configuration durably in SQL; keep local/test file overlays.
     """
+    if uses_sql_settings(filename):
+        from app.storage.db import SessionLocal
+        from app.storage.tenant_settings import write_setting, TenantSettingsError
+        from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+        from sqlalchemy.orm.exc import StaleDataError
+        try:
+            with SessionLocal.begin() as db:
+                write_setting(db, tenant_id, filename, data)
+        except (IntegrityError, StaleDataError):
+            raise TenantSettingsError("tenant_settings_conflict", 409) from None
+        except SQLAlchemyError:
+            raise TenantSettingsError() from None
+        return f"sql:tenant_settings/{tenant_id}/{filename}"
     tenant_base = get_tenant_base(tenant_id)
     tenant_root = LOCAL_TENANTS_DIR or TENANTS_DIR
     tenant_dir = os.path.join(tenant_root, tenant_base)
@@ -94,3 +117,9 @@ def save_tenant_json(tenant_id: str, filename: str, data: Any) -> str:
         logger.error(f"Failed to save tenant config '{filename}' for tenant '{tenant_base}': {e}")
         
     return target_path
+
+
+def uses_sql_settings(filename: str) -> bool:
+    """Cloud settings live outside the image; local/test keep their isolated overlays."""
+    from app.storage.tenant_settings import MUTABLE_CONFIG_FILES
+    return settings.APP_ENV in {"dev", "prod"} and filename in MUTABLE_CONFIG_FILES

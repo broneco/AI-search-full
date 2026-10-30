@@ -49,7 +49,7 @@ def get_tenant_prompts_map(tenant_id: str) -> Dict[str, str]:
 
 def update_tenant_prompt(tenant_id: str, locale: str, prompt_text: str) -> Dict[str, str]:
     """
-    Update custom system prompt for a tenant and locale directly in tenants/<tenant_id>/prompts.json.
+    Update a locale in durable cloud SQL settings or the isolated local/test overlay.
     """
     loc = "cs" if locale.lower() == "cs" else "en"
     current_map = get_tenant_prompts_map(tenant_id)

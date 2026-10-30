@@ -6,6 +6,9 @@ This policy dictates how multi-tenant configurations, system prompts, search met
 
 ## 1. Canonical Location of Tenant Configuration
 
+
+Cloud mutable override exception (ADR-0042): in APP_ENV dev/prod, administrator edits to prompts.json, search_config.json and classification_config.json live in exact-tenant SQL tenant_settings. Public tenants/ files remain bundled file-level defaults only for absent rows; SQL errors must fail explicitly. Do not rewrite cloud defaults or legacy Blob config during release. First migration requires explicit capture/reconciliation and insert-only import; local/test overlays stay as below. See docs/development/non-destructive-updates.md.
+
 All configuration files, environment variable files, and graphic assets belonging to specific client tenants MUST be placed inside the root `tenants/` directory in dedicated subfolders named after the base tenant identifier:
 
 ```text

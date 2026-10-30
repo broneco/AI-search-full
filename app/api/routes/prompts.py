@@ -49,7 +49,7 @@ class PromptResponse(BaseModel):
 
 @router.get("", response_model=PromptResponse)
 @router.get("/", response_model=PromptResponse, include_in_schema=False)
-async def get_prompts():
+def get_prompts():
     """Get system prompt templates for current tenant."""
     prompts = get_tenant_prompts_map(settings.TENANT_ID)
     return PromptResponse(
@@ -61,7 +61,7 @@ async def get_prompts():
 
 @router.put("", response_model=PromptResponse, dependencies=[Depends(require_manager)])
 @router.put("/", response_model=PromptResponse, include_in_schema=False, dependencies=[Depends(require_manager)])
-async def update_prompt(request: PromptUpdateRequest):
+def update_prompt(request: PromptUpdateRequest):
     """Update custom system prompt for current tenant and locale."""
     if not request.prompt_text or not request.prompt_text.strip():
         raise HTTPException(status_code=400, detail="Text systémového promptu nesmí být prázdný.")

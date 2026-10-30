@@ -1,3 +1,3 @@
 # Write an Architecture Decision
 
-Use .agents/templates/adr-template.md for a durable decision. Choose the highest existing ADR number plus one; do not infer the next number from the template. Keep one decision focused, link current technical consequences, update the navigation/changelog and record required follow-up work in current memory.
+This handoff omits upstream ADR files and their template. Document current architecture in docs/architecture/ or docs/design/; preserve the full public manuals and test explanations. If the JHU team explicitly adopts new ADRs, establish its own template and numbering rather than assuming the upstream files are present. Update navigation/changelog and current memory for durable changes.

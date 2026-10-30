@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { requestJson, chooseIndexSelection } from "../lib/apiRequest";
 
 type Index = { index_id: string; model: string; dimensions: number; embedding_profile: string | null;
   embedding_location?: "local" | "cloud" | null;
@@ -20,15 +21,13 @@ export function useEmbeddingIndexes(url: string, token: string | null, scope: st
   identityRef.current = identity;
   const load = useCallback(async (initial = false) => {
     const ticket = ++generation.current;
-    if (!enabled || !token || !scope) { setCatalog(null); setSelectedId(""); return; }
+    if (!enabled || !token || !scope) { setCatalog(null); setSelectedId(""); setError(""); setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${url}/api/search-indexes`, { headers: { Authorization: `Bearer ${token}` } });
-      const body = await res.json();
+      const body = await requestJson(`${url}/api/search-indexes`, { headers: { Authorization: `Bearer ${token}` } });
       if (ticket !== generation.current) return;
-      if (!res.ok) throw new Error(body.detail || "Index catalog unavailable");
       setCatalog(body); setError("");
-      if (initial) setSelectedId(body.indexes.find((i: Index) => i.ingestion_default && i.ready)?.index_id || "");
+      setSelectedId(current => chooseIndexSelection(current, body.indexes, initial));
       // Refresh never silently replaces an explicit choice, even when it became invalid.
     } catch (e) { if (ticket === generation.current) { setError(e instanceof Error ? e.message : String(e)); setCatalog(null); } }
     finally { if (ticket === generation.current) setLoading(false); }
@@ -100,7 +99,7 @@ export function EmbeddingIndexPanel({ controller: c, locale }: { controller: Con
       {c.catalog?.can_prepare && i.embedding_profile && <button type="button" disabled={c.preparing}
         className="underline" onClick={() => void c.prepare(i.embedding_profile!, i.index_id)}>{cs ? "Doplnit embeddingy" : "Complete embeddings"}</button>}
     </div>)}
-    {c.catalog?.can_prepare ? <div className="flex gap-3 items-center flex-wrap mt-3">
+    {c.loading ? <p>{cs ? "Načítám přehled indexů…" : "Loading indexes…"}</p> : !c.catalog ? <p>{cs ? "Přehled indexů není načtený. Použijte Obnovit přehled." : "The index catalog is not loaded. Refresh the catalog."}</p> : c.catalog.can_prepare ? <div className="flex gap-3 items-center flex-wrap mt-3">
       <select aria-label={cs ? "Profil k přípravě" : "Profile to prepare"} value={chosenProfile} disabled={c.preparing}
         onChange={e => setProfile(e.target.value)} className="bg-slate-900 border border-white/20 rounded-lg p-2">
         {c.catalog.profiles.map(p => <option key={p.id} value={p.id}>{p.model} · {p.dimensions} dim</option>)}

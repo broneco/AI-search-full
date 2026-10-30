@@ -2,6 +2,7 @@ import json
 import uuid
 import datetime
 import time
+import asyncio
 import numpy as np
 from typing import Any, List, Optional
 from sqlalchemy import select, text, func, or_
@@ -29,6 +30,16 @@ class VectorRetriever(BaseRetriever):
         self.diagnostics = {}
 
     async def retrieve(
+        self,
+        context: QueryContext,
+        limit: int = 10,
+        **kwargs: Any,
+    ) -> List[RetrievalResult]:
+        # SQLAlchemy/ODBC and local scoring are synchronous. Use one worker for
+        # the whole read, preserving sequential use of this request's session.
+        return await asyncio.to_thread(self._retrieve, context, limit, **kwargs)
+
+    def _retrieve(
         self,
         context: QueryContext,
         limit: int = 10,

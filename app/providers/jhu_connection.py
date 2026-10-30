@@ -25,7 +25,7 @@ def verified_ssl_context():
 
 
 def jhu_configured() -> tuple[bool, str | None]:
-    if settings.JHU_CONNECTION_MODE == 'managed':
+    if settings.JHU_CONNECTION_MODE in {'managed', 'sidecar'}:
         from app.providers.jhu_managed import validate_managed_config, managed_failure
         from app.providers.jhu_secrets import JHUConnectionError
         try:
@@ -46,7 +46,7 @@ def jhu_configured() -> tuple[bool, str | None]:
 
 
 async def embedding_connection() -> dict[str, str]:
-    if settings.JHU_CONNECTION_MODE == 'managed':
+    if settings.JHU_CONNECTION_MODE in {'managed', 'sidecar'}:
         from app.providers.jhu_managed import managed_connection
         from app.providers.jhu_secrets import JHUConnectionError
         try:
@@ -100,6 +100,7 @@ async def jhu_client(connection: dict, timeout, limits=None, *, require_ready=Tr
 
 async def helper_health(client, connection) -> dict:
     """Whitelist operational metadata. Never return upstream paths or secrets."""
+    from app.providers.jhu_secrets import JHUConnectionError
     try:
         response = await client.get(connection['endpoint'] + '/_jhu/health', timeout=3)
         response.raise_for_status()
@@ -107,6 +108,10 @@ async def helper_health(client, connection) -> dict:
         if (not isinstance(body, dict) or body.get('protocol_version') != 2
                 or body.get('state') not in {'disabled', 'connecting', 'ready', 'degraded', 'auth_failed'}):
             raise ValueError()
+        if settings.JHU_CONNECTION_MODE == 'sidecar':
+            from app.providers.jhu_sidecar import sidecar_context
+            if body.get('context') != sidecar_context(settings):
+                raise ValueError()
         age = time.time() - float(body['updated_at'])
         if not math.isfinite(age) or age < 0:
             raise ValueError()
@@ -122,27 +127,27 @@ async def helper_health(client, connection) -> dict:
         if age > 30 and result['state'] == 'ready':
             result.update(state='degraded', code='vpn_status_stale')
         return result
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, JHUConnectionError):
         raise ModelError('jhu_connection_unavailable', 'JHU spojení není připravené. Ověřte helper nebo obnovte připojení.', 503) from None
 
 
 async def connection_status() -> dict:
-    if settings.JHU_CONNECTION_MODE != 'managed':
+    if settings.JHU_CONNECTION_MODE not in {'managed', 'sidecar'}:
         return dict(mode='direct', state='disabled', code='jhu_managed_disabled')
     started = time.monotonic()
     try:
         connection = await embedding_connection()
         async with jhu_client(connection, httpx.Timeout(3), require_ready=False) as client:
             result = await helper_health(client, connection)
-        return dict(mode='managed', **result, health_ms=round(1000 * (time.monotonic() - started)))
+        return dict(mode=settings.JHU_CONNECTION_MODE, **result, health_ms=round(1000 * (time.monotonic() - started)))
     except ModelError as exc:
-        return dict(mode='managed', state='degraded', code=exc.code)
+        return dict(mode=settings.JHU_CONNECTION_MODE, state='degraded', code=exc.code)
 
 
 async def refresh_connection() -> dict:
     from app.providers.jhu_managed import refresh_managed_connection
     from app.providers.jhu_secrets import JHUConnectionError
-    if settings.JHU_CONNECTION_MODE != 'managed':
+    if settings.JHU_CONNECTION_MODE not in {'managed', 'sidecar'}:
         raise ModelError('jhu_managed_disabled', 'Spravované připojení není zapnuté.', 409)
     if not slots.acquire(blocking=False):
         raise ModelError('model_busy', 'JHU služba právě zpracovává požadavek. Obnovte připojení po dokončení.', 429)

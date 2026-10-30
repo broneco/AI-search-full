@@ -240,6 +240,19 @@ class DBChatMessage(Base):
     thread: Mapped["DBChatThread"] = relationship("DBChatThread", back_populates="messages")
 
 
+class DBTenantSetting(Base):
+    """Durable mutable configuration; bundled tenant JSON remains a default only."""
+    __tablename__ = "tenant_settings"
+    tenant_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    filename: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow,
+                                                       onupdate=datetime.datetime.utcnow, nullable=False)
+    __mapper_args__ = {"version_id_col": revision}
+
+
 class DBModelAccess(Base):
     """Per-tenant overrides; null means all groups, an empty list denies everyone."""
     __tablename__ = "model_access_policies"

@@ -2,7 +2,7 @@
 
 AI vyhledávání nad dokumenty s citacemi a PDF náhledy. Backend používá Python/FastAPI, uživatelská aplikace a administrace Next.js/React. Aktuální cloudová cesta je Azure SQL + Blob Storage + Azure OpenAI; lokální vývoj má vlastní SQL Server v Dockeru.
 
-Aktuální vydání: **[v0.1.7](docs/releases/v0.1.7.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
+Aktuální vydání: **[v0.1.8](docs/releases/v0.1.8.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
 
 ## Rychlý start ve VS Code
 
@@ -160,6 +160,14 @@ npm --prefix frontend-admin run build
 
 ## Deployment do Azure
 
+Přechod k aktualizacím se zachováním stavu: [trvalá nastavení, první import a bezpečný release](docs/development/non-destructive-updates.md). První převod vyžaduje aditivní migraci `migrate_tenant_settings.py` a zachycení současných promptů/search/classification. Pro JHU je převod i restart skutečně ověřený: [výsledek nasazení](docs/deployments/2026-10-29-durable-settings-rollout.md).
+
+JHU backend, VPN sidecar a obě konzole jsou nasazené; [ověřený stav, provozní hranice a návrat](docs/deployments/2026-10-29-jhu-sidecar-rollout.md). Administrátorský vector/hybrid má otevřený SQL timeout; explicitní keyword funguje. Lokální helper se stejným VPN účtem nespouštěj souběžně s ACA bez koordinace relací.
+
+Cloudové JHU připojení má samostatný [runbook pro dvoukontejnerový sidecar](docs/development/jhu-sidecar-azure.md). Nový `deploy_jhu_sidecar.py` nejprve vytvoří read-only plán; lokální managed start ani zdrojové vydání jej v Azure nezapínají.
+
+
+
 Release backendu, migrace databáze a release frontendů jsou samostatné kroky. Příkazy spouštěj v novém terminálu bez lokálně exportovaných SQL/modelových proměnných. Ověř aktivní Azure účet a subscription:
 
 ```powershell
@@ -229,7 +237,7 @@ Zápis vyžaduje `--apply --expect-tenant ju-prod`, v cloudu také `--expect-hos
 
 ## Vydání a předání JHU
 
-Hlavní GitHub repozitář, izolovaný JHU repozitář na Forgejo a nasazení do Azure jsou tři samostatné operace. Verzi zdrojů vydáváme v hlavním repu; JHU dostává jen očištěný snapshot a navazující souhrnné commity bez naší vývojové historie. Aktuální exportéry a templates jsou verzované, takže postup funguje i po novém klonu.
+Hlavní GitHub repozitář, izolovaný JHU repozitář na Forgejo a nasazení do Azure jsou tři samostatné operace. Verzi zdrojů vydáváme v hlavním repu; JHU dostává jen očištěný snapshot a navazující souhrnné commity bez naší vývojové historie. Předání zachovává úplnou veřejnou dokumentaci včetně changelogu, release notes a testových vysvětlení; vynechává ADR soubory. Runtime konfigurace a branding zůstávají pouze JHU. Aktuální exportéry a templates jsou verzované, takže postup funguje i po novém klonu.
 
 - Přehled a příkazy: [předávání JHU](docs/development/jhu-publication.md).
 - Podrobný postup pro AI, kontroly obou Gitů, obnovení po přerušení a oddělený Azure release: [kanonický workflow](.agents/workflows/jhu-publication.md).
@@ -260,7 +268,7 @@ Pro přenos do nového repozitáře použij aktuální veřejné zdroje včetně
 
 Tenantový `model_config.json` definuje GPT-5.4-mini, GPT-5.4 a v JHU také Qwen. Obě konzole vybírají model pro další dotaz. V administraci záložka **Modely a vyhledávání** sdružuje modely odpovědí/shrnutí/klasifikace, načtení z JHU API, skupinová oprávnění, přípravu/výběr embeddingových indexů a systémový prompt. Chat ukazuje aktuální model/index s odkazem pro změnu. Výběr odpovědního modelu embeddingy nemění; explicitní volba indexu nemění výchozí ingestaci.
 
-[Spuštění a testování modelů](docs/development/model-selection.md), [architektura a slices](docs/architecture/model-catalog-roadmap.md). Pro lokální JHU backend použij `./dev.ps1 -Action backend -Tenant jhu` s připojenou OpenVPN. Azure potřebuje samostatně ověřenou cestu k JHU i migraci tabulky modelových oprávnění.
+[Spuštění a testování modelů](docs/development/model-selection.md), [architektura a slices](docs/architecture/model-catalog-roadmap.md). Pro lokální JHU backend použij [automatický managed start](docs/development/jhu-managed-local.md), případně přímý režim s vlastní ověřenou VPN. Azure má [samostatný sidecar rollout](docs/development/jhu-sidecar-azure.md) a potřebuje ověřené modelové SQL tabulky.
 
 Experiment automatického připojení bez systémové VPN je oddělený [Docker probe](docs/development/jhu-vpn-spike.md). Ověřuje vlastní tunel, modelové API, embeddingy a reconnect; zatím se nezapojuje do `dev.ps1` ani aplikace.
 

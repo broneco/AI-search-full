@@ -24,6 +24,8 @@ This test suite validates lightweight database-backed authentication, multi-tena
 
 ## Aktualizace pro slice 2 (2026-10-14)
 
+Login, registrace a `/api/auth/me` nově výslovně ověřují také přesné `tenant_id` v profilu. UI tím může oddělit uložené volby jednotlivých tenantů a účtů.
+
 ### Jednoduše
 
 Registrace nepřiděluje Management; přihlášení a konverzace patří ověřenému tenantovi.

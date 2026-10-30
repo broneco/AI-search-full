@@ -48,7 +48,7 @@ Public JSON/assets under tenants/ and fixtures/ ship with the Python wheel; priv
 ## Documentation and memory
 
 - Record changes under Unreleased in `docs/CHANGELOG.md`; create a release block only when releasing.
-- Record durable architectural decisions in `docs/adr/`, using the highest existing ADR number plus one. `ADR-0001-template.md` remains a generic template.
+- Preserve full public documentation and detailed test explanations. This handoff omits ADR files; describe current architecture in `docs/architecture/` and `docs/design/` and do not assume an imported ADR template exists.
 - Add/update the corresponding explanations in `docs/tests_explained/` for changed test modules.
 - Keep `docs/navigation_guide.md` synchronized with source files using relative paths and concise Czech descriptions.
 - Keep project-state and implementation notes concise and current. Historical details belong in `.agents/memory/archive/` or deployment reports; archive contents are not current instructions.

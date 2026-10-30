@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ModelDiscoveryPanel } from "./ModelDiscoveryPanel";
 import { parameterText, ModelOption } from "./ModelPicker";
+import { requestJson } from "../lib/apiRequest";
 
 type RuntimeSettings = {revision:number;max_output_tokens:number|null;default_max_output_tokens:number;
   effective_max_output_tokens:number;effective_max_input_chars:number;minimum:number;maximum:number;context_tokens:number|null};
@@ -23,10 +24,8 @@ export function ModelManagementPanel({url, token, locale}: {url: string; token: 
   const load = useCallback(async () => {
     const ticket = ++generation.current;
     try {
-      const res = await fetch(`${url}/api/models/management`, {headers:{Authorization:`Bearer ${token}`}});
-      const body = await res.json();
+      const body = await requestJson(`${url}/api/models/management`, {headers:{Authorization:`Bearer ${token}`}});
       if (ticket !== generation.current) return;
-      if (!res.ok) throw new Error(body.detail || "Model overview unavailable");
       setRows(previous => body.models.map((row: Row) => {
         const old = previous.find(item => item.id === row.id);
         return {...row, ...(old && drafts.current.has(`${row.id}:access`) ? {access:old.access} : {}),

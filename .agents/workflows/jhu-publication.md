@@ -19,7 +19,7 @@ Pokud „JHU deployment“ neurčuje, zda jde o předání zdrojů nebo Azure, v
 - Doporučený lokální cíl: `.local/publications/jhu-ai-search` uvnitř zdrojového workspace; složka je ignorovaná a přežije restart.
 - První publikace vytvořila samostatný kořenový commit `e4b116efc51ff41bae65a338155b94caee7b1a2c`. Při dalších publikacích zachovej její návaznost. Nový kořen nevytvářej opakovaně.
 - Nepřidávej Forgejo remote do zdrojového Gitu. Nekopíruj `.git`, nepoužívej mirror, merge/cherry-pick vývojových commitů, push všech větví/tagů, force-push ani přepis historie.
-- Uživatel chce v JHU pouze současný stav. Nepředávej staré changelogy, release/deployment reporty, handoffy, archiv AI paměti, provozní deníky, interní zdrojové SHA nebo cestu na soukromé operátory. Aktuální návody/architektura a budoucí souhrnné předávací commity zůstávají.
+- Aktuální požadavek uživatele (30. 10. 2026) zachovává úplnou veřejnou dokumentaci hlavního projektu včetně README, changelogu, release/deployment reportů, handoffů a vysvětlení testů. Vynechávej ADR soubory; odkazy na ně změň na prostý text. Privátní archiv agentní paměti, secrets/data a soukromé operátory nepředávej. Veřejná dokumentační historie není Git historie: původní Git graf zůstává oddělený.
 
 ## 3. Připrav zdrojové vydání
 
@@ -56,33 +56,35 @@ Pracovní strom musí být čistý. Pokud cílový tým přidal vlastní commity
 Nahraď ukázkový tag skutečným schváleným vydáním a zvol nový výstupní název:
 
 ```powershell
-.venv\Scripts\python.exe export_jhu.py --ref v0.1.5 --output .local/publications/jhu-v0.1.5.zip
+.venv\Scripts\python.exe export_jhu.py --ref v0.1.8 --output .local/publications/jhu-v0.1.8.zip
 ```
 
 Nástroj nic nepushuje. Vytvoří ZIP a sousední `.manifest.json`; existující artefakt nepřepisuje. Manifest uchovává interní provenienci mimo zákaznický ZIP. Oba soubory zachovej jako pár.
 
 Povinné vlastnosti exportu:
 
+- Cloudový JHU snapshot předává `deploy_jhu_sidecar.py`, `scripts/deployment/jhu_sidecar.py`, `scripts/vpn_spike/cloud.py`, `app/providers/jhu_sidecar.py`, odpovídající testy a úplný návod `docs/development/jhu-sidecar-azure.md`. Lokální `managed` guard zůstává local/test; cloudový `sidecar` má vlastní MI a replica-context guard. GET/refresh je nyní dostupný Management i pro sidecar (bez restartu helperu). Export nepotvrzuje cloudovou akceptaci a nikdy neobsahuje `.ovpn`, capability ani účty.
+
 - Lokální hygiena musí zachovat `--reload-dir` omezený na `app/`, současný `tests/conftest.py` s výchozím `.local/tmp/pytest/` a číslováním/zámky a retenci v `pyproject.toml`. Dokumentace předání popisuje stejné umístění; nové testovací běhy neumisťuj do kořene. Dočasné adresáře/cache jsou mimo snapshot. Při změně této konfigurace ověř běžný pytest bez `--basetemp` i skutečný dev-script startup.
 
-- Odolnost připojení předává také `app/api/routes/jhu_connection.py`, současný common transport/gateway a template `docs/development/jhu-connection-resilience.md`. Správní refresh je pouze local/test a nemá měnit SQL/katalog/ACL. Testy čistého předání zahrnou test_jhu_connection_status, test_jhu_transport a skutečné loopback cancellation případy; explicitní live/Rancher restart flags musí zůstat vypnuté při běžných exportních regresích. Nepředávej skutečný profil, credentials ani provozní receipt.
+- Odolnost připojení předává také `app/api/routes/jhu_connection.py`, současný common transport/gateway a template `docs/development/jhu-connection-resilience.md`. Správní refresh obnovuje pouze procesový snapshot pro managed/sidecar a nemá měnit SQL/katalog/ACL. Testy čistého předání zahrnou test_jhu_connection_status, test_jhu_transport a skutečné loopback cancellation případy; explicitní live/Rancher restart flags musí zůstat vypnuté při běžných exportních regresích. Nepředávej skutečný profil, credentials ani provozní receipt.
 - Při managed konektivitě musí snapshot obsahovat veřejný `jhu_connection.py`, `scripts/vpn_spike/` včetně runtime/manager/service/gateway/Dockerfile/.dockerignore a aktuální template `docs/development/jhu-managed-local.md`. Manager nesmí importovat neexportovaný experimentální root probe. `.ovpn`/`.auth`, gateway klíč, credentials a lokální stav nikdy nepředávej. Ověř transport/gateway/dev-script/export testy i skutečný wheel bez soukromých env. Managed je zatím local/test a neznamená ACA aktivaci.
 - Pouze `tenants/jhu`, bez privátních env; chybějící search/classification/model/embedding konfigurace se zmaterializují z aktuálních default souborů. Nomic profil/digest/prefixy a aktuální embeddingový návod musí být součástí exportu; private JHU connection env nikoli.
 - Jediný JHU motiv a logo obou frontendů. Lokální identita jhu a demo login JHU; cloudová přesná identita ju-prod se nikdy nezkracuje.
 - Ostatní runtime změny smí být jen explicitní projekce definovaná v nástroji. Změna očekávaného formátu způsobí chybu a vyžaduje revizi, nikoli tiché hádání.
-- Žádný Git graf, jiné klientské konfigurace, interní exportéry/templates, pracovní dokumenty, dependency/cache, klíče, data a historické poznámky.
-- Aktuální dokumentace je z verzovaných templates. Při změně chování reviduj také templates; automatická projekce není záruka jejich aktuálnosti.
+- Žádný původní Git graf, jiné klientské runtime konfigurace, interní exportéry/templates, soukromé pracovní dokumenty, dependency/cache, klíče a dokumentová data. Veřejná historie dokumentace se zachovává.
+- Úplná zdrojová dokumentace má přednost před stručnými templates. Templates pouze doplňují chybějící návody a vytvářejí samostatný agentní kontrakt/paměť. Zachovej podrobná vysvětlení testů; automatický seznam funkcí použij jen při chybějícím vysvětlení. Odkazy na vynechané známé zdroje mohou mířit na příslušný upstream release; neznámé nefunkční odkazy musí validace odmítnout.
 
 ## 6. Zobraz plán, potom aplikuj soubory
 
 ```powershell
-.venv\Scripts\python.exe prepare_jhu_publication.py --archive .local/publications/jhu-v0.1.5.zip --destination .local/publications/jhu-ai-search
+.venv\Scripts\python.exe prepare_jhu_publication.py --archive .local/publications/jhu-v0.1.8.zip --destination .local/publications/jhu-ai-search
 ```
 
 Zkontroluj `head`, `write` i `remove` proti zamýšlenému předání. Výchozí režim je read-only. Apply vyžaduje přesné SHA právě zkontrolovaného cíle:
 
 ```powershell
-.venv\Scripts\python.exe prepare_jhu_publication.py --archive .local/publications/jhu-v0.1.5.zip --destination .local/publications/jhu-ai-search --expect-head "<ověřené cílové HEAD>" --apply
+.venv\Scripts\python.exe prepare_jhu_publication.py --archive .local/publications/jhu-v0.1.8.zip --destination .local/publications/jhu-ai-search --expect-head "<ověřené cílové HEAD>" --apply
 git -C .local/publications/jhu-ai-search diff --stat
 git -C .local/publications/jhu-ai-search diff
 ```
@@ -95,14 +97,14 @@ Přerušené zapisování může zanechat pracovní diff. Zkontroluj jej vůči 
 
 Rozbal ZIP do nové ignorované testovací složky. Nepoužívej `pip install .` z jiného cwd, protože requirements.txt odkazuje na relativní `.[dev]`. Ověř package/resources bez privátních env, izolované testy a oba frontend buildy/TypeScript. Lokální SQL regrese spusť při zásahu do DB. Native Azure a výkon jsou oddělené explicitní brány.
 
-Ověř tenantí scope, dokumentační odkazy a hashe ZIP/manifestu; proveď kontrolu secrets bez jejich výpisu. Do zákaznického changelogu přidej pouze aktuální souhrn předávané verze, ne interní auditní průběh. Pokud po generování měníš zákaznické soubory, vrať změnu do verzovaných templates/projekce a znovu vytvoř kandidáta z nového commitu; nepoužívej neodpovídající manifest.
+Ověř tenantí scope, dokumentační odkazy a hashe ZIP/manifestu; proveď kontrolu secrets bez jejich výpisu. Zachovej veřejný changelog včetně historických vydání; nepřidávej privátní provozní receipts ani credentials. Pokud po generování měníš zákaznické soubory, vrať změnu do verzovaných templates/projekce a znovu vytvoř kandidáta z nového commitu; nepoužívej neodpovídající manifest.
 
 ## 8. Commit a push pouze do Forgejo
 
 ```powershell
 git -C .local/publications/jhu-ai-search add --all
 git -C .local/publications/jhu-ai-search diff --cached --stat
-git -C .local/publications/jhu-ai-search commit -m "Předání JHU AI Search v0.1.5"
+git -C .local/publications/jhu-ai-search commit -m "Předání JHU AI Search v0.1.8"
 git -C .local/publications/jhu-ai-search push origin main
 git -C .local/publications/jhu-ai-search rev-parse HEAD
 git ls-remote https://forgejo.jcu.cz/dconsulting/jhu-ai-search.git refs/heads/main

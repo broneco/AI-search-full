@@ -47,4 +47,4 @@ probe_jhu_model.py
 probe_jhu_embeddings.py
 probe_jhu_vpn.py
 jhu_connection.py
-migrate_model_access.py
+deploy_jhu_sidecar.py

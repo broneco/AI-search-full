@@ -16,6 +16,8 @@ from app.retrieval.filters import document_filters, eligibility_filters, exact_v
 from app.storage.vector_store import write_chunks
 from app.core.model_selection import model_provider
 from app.core.model_config import ModelError
+from app.storage.tenant_settings import TenantSettingsError
+from app.storage.document_catalog import authorized_document_rows
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -104,22 +106,14 @@ async def ingest_document(
 
 
 @router.get("/list")
-async def list_documents(
+def list_documents(
     db: Session = Depends(get_db_session),
     principal: Principal = Depends(get_principal),
 ):
     """List all ingested documents and their chunk counts, respecting security ACL allowed groups."""
     try:
-        context = access_context(principal)
-        docs = db.query(DBDocument).filter(
-            *document_filters(context, db.bind.dialect.name)
-        ).order_by(DBDocument.ingested_at.desc()).all()
         result = []
-        for doc in docs:
-            chunk_count = db.query(DBChunk).join(DBDocument).filter(
-                DBChunk.document_id == doc.document_id,
-                *eligibility_filters(context, db.bind.dialect.name, metadata=False)
-            ).count()
+        for doc, chunk_count in authorized_document_rows(db, access_context(principal)):
             result.append({
                 "document_id": str(doc.document_id),
                 "title": doc.title,
@@ -138,8 +132,10 @@ async def list_documents(
     except ModelError:
         raise
     except Exception as e:
-        logger.error(f"Failed to query document list: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to query document list: %s", type(e).__name__)
+        from sqlalchemy.exc import SQLAlchemyError
+        status = 503 if isinstance(e, SQLAlchemyError) else 500
+        raise HTTPException(status_code=status, detail="Seznam dokumentů nyní není dostupný. Zkuste to znovu.") from None
 
 
 @router.get("/view/{document_id}")
@@ -419,9 +415,10 @@ async def view_document(
 
 @router.get("/categories")
 async def get_categories(db: Session = Depends(get_db_session)):
-    """Read the dynamic classification configuration from Blob Storage or disk."""
+    """Read configuration without requiring a classification model or its catalog."""
     from app.ingestion.tagger import MetadataTagger
-    tagger = MetadataTagger(db_session=db)
+    from starlette.concurrency import run_in_threadpool
+    tagger = await run_in_threadpool(MetadataTagger, llm_provider=object())
     return await tagger.load_config()
 
 
@@ -434,7 +431,7 @@ async def update_categories(request: CategoryConfigRequest, db: Session = Depend
     # 1. Load the old config to detect group/role renames
     try:
         old_config = await tagger.load_config()
-    except ModelError:
+    except (ModelError, TenantSettingsError):
         raise
     except Exception as e:
         logger.warning(f"Could not load old config for rename propagation: {e}")

@@ -253,7 +253,12 @@ def test_native_exact_sql_has_filters_and_only_final_top_k(dimensions):
     if dimensions == 1536:
         assert len(compiled.params["query_json"]) > 4000
     assert "document_acl_grants" in sql and "chunk_acl_grants" in sql
+    assert "FROM document_acl_grants, documents" not in sql
+    assert "FROM chunk_acl_grants, chunks" not in sql
     assert "OPENJSON" in sql and "input_revision = chunks.content_hash" in sql
+    assert sql.count("INNER HASH JOIN") == 2
+    assert "OPTION (HASH JOIN)" not in sql  # Nested JSON/ACL joins keep their own plans.
+    assert "WITH APPROXIMATE" not in sql and "VECTOR_SEARCH" not in sql
     assert 600 not in compiled.params.values() and "wanted" not in sql  # UUIDs may contain the digits 600.
     with pytest.raises(SearchIndexError, match="1998"):
         NativeVector(1999)

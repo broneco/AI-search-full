@@ -1,5 +1,6 @@
 "use client";
 import {useCallback, useEffect, useRef, useState} from "react";
+import {requestJson, chooseIndexSelection} from "../lib/apiRequest";
 
 type IndexOption = {index_id: string; model: string; dimensions: number; ingestion_default: boolean};
 
@@ -11,15 +12,13 @@ export function useQueryIndexes(url: string, token: string | null, scope: string
   const generation = useRef(0);
   const load = useCallback(async (initial = false) => {
     const ticket = ++generation.current;
-    if (!token || !scope) {setIndexes([]); select(""); setError(""); return;}
+    if (!token || !scope) {setIndexes([]); select(""); setError(""); setLoading(false); return;}
     setLoading(true);
     try {
-      const response = await fetch(`${url}/api/search-indexes/available`, {headers:{Authorization:`Bearer ${token}`}});
-      const body = await response.json();
+      const body = await requestJson(`${url}/api/search-indexes/available`, {headers:{Authorization:`Bearer ${token}`}});
       if (ticket !== generation.current) return;
-      if (!response.ok) throw new Error(body.detail || "Index catalog unavailable");
       setIndexes(body.indexes); setError("");
-      if (initial) select(body.indexes.find((i: IndexOption) => i.ingestion_default)?.index_id || "");
+      select(current => chooseIndexSelection(current, body.indexes, initial));
     } catch(e) {
       if (ticket === generation.current) {setIndexes([]); setError(e instanceof Error ? e.message : String(e));}
     } finally {if (ticket === generation.current) setLoading(false);}

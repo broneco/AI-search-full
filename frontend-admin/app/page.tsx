@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { TRANSLATIONS } from "./translations";
 import { CLIENT_THEMES, DEFAULT_THEME_ID } from "./config/themes";
 import { AuthModal } from "./components/AuthModal";
+import { isExpiredSession, requestJson, pollHealth } from "./lib/apiRequest";
 
 // Interface definitions matching the backend schemas
 interface ChatSource {
@@ -388,6 +389,8 @@ export default function Home() {
     else dialog?.close();
   }, [activeTab, workspaceOpen, activeSource]);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
+  const [resourceError, setResourceError] = useState("");
+  const documentsRequest = useRef<AbortController | null>(null);
   const [documents, setDocuments] = useState<IngestedDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
@@ -701,14 +704,11 @@ export default function Home() {
   // Fetch dynamic categories config
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/documents/categories`);
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-        setEditingConfig(data);
-        
-      }
+      const data = await requestJson(`${BACKEND_URL}/api/documents/categories`);
+      setConfig(data);
+      setEditingConfig(data);
     } catch (err) {
+      setResourceError(err instanceof Error ? err.message : String(err));
       console.error("Failed to fetch categories config", err);
     }
   };
@@ -716,18 +716,16 @@ export default function Home() {
   // Fetch dynamic search retrieval configuration
   const fetchSearchConfig = async () => {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/chat/config`, {
+      const data = await requestJson(`${BACKEND_URL}/api/chat/config`, {
         headers: getHeaders(),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setSearchConfig(data);
-        setEditingSearchConfig(data);
-        if (data.search_strategy) {
-          setSearchStrategy(data.search_strategy);
-        }
+      setSearchConfig(data);
+      setEditingSearchConfig(data);
+      if (data.search_strategy) {
+        setSearchStrategy(data.search_strategy);
       }
     } catch (err) {
+      setResourceError(err instanceof Error ? err.message : String(err));
       console.error("Failed to fetch search config", err);
     }
   };
@@ -871,21 +869,22 @@ export default function Home() {
 
   const fetchUserProfile = async (token: string) => {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
+      const data = await requestJson(`${BACKEND_URL}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const data = await res.json();
-        setUserProfile(data);
-        setUserRole(data.role || "Admin");
-      } else {
+      if (localStorage.getItem("dolphin_auth_token") !== token) return;
+      setUserProfile(data);
+      setUserRole(data.role || "Admin");
+    } catch (error) {
+      if (localStorage.getItem("dolphin_auth_token") !== token) return;
+      if (isExpiredSession(error, token, localStorage.getItem("dolphin_auth_token"))) {
         localStorage.removeItem("dolphin_auth_token");
         setAuthToken(null);
         setUserProfile(null);
         setAuthModalOpen(true);
+      } else {
+        setResourceError(error instanceof Error ? error.message : String(error));
       }
-    } catch {
-      console.error("Auth check failed");
     }
   };
 
@@ -894,12 +893,13 @@ export default function Home() {
     setAuthToken(token);
     setUserProfile(user);
     setUserRole(user.role || "Admin");
-    fetchDocuments();
+    setResourceError("");
     fetchConfig();
     fetchSearchConfig();
   };
 
   const handleLogout = () => {
+    setResourceError("");
     localStorage.removeItem("dolphin_auth_token");
     setAuthToken(null);
     setUserProfile(null);
@@ -912,31 +912,15 @@ export default function Home() {
 
   // Check backend health status on mount
   useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/health`);
-        if (res.ok) {
-          setApiOnline(true);
-        } else {
-          setApiOnline(false);
-        }
-      } catch (err) {
-        setApiOnline(false);
-      }
-    };
-
-    checkHealth();
     fetchConfig();
     fetchSearchConfig();
-    
-    // Periodically check API health
-    const interval = setInterval(checkHealth, 15000);
-    return () => clearInterval(interval);
+    return pollHealth(`${BACKEND_URL}/api/health`, setApiOnline);
   }, []);
 
   // Fetch documents list whenever userRole changes to demonstrate live dynamic ACL hiding
   useEffect(() => {
     fetchDocuments();
+    return () => documentsRequest.current?.abort();
   }, [userRole, config, authToken]);
 
   // Auto-scroll chat window when new messages arrive
@@ -958,26 +942,27 @@ export default function Home() {
 
   // Load ingested documents list based on current active user groups
   const fetchDocuments = async () => {
+    documentsRequest.current?.abort();
+    if (!authToken) { setDocuments([]); setLoadingDocs(false); return; }
+    const controller = new AbortController();
+    documentsRequest.current = controller;
     setLoadingDocs(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/documents/list`, {
-        headers: getHeaders()
+      const data = await requestJson(`${BACKEND_URL}/api/documents/list`, {
+        headers: getHeaders(), signal: controller.signal,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data);
-      }
+      if (!controller.signal.aborted) setDocuments(data);
     } catch (err) {
-      console.error("Failed to fetch documents list", err);
+      if (!controller.signal.aborted) setResourceError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoadingDocs(false);
+      if (documentsRequest.current === controller) setLoadingDocs(false);
     }
   };
 
   // Submit Query to FastAPI RAG endpoint
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || loading || !chatModels.modelId || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)) return;
+    if (!query.trim() || loading || !chatModels.canQuery || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)) return;
 
     if (!authToken) {
       setAuthModalOpen(true);
@@ -1586,7 +1571,7 @@ export default function Home() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.7
+                v0.1.8
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -1734,6 +1719,16 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {resourceError && <div role="alert" className="shrink-0 border-b border-amber-400/20 bg-amber-500/10 px-6 py-3 text-sm text-amber-200 flex flex-wrap items-center gap-3">
+        <span>{resourceError}</span>
+        <button type="button" className="underline font-semibold" onClick={() => {
+          setResourceError("");
+          if (authToken) void fetchUserProfile(authToken);
+          void fetchConfig(); void fetchSearchConfig(); void fetchDocuments();
+          void chatModels.reload(); void summaryModels.reload(); void classificationModels.reload(); void embeddingIndexes.reload();
+        }}>{appLanguage === "cs" ? "Načíst znovu" : "Retry loading"}</button>
+      </div>}
       {userProfile?.groups?.includes("Management") && (activeTab === "ingest" || activeTab === "chunking") && <div className="flex flex-wrap items-center gap-3 px-6 py-2 border-b border-white/10 text-xs text-zinc-400">
         <span>{appLanguage === "cs" ? "Shrnutí" : "Summary"}: {summaryModels.models.find(m => m.id === summaryModels.modelId)?.name || "—"}</span>
         <span>{appLanguage === "cs" ? "Klasifikace" : "Classification"}: {classificationModels.models.find(m => m.id === classificationModels.modelId)?.name || "—"}</span>
@@ -2160,6 +2155,7 @@ export default function Home() {
                   {userProfile?.groups?.includes("Management") && <span>{appLanguage === "cs" ? "Embeddingový index" : "Embedding index"}: {searchStrategy === "keyword" ? (appLanguage === "cs" ? "Nepoužívá se (keyword)" : "Not used (keyword)") : embeddingIndexes.selected ? `${embeddingIndexes.selected.model} · ${embeddingIndexes.selectedId.slice(0, 8)}${!embeddingIndexes.canQuery ? (appLanguage === "cs" ? " · nepřipravený" : " · not ready") : ""}` : (appLanguage === "cs" ? "Nevybrán / nedostupný" : "Not selected / unavailable")}</span>}
                   <button type="button" onClick={() => setActiveTab("models")} className="text-indigo-300 hover:text-indigo-200 underline">{appLanguage === "cs" ? "Změnit model / index" : "Change model / index"}</button>
                   {(chatModels.error || (searchStrategy !== "keyword" && embeddingIndexes.error)) && <p role="alert" className="w-full text-amber-300">{chatModels.error || embeddingIndexes.error}</p>}
+                  {(!chatModels.canQuery || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)) && <p className="w-full text-amber-200">{appLanguage === "cs" ? "Dotaz bude dostupný po načtení a výběru dostupného modelu a připraveného indexu. Katalog můžete obnovit v části Modely a vyhledávání." : "Questions become available after a model and prepared index are loaded and selected. Refresh the catalogs in Models and search."}</p>}
                 </div>
                 <form onSubmit={handleSubmit} className="flex gap-3 max-w-4xl mx-auto relative">
                   <input
@@ -2172,7 +2168,7 @@ export default function Home() {
                   />
                   <button
                     type="submit"
-                    disabled={loading || !query.trim() || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)}
+                    disabled={loading || !query.trim() || !chatModels.canQuery || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)}
                     className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px] active:translate-y-[0px]"
                   >
                     {TRANSLATIONS[appLanguage].searchBtn}

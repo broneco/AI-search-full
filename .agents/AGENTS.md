@@ -8,6 +8,9 @@ Precedence: latest explicit user request, security/privacy, this contract, rules
 
 ## Implemented architecture
 
+
+- Cloud mutable prompts/search/chunking/summary/classification use exact-tenant SQL tenant_settings; bundled JSON is only a missing-row default, SQL failure never falls back. local/test overlays remain. Before first new release capture/reconcile current ephemeral files and legacy Blob configuration, then guarded insert-only migrate_tenant_settings.py; startup excludes cloud DDL. Read docs/development/non-destructive-updates.md. Source support is not cloud migration acceptance.
+
 - Python 3.12 reference environment, FastAPI, Pydantic and synchronous SQLAlchemy repositories.
 - Two Next.js/React/TypeScript applications: `frontend-user/` and `frontend-admin/`.
 - Azure SQL native VECTOR exact retrieval; shared tenant, metadata and relational document/chunk ACL predicates before top K.
@@ -21,6 +24,7 @@ Precedence: latest explicit user request, security/privacy, this contract, rules
 - Tenant LLM catalogs select Azure OpenAI or JHU Ollama generate through bound providers; model access uses current server groups and revisioned SQL policies. Embedding providers remain separate.
 - JHU embedding_config adds digest-pinned Ollama Nomic 768. Active index selects query/ingest provider; explicit backfill/activation preserves other model indexes and shared chunks. Do not silently substitute profiles or truncate inputs.
 - Blob Storage, Azure Container Apps, Static Web Apps and optional Key Vault resolution are implemented.
+- JHU `sidecar` is an explicit Linux ACA dev/prod mode, separate from local `managed`. MI snapshots and protected loopback health bind app/revision/replica/exact tenant/target. `deploy_jhu_sidecar.py` defaults to read-only, patches only an existing reviewed template and requires separate capacity/session/schema/model approval. Read docs/development/jhu-sidecar-azure.md; source readiness is not cloud acceptance.
 - Authentication uses a custom signed two-part bearer token, Argon2id passwords and current server-side groups. `JWT_*` setting names are historical; this is not a standard JWT or an Entra ID implementation.
 - RAG orchestration is application code. LangChain/LangGraph and Entra ID are future options, not current dependencies.
 - PostgreSQL scaffolding remains experimental with explicitly deferred retrieval issues; it is not the supported local development path.

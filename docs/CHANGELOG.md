@@ -6,6 +6,55 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+## [v0.1.8] - 2026-10-30
+
+[Souhrn vydání](releases/v0.1.8.md). Trvalá nastavení, cloudový JHU sidecar, stabilizace a opakovatelný test zachování dat. GitHub a Forgejo jsou samostatná zdrojová vydání; dnešní publikace nemění Azure.
+
+- JHU předání nyní zachovává úplnou veřejnou dokumentaci a vysvětlení testů. ADR soubory se vynechávají a odkazy upravují; původní návody nesmí přepsat stručná template. Oddělené Git historie a JHU-only runtime zůstávají.
+
+### Deployment
+
+- 2026-10-30 na další explicitní souhlas proveden skutečný test zachování dat přes novou image/revizipreserve-1030-151331 (ACRdtq/backend5d5b6f6b). Kompletní SQL/ACL/obě vektorové tabulky/konfigurace/klíče a všech431odkazovaných Bloboriginálů mají stejné otisky; po úklidu QA opět4účty/45konverzací/72zpráv/431dokumentů/9372chunků a oba indexy9372/9372. Kapacity/helper/identity/ingress a ingestdefault zachovány. [Skutečná akceptace a hranice](deployments/2026-10-30-preservation-test.md).
+
+- 2026-10-30 na konkrétní souhlas uživatele navýšena existující JHU SQL z S0/10 DTU na S2/50 DTU a samostatně schválen a dokončen stabilizační backend + oba SWA. Revize stable-1030-093449/backend aa7f50e0, helper/ostatní kapacity/klíče/SQL nastavení a corpus zachovány, původní účty/historie ověřeny otisky. Veřejné dokumenty22s→0,281s, indexy14s→0,172s; Azure chat3,24–4,56s, Qwen52–53s převážně v externí generaci. [Důkazy, úplné QA a otevřená relevance R_583](deployments/2026-10-30-cloud-stabilization.md).
+
+- 2026-10-29 dokončen JHU převod3konfigurací do SQL tenant_settings a backend release se skutečným API save/full-stop/start důkazem perzistence. Zachováno4účtů/41konverzací/66zpráv/431dokumentů/9372chunků/9372vektorů, stejné heslové i datové otisky a aktivní index. Původní hodnoty3konfigurací obnoveny přesně; existující auth/historie/PDF200, vlastní heslový login200 a Management403. Stejná identita/klíče/kapacita/helper/SWA a původní veřejný ingress. [Dokončený rollout](deployments/2026-10-29-durable-settings-rollout.md).
+
+- 2026-10-29 byl na výslovné schválení nasazen JHU backend se userspace VPN sidecarem a obě konzole; čtyři modelové tabulky doplněny guarded migracemi. Celkem0,75CPU/1,5Gi/min1max1, SQL tier, credentials a431dokumentů/9372chunků/původní exact index zachovány. [Skutečný rollout a ověření](deployments/2026-10-29-jhu-sidecar-rollout.md).
+- Z ACA ověřeno MI/VPN/discovery18modelů, Nomic768 a MXBAI1024, User Qwen/Azure-mini citovaný chat a uložená provenance, skutečný login/oprávnění, oba veřejné frontend buildy. Management vector/hybrid dál vykazuje SQL exact timeout10s; explicitní keyword prošel. ANN/backfill/performance acceptance se tímto neaktivují.
+
+### Fixed
+
+- Přehled dokumentů používá dvě dávková tenant/ACL-scoped čtení místo dotazu pro každý dokument; SQL přehled, retrieval a cloudové konfigurace neblokují hlavní async smyčku. Čtení kategorií nevyžaduje model. Native exact používá změřený hash-join plán bez změny filtrů, pořadí, indexu, limitu nebo režimu.
+- Obě konzole zobrazují srozumitelné gateway/timeout chyby a obnovují katalogy po prvním neúspěšném načtení. 5xx neodhlašuje, stará 401 nemaže novou relaci, explicitní model/index se tiše nenahrazují, health požadavky se nepřekrývají a neaktivní odeslání má vysvětlení. Auth profil vrací přesné tenant_id.
+
+- Cloudová správní nastavení promptů, chunkování/vyhledávání, shrnutí a klasifikace se ukládají do trvalé přesně tenantované SQL tabulky místo zapisovatelné vrstvy image. Sync ingestace/retrieval i async API používají stejný zdroj; SQL chyba nehlásí úspěšný save ani nepřepne na výchozí soubory. Lokální/testovací overlaye zůstávají zachované. Vyžaduje samostatnou první migraci a import; JHU cloudová akceptace je zaznamenaná výše.
+
+- Frontend deployment předává SWA token pouze přes child environment a omezuje debug, místo tokenu ve viditelných argumentech procesu; původní env se obnoví.14cílených deployment regresí prošlo.
+
+### Added
+
+- `verify_deployment.py`: read-only checkpointy a offline striktní porovnání účtů/historie/ACL/konfigurací/modelových tabulek a všech tenantových vektorových indexů, volitelně původních Blob bytes; cílové guards, ověření úplnosti indexů a nové revize, bezpečné agregované otisky bez obsahu. Konzolový bundle funguje i ve staré image. [Postup a hranice akceptace](development/deployment-preservation-test.md).
+
+- `migrate_tenant_settings.py`: read-only plán, přesné host/DB/tenant guards, aditivní tabulka a transakční insert-only import tří ověřených JSON dokumentů bez přepsání existujících hodnot. ADR-0042, [provozní postup](development/non-destructive-updates.md) a regrese simulované výměny image se zachováním nastavení, účtu, historie a korpusu.
+
+Ověření trvalých nastavení: širší cílená sada **87 passed / 11 expected skips**, úplná izolovaná sada se skutečným wheelem **572 passed / 116 expected skips**, čistý JHU export nastavení/resolver/API/wheel **34 passed**. Syntaxe, nové dokumentační odkazy, navigace466veřejných zdrojů a current-only projekce312souborů prošly. Frontendy se neměnily; Tyto zdrojové testy předcházely skutečné Azure akceptaci uvedené výše.
+
+- Linux ACA `sidecar` režim JHU pro společný chat/embedding/discovery transport, MI-only KV bootstrap a vazbu na přesnou aplikaci/revizi/repliku/tenant/target. Samostatný TCP process probe odděluje život procesu od VPN readiness. Lokální Docker režim se nemění.
+- `deploy_jhu_sidecar.py`: standardně read-only dvoukontejnerový plán, immutable image, cílové/fingerprint/revision guards a samostatná potvrzení modelů, migrací, kapacity a VPN relací. Apply PATCHuje jen location/template v paměti; nevytváří secrets, image, SQL ani frontend release.
+- Cloudový runbook, ADR-0041, konkrétní Azure handoff, runtime/deployment regrese a přenos současných cloudových nástrojů do čistého JHU exportu.
+
+### Changed
+
+- Helper image obsahuje explicitní Azure MI/KV SDK a privátní efemérní runtime adresář; root backend image zahrnuje všechny čtyři modelové migrační CLI bez automatického spuštění.
+- Cloudový plán navrhuje zachovat backend 0,5 CPU / 1 GiB a přidat helper 0,25 CPU / 0,5 GiB, max1 repliku; vyžaduje samostatné schválení. Nepotvrzený GPT-5.4 deployment zůstává nenakonfigurovaný.
+
+Ověření slice: úplná izolovaná sada + wheel **553 passed / 116 expected skips**, čistý JHU runtime/deployment/transport/gateway/status/wheel **88 passed**. Obě Docker image sestaveny; backend prošel Linux importem a kontrolou přítomnosti migračních CLI bez sítě. Skutečný offline Linux bootstrap helperu prošel (UID 65532, caps 0, TCP liveness, bez secret souborů, žádný retry). Read-only Azure plán potvrdil původní revizi a přesné blokery. Frontendy se v tomto slice neměnily. Živá ACA MI/UDP/model akceptace zůstává otevřená.
+
+### Security
+
+- KV capability místo credentials v env/CLI/image; pevná loopback gateway, kontrola ACA kontextu před každým voláním, bootstrap selhání bez přihlašovacího retry cyklu. Žádné automatické přepnutí provideru nebo replay. Azure aktivace a její živá akceptace zatím neprovedeny.
+
 ## [v0.1.7] - 2026-10-26
 
 [Souhrn vydání](releases/v0.1.7.md). Automatické lokální JHU připojení, scoped Key Vault, řízená obnova a testovací hygiena. Jde o vydání zdrojů do hlavního GitHub repozitáře; cloudové VPN připojení, Azure rollout a čistá Forgejo publikace zůstávají samostatné kroky.

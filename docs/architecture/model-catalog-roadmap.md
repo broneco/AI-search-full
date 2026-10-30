@@ -1,5 +1,7 @@
 # Katalog modelů a jejich výběr
 
+Cloudové JHU připojení má nyní explicitní source režim `sidecar` pro Linux ACA, sdílený chat/embedding/discovery transport a MI-only KV snapshot s kontrolou app/revision/replica/tenantu/cíle. Lokální `managed` nepovolujeme v cloudu. Zdrojové regrese neznamenají cloudovou akceptaci; aktuální kroky a hranice jsou v [ACA runbooku](../development/jhu-sidecar-azure.md). Změna konektivity nemění profil ani aktivní index a automaticky nevytváří SQL tabulky.
+
 Implementované zdrojové slices 0–6; nasazení a cloudové integrační přijetí jsou samostatné.
 
 Schválená implementace: tenantové LLM profily, Azure GPT-5.4-mini jako výchozí a GPT-5.4 jako pokročilý; JHU navíc Ollama `qwen3.8:latest`. Přepínání se týká chatu a dvou nezávislých úloh: shrnutí a klasifikace. Embeddingové profily ani indexy se výběrem LLM nemění.

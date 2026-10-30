@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { ClientTheme } from "../config/themes";
+import { requestJson } from "../lib/apiRequest";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -42,22 +43,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         ? { email, password }
         : { email, username: username || email.split("@")[0], password, role };
 
-      const res = await fetch(`${backendUrl}${endpoint}`, {
+      const data = await requestJson(`${backendUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
+      }, { language });
         onSuccess(data.access_token, data.user);
         onClose();
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.detail || (language === "cs" ? "Chyba přihlášení." : "Login error."));
-      }
-    } catch {
-      setError(language === "cs" ? "Nepodařilo se připojit k autentizačnímu serveru." : "Failed to connect to authentication server.");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import asyncio
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
@@ -68,7 +69,7 @@ class SearchConfigSchema(BaseModel):
     agentic_params: AgenticChunkingParams = Field(default_factory=AgenticChunkingParams)
 
 
-from app.core.tenant_config import resolve_tenant_file_path, save_tenant_json, load_tenant_json
+from app.core.tenant_config import resolve_tenant_file_path, save_tenant_json, load_tenant_json, uses_sql_settings
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,9 @@ class SearchConfigManager:
         return file_path
 
     async def load_config(self) -> Dict[str, Any]:
-        """Load search config from Azure Blob Storage or local tenants disk (with fallback to default)."""
+        """Cloud uses SQL consistently; local/test retain legacy file/Blob configuration."""
+        if uses_sql_settings("search_config.json"):
+            return await asyncio.to_thread(self.load_config_sync)
         config_data = None
         if self.blob_provider.is_configured():
             try:
@@ -103,9 +106,13 @@ class SearchConfigManager:
         return load_tenant_json(settings.TENANT_ID, "search_config.json", default_data=self.get_defaults())
 
     async def save_config(self, config_data: Dict[str, Any]) -> None:
-        """Save search config to local tenant folder and upload to Azure Blob Storage."""
+        """Save validated cloud settings in SQL, or local/test settings in the overlay."""
         # Validate using Pydantic schema
         validated_config = SearchConfigSchema(**config_data).model_dump()
+
+        if uses_sql_settings("search_config.json"):
+            await asyncio.to_thread(save_tenant_json, settings.TENANT_ID, "search_config.json", validated_config)
+            return
 
         # Save locally in tenants/<tenant_id>/search_config.json
         save_tenant_json(settings.TENANT_ID, "search_config.json", validated_config)

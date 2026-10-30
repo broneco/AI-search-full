@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.providers.embeddings import EmbeddingProfile
 from app.retrieval.filters import exact_value, eligibility_filters
 from app.storage.models import DBActiveSearchIndex, DBChunk, DBDocument, DBEmbeddingProfile, DBSearchIndex
+from app.storage.sql_joins import InnerHashJoin
 
 
 class SearchIndexError(ValueError):
@@ -257,8 +258,10 @@ def exact_statement(index: DBSearchIndex, profile: EmbeddingProfile, context, qu
         _native_vector_cast(bindparam("query_json", json.dumps(query), type_=Text), profile.dimensions),
         vectors.c.embedding)
     return (select(DBChunk, DBDocument, (1.0 - distance).label("vector_score"))
-            .join(DBDocument, DBChunk.document_id == DBDocument.document_id)
-            .join(vectors, vectors.c.chunk_id == DBChunk.chunk_id)
+            .select_from(InnerHashJoin(
+                InnerHashJoin(DBChunk.__table__, DBDocument.__table__,
+                              DBChunk.document_id == DBDocument.document_id),
+                vectors, vectors.c.chunk_id == DBChunk.chunk_id))
             .where(*eligibility_filters(context, "mssql"), vectors.c.input_revision == DBChunk.content_hash)
             .order_by(distance, vectors.c.vector_id).limit(limit))
 

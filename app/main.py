@@ -9,6 +9,7 @@ from app.api.routes import search_indexes
 from app.api.routes import jhu_connection
 from app.core.model_config import ModelError
 from fastapi.responses import JSONResponse
+from app.storage.tenant_settings import TenantSettingsError
 
 # Setup logging
 logging.basicConfig(
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up FastAPI application...")
-    if settings.JHU_CONNECTION_MODE == 'managed':
+    if settings.JHU_CONNECTION_MODE in {'managed', 'sidecar'}:
         import asyncio
         from app.providers.jhu_managed import managed_connection, reset_managed_connection
         from app.providers.jhu_secrets import JHUConnectionError
@@ -77,6 +78,12 @@ app = FastAPI(
 async def model_error_handler(request, error: ModelError):
     return JSONResponse(status_code=error.status, content={"detail": str(error), "code": error.code},
                         headers={"X-Model-Error-Code": error.code})
+
+
+@app.exception_handler(TenantSettingsError)
+async def tenant_settings_error_handler(request, error: TenantSettingsError):
+    return JSONResponse(status_code=error.status, content={"detail": str(error), "code": error.code},
+                        headers={"X-Settings-Error-Code": error.code})
 
 # Enable CORS for local and future production access
 from fastapi.middleware.cors import CORSMiddleware

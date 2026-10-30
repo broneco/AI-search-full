@@ -22,6 +22,9 @@ COPY tenants ./tenants
 COPY fixtures ./fixtures
 RUN pip install --no-cache-dir .
 COPY migrate_search_acl.py migrate_search_vectors.py benchmark_search.py ./
+COPY migrate_model_access.py migrate_model_registry.py migrate_model_metadata.py migrate_model_limits.py ./
+COPY migrate_tenant_settings.py ./
+COPY verify_deployment.py ./
 
 EXPOSE 8000
 

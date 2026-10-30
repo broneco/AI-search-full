@@ -10,14 +10,27 @@ from zipfile import ZipFile, ZipInfo
 
 import pytest
 
-from scripts.publication.jhu import REMOTE, load_export, read_zip, safe_name, write_export
+from scripts.publication.jhu import REMOTE, documentation_links, is_adr, load_export, read_zip, safe_name, write_export
 from scripts.publication.sync import sync
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_documentation_links_keep_public_targets_and_unlink_adr():
+    original = {'docs/guide.md': b'[ADR](adr/ADR-0042.md) [tool](../scripts/internal.py) [templates](../publication/) [home](../README.md)',
+                'docs/adr/ADR-0042.md': b'Architecture decision', 'scripts/internal.py': b'pass',
+                'publication/template.md': b'Template', 'README.md': b'Public readme'}
+    payload = {name: original[name] for name in ('docs/guide.md', 'README.md')}
+    documentation_links(payload, original, 'v0.1.8')
+    text = payload['docs/guide.md'].decode()
+    assert text.startswith('ADR [tool]')
+    assert 'blob/v0.1.8/scripts/internal.py' in text
+    assert 'tree/v0.1.8/publication' in text
+    assert '[home](../README.md)' in text
+
+
 def git(root, *args):
-    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    result = subprocess.run(["git", "-c", "core.longpaths=true", "-C", str(root), *args], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
 
@@ -33,35 +46,24 @@ def source(tmp_path):
     source = tmp_path/"source"
     source.mkdir()
     git(source, "init", "-q", "-b", "main")
-    names = ["pyproject.toml", "dev.ps1", "deploy_backend.ps1", "deploy_frontend.ps1", "AGENTS.md",
-             "app/core/config.py", "app/storage/db.py", "frontend-user/app/config/themes.ts",
-             "frontend-admin/app/config/themes.ts", "frontend-user/app/page.tsx", "frontend-admin/app/page.tsx"]
-    for name in names:
-        target = source/name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT/name, target)
-    for directory in ("publication", ".agents"):
-        shutil.copytree(ROOT/directory, source/directory)
-    for name in ("tenants/jhu/branding.json", "tenants/jhu/prompts.json", "tenants/jhu/logo.webp",
-                 "tenants/default/search_config.json", "tenants/default/classification_config.json",
-                 "tenants/jhu/model_config.json", "tenants/jhu/embedding_config.json", "tenants/default/local_model_recipes.json"):
-        target = source/name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT/name, target)
-    # Non-runtime historical and secret-bearing files must never enter the customer snapshot.
+    # Copy only the public file inventory; the complete manuals refer to real runtime/test sources.
+    inventory = subprocess.check_output(["git", "-C", str(ROOT), "ls-files", "--cached", "--others",
+                                         "--exclude-standard", "-z"]).decode().split("\0")
+    for name in inventory:
+        if name and safe_name(name) and (ROOT/name).is_file():
+            target = source/name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT/name, target)
+    # Public documentation history is included; private working files and ADRs are not.
     (source/"tenants/jhu/.env.prod").write_text("PASSWORD=synthetic-private-fixture", encoding="utf-8")
-    (source/"tenants/other").mkdir()
+    (source/"tenants/other").mkdir(exist_ok=True)
     (source/"tenants/other/prompts.json").write_text('{"cs":"other-client"}', encoding="utf-8")
-    (source/"docs/releases").mkdir(parents=True)
-    (source/"docs/releases/internal.md").write_text("private development diary", encoding="utf-8")
-    (source/"scripts").mkdir()
-    shutil.copytree(ROOT/'scripts/vpn_spike', source/'scripts/vpn_spike',
-                    ignore=shutil.ignore_patterns('__pycache__'))
-    shutil.copyfile(ROOT/'jhu_connection.py', source/'jhu_connection.py')
+    (source/"docs/releases/public-fixture.md").write_text("Public release history, full text stays.", encoding="utf-8")
     (source/"scripts/internal.txt").write_text("internal operator", encoding="utf-8")
     (source/".env.example").write_text("APP_ENV=dev\n", encoding="utf-8")
-    (source/"tests").mkdir()
+    (source/"tests").mkdir(exist_ok=True)
     (source/"tests/test_sample.py").write_text("def test_sample():\n    assert True\n", encoding="utf-8")
+    (source/"docs/tests_explained/test_sample.md").write_text("Detailed original explanation must survive, not a generated function list.", encoding="utf-8")
     sha = commit(source)
     return source, sha
 
@@ -92,10 +94,18 @@ def test_committed_snapshot_excludes_worktree_history_and_secrets(source, tmp_pa
     assert manifest["source_commit"] == sha
     assert "uncommitted.txt" not in payload
     assert "tenants/jhu/.env.prod" not in payload
-    assert "docs/releases/internal.md" not in payload
+    assert payload["docs/releases/public-fixture.md"] == b"Public release history, full text stays."
+    assert b"Detailed original explanation" in payload["docs/tests_explained/test_sample.md"]
+    assert not any(is_adr(name) for name in payload)
     assert not any(name.startswith((".git/", "publication/", ".agents/memory/archive/")) for name in payload)
     assert 'scripts/internal.txt' not in payload
+    assert 'verify_deployment.py' in payload
+    assert 'docs/development/deployment-preservation-test.md' in payload
     assert 'jhu_connection.py' in payload
+    assert 'deploy_jhu_sidecar.py' in payload
+    assert 'scripts/deployment/jhu_sidecar.py' in payload
+    assert 'scripts/vpn_spike/cloud.py' in payload
+    assert 'docs/development/jhu-sidecar-azure.md' in payload
     for name in ('runtime.py', 'manager.py', 'gateway.py', 'service.py', 'profile.py', 'Dockerfile', '.dockerignore'):
         assert 'scripts/vpn_spike/' + name in payload
     assert b'from probe_jhu_vpn import' not in payload['scripts/vpn_spike/manager.py']
@@ -107,6 +117,22 @@ def test_committed_snapshot_excludes_worktree_history_and_secrets(source, tmp_pa
     assert manifest["version"].encode() in payload["README.md"]
     assert sha.encode() not in b''.join(payload.values())
     assert hashlib.sha256(payload["tenants/jhu/search_config.json"]).hexdigest() == manifest["files"]["tenants/jhu/search_config.json"]
+
+
+def test_full_public_documentation_is_preserved_without_adr_or_template_overwrite(exported, source):
+    payload, _ = load_export(exported[0])
+    root, _ = source
+    for path in (root/'docs').rglob('*'):
+        if path.is_file() and not is_adr(path.relative_to(root).as_posix()):
+            assert path.relative_to(root).as_posix() in payload
+    original_readme = (root/'README.md').read_text(encoding='utf-8-sig')
+    assert original_readme.splitlines()[0] in payload['README.md'].decode()
+    assert '### První instalace' in payload['README.md'].decode()
+    assert payload['docs/design/database_schema.md'].decode().replace('\r\n', '\n') == (root/'docs/design/database_schema.md').read_text(encoding='utf-8')
+    source_runbook = (root/'docs/development/non-destructive-updates.md').read_text(encoding='utf-8')
+    assert payload['docs/development/non-destructive-updates.md'].decode().replace('\r\n', '\n') == source_runbook
+    assert b'ADR-0042' in payload['docs/development/non-destructive-updates.md']
+    assert not any(b'](../adr/' in data for name,data in payload.items() if name.endswith('.md'))
 
 
 def test_projection_drift_fails_without_writing_output(source, tmp_path):

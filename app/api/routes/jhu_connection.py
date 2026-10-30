@@ -1,4 +1,4 @@
-"""Management-only local connection controls; never accepts endpoints/credentials."""
+"""Management-only local/ACA connection controls; never accepts endpoints/credentials."""
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.identity import Principal, require_manager

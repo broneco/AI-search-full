@@ -56,6 +56,18 @@ def isolated_tenant_overlay(tmp_path_factory):
     import app.core.tenant_config as tenant_config
     original_root = tenant_config.LOCAL_TENANTS_DIR
     tenant_config.LOCAL_TENANTS_DIR = str(tmp_path_factory.mktemp("tenant-overlay"))
+    # Standalone JHU sources deliberately bundle no other tenant/default directory.
+    # Synthetic alpha/beta test tenants still need a public baseline in their private overlay.
+    bundled = Path(tenant_config.TENANTS_DIR)
+    if not (bundled / "default").is_dir() and (bundled / "jhu").is_dir():
+        import json
+        baseline = Path(tenant_config.LOCAL_TENANTS_DIR) / "default"
+        baseline.mkdir()
+        for filename in ("model_config.json", "embedding_config.json"):
+            config = bundled / "jhu" / filename
+            data = json.loads(config.read_text(encoding="utf-8"))
+            data["profiles"] = [profile for profile in data["profiles"] if profile["provider"] == "azure_openai"]
+            (baseline / config.name).write_text(json.dumps(data), encoding="utf-8")
     try:
         yield
     finally:

@@ -87,7 +87,7 @@ def test_identity_is_explicit_and_clients_close_without_settings(monkeypatch, id
         def __exit__(self, *_): closed.append(self.label)
 
     monkeypatch.setattr(azure.identity, 'AzureCliCredential', lambda **kwargs: Context('cli'))
-    monkeypatch.setattr(azure.identity, 'ManagedIdentityCredential', lambda: Context('mi'))
+    monkeypatch.setattr(azure.identity, 'ManagedIdentityCredential', lambda **kwargs: Context('mi'))
 
     def client(**kwargs):
         calls.append(kwargs)

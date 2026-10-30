@@ -1,5 +1,11 @@
 # Testy profilového vektorového repository
 
+## Stabilizace cloudových exact dotazů (2026-10-30)
+
+Kompilační regrese nadále kontroluje tenant/docACL/chunkACL/metadata/revize před jediným finálním TOP K a celý parametrizovaný vektor. Navíc vyžaduje nativní SQL hash joins, které odstraňují pozorovaný pomalý broad-ACL plán. Dotaz zůstává exact; nepoužívá VECTOR_SEARCH ani aproximaci a nemění desetisekundový limit. Kompilační test sám nedokazuje výkon na Azure; čtecí měření nad skutečným JHU korpusem je uvedeno v provozním reportu stabilizace.
+
+Hint je omezen na hlavní dva joiny prostřednictvím `InnerHashJoin`, nikoli globální `OPTION (HASH JOIN)`: globální varianta na Azure odmítala některé vnořené JSON metadata predikáty chybou 8622. Testy kontrolují zachovanou korelaci ACL EXISTS a absenci globálního hintu. SQLite používá běžný inner join, lokální MSSQL vykonává scoped hint.
+
 ## Dávkový backfill při JHU rollout (2026-10-15)
 
 Nové regrese vyžadují nejvýše čtyři SELECTy nad chunky pro jednu dávku místo scalar get pro každý chunk a ověřují, že první čtení/recheck nestahuje legacy JSON při novém embeddingu. Po modelovém volání se vstupy načtou jedním SELECTem (na MSSQL UPDLOCK/HOLDLOCK) a zapíší v jedné transakci. Změna textu během modelového volání zastaví batch bez vložených vektorů. Provenance/profil a původní JSON se zachovávají. Oba případy proběhly na SQLite i lokálním SQL Serveru.

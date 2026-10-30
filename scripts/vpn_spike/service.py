@@ -1,4 +1,4 @@
-"""Local helper supervisor. Private bootstrap lives only in container tmpfs.
+"""Local/ACA helper supervisor with private container-local bootstrap.
 
 Control plane uses Docker exec/signals; the bounded API gateway is separate.
 """
@@ -7,8 +7,10 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 from pathlib import Path
 import signal
+import socketserver
 import subprocess
 import sys
 import threading
@@ -19,6 +21,15 @@ from profile import failure_code, validated_profile
 from gateway import GatewayServer
 
 RUNTIME = Path('/run/probe')
+
+
+class LivenessHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        pass  # TCP process probe only: no metadata, proxy or secret-bearing response.
+
+
+class LivenessServer(socketserver.TCPServer):
+    allow_reuse_address = True
 
 
 def write_json(name: str, data: dict) -> None:
@@ -33,7 +44,13 @@ def bootstrap() -> None:
     data = sys.stdin.buffer.read(192_001)
     if len(data) > 192_000 or (RUNTIME/'bootstrap.json').exists() or (RUNTIME/'client.conf').exists():
         raise ValueError('bootstrap_rejected')
-    payload = json.loads(data)
+    payload = validated_bootstrap(json.loads(data))
+    write_json('bootstrap.json', payload)
+
+
+def validated_bootstrap(payload) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError('bootstrap_rejected')
     if set(payload) != {'profile', 'vpn_username', 'vpn_password', 'target_ip', 'target_port', 'gateway_key'}:
         raise ValueError('bootstrap_rejected')
     if not re.fullmatch(r'[a-f0-9]{64}', payload['gateway_key']):
@@ -46,7 +63,7 @@ def bootstrap() -> None:
         value = payload[key]
         if not isinstance(value, str) or not value or len(value) > 25_000 or any(c in value for c in '\r\n\x00'):
             raise ValueError('bootstrap_rejected')
-    write_json('bootstrap.json', payload)
+    return dict(payload)
 
 
 def stop_child(process) -> None:
@@ -74,7 +91,7 @@ def forward_responds() -> bool:
         connection.close()
 
 
-def serve() -> None:
+def serve(cloud_loader=None, cloud_context=None) -> None:
     os.umask(0o077)
     stop, reconnect = threading.Event(), threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
@@ -87,24 +104,47 @@ def serve() -> None:
     def report():
         write_json('status.json', dict(lifecycle.public(), updated_at=time.time(),
                                       protocol_version=2, tls_channels=tls_channels,
-                                      recovery_causes=dict(recovery_causes)))
+                                      recovery_causes=dict(recovery_causes),
+                                      **({'context': cloud_context} if cloud_context else {})))
         if gateway is not None and lifecycle.state != 'ready':
             gateway.abort_upstreams()
 
     process = None
     gateway = None
+    liveness = None
     report()
     try:
-        deadline = time.monotonic() + 120
-        while not (RUNTIME/'bootstrap.json').exists():
-            if stop.wait(.1) or time.monotonic() > deadline:
+        if cloud_loader is not None:
+            # Process health is independent of vault/VPN health. A terminal
+            # bootstrap error stays visible; ACA must not retry credentials.
+            gateway = GatewayServer(('127.0.0.1', 18081), secrets.token_hex(32), RUNTIME/'status.json')
+            threading.Thread(target=gateway.serve_forever, daemon=True).start()
+            # Platform TCP probes target the replica IP, not its loopback.
+            # Keep model traffic on loopback and use a separate no-data port.
+            liveness = LivenessServer(('0.0.0.0', 18082), LivenessHandler)
+            threading.Thread(target=liveness.serve_forever, daemon=True).start()
+            try:
+                payload = validated_bootstrap(cloud_loader())
+            except Exception:
+                lifecycle.state, lifecycle.code = 'degraded', 'vpn_cloud_bootstrap_failed'
+                report()
+                print('{"code":"vpn_cloud_bootstrap_failed"}', flush=True)
+                stop.wait()
                 return
-        payload = json.loads((RUNTIME/'bootstrap.json').read_text(encoding='utf-8'))
-        (RUNTIME/'bootstrap.json').unlink()
+        else:
+            deadline = time.monotonic() + 120
+            while not (RUNTIME/'bootstrap.json').exists():
+                if stop.wait(.1) or time.monotonic() > deadline:
+                    return
+            payload = validated_bootstrap(json.loads((RUNTIME/'bootstrap.json').read_text(encoding='utf-8')))
+            (RUNTIME/'bootstrap.json').unlink()
         key = payload.pop('gateway_key')
         (RUNTIME/'gateway.key').write_text(key)
-        gateway = GatewayServer(('0.0.0.0', 18081), key, RUNTIME/'status.json')
-        threading.Thread(target=gateway.serve_forever, daemon=True).start()
+        if gateway is None:
+            gateway = GatewayServer(('0.0.0.0', 18081), key, RUNTIME/'status.json')
+            threading.Thread(target=gateway.serve_forever, daemon=True).start()
+        else:
+            gateway.key = key
         config = validated_profile(payload.pop('profile'))
         # All reconnects go through the bounded supervisor instead of OpenVPN's
         # unlimited soft-restart loop. auth-nocache still re-reads tmpfs auth.
@@ -189,6 +229,9 @@ def serve() -> None:
         if gateway is not None:
             gateway.shutdown()
             gateway.server_close()
+        if liveness is not None:
+            liveness.shutdown()
+            liveness.server_close()
         for name in ('bootstrap.json', 'bootstrap.tmp', 'auth', 'client.conf', 'gateway.key'):
             (RUNTIME/name).unlink(missing_ok=True)
         if stop.is_set() or lifecycle.state == 'disabled':
@@ -202,6 +245,17 @@ if __name__ == '__main__':
             serve()
         elif sys.argv[1:] == ['bootstrap']:
             bootstrap()
+        elif sys.argv[1:] == ['cloud']:
+            from cloud import cloud_config, load_payload
+            # Configuration validation is also done inside the bounded loader,
+            # so a bad config cannot create a platform-driven retry storm.
+            config = {}
+            def cloud_payload():
+                config.update(cloud_config())
+                context.update(config['context'])
+                return load_payload(config)
+            context = {}
+            serve(cloud_payload, context)
         else:
             raise ValueError('invalid_mode')
     except Exception:

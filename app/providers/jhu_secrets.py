@@ -60,6 +60,16 @@ class APISecretReferences:
             raise JHUConnectionError('jhu_secret_reference_invalid')
 
 
+@dataclass(frozen=True)
+class SidecarAPISecretReferences(APISecretReferences):
+    gateway_key: str
+
+    def __post_init__(self):
+        values = [self.api_username, self.api_password, self.gateway_key]
+        if len(set(values)) != 3 or not all(isinstance(v, str) and re.fullmatch(r'[A-Za-z0-9-]{1,127}', v) for v in values):
+            raise JHUConnectionError('jhu_secret_reference_invalid')
+
+
 class JHUSecretResolver:
     """No env fallback, bulk vault listing, background refresh or secret cache."""
 
@@ -97,6 +107,14 @@ class JHUSecretResolver:
             raise JHUConnectionError('jhu_secret_invalid')
         return pair
 
+    def gateway_key(self) -> str:
+        if not isinstance(self.references, SidecarAPISecretReferences):
+            raise JHUConnectionError('jhu_gateway_key_not_configured')
+        value = self._read(self.references.gateway_key)
+        if not re.fullmatch(r'[a-f0-9]{64}', value):
+            raise JHUConnectionError('jhu_secret_invalid')
+        return value
+
 
 @contextmanager
 def key_vault_resolver(vault: str, references: SecretReferences | APISecretReferences,
@@ -109,7 +127,7 @@ def key_vault_resolver(vault: str, references: SecretReferences | APISecretRefer
     if identity == 'azure_cli':
         credential = AzureCliCredential(process_timeout=10)
     elif identity == 'managed_identity':
-        credential = ManagedIdentityCredential()
+        credential = ManagedIdentityCredential(retry_total=0, connection_timeout=3, read_timeout=3)
     else:
         raise JHUConnectionError('jhu_identity_invalid')
     with credential:

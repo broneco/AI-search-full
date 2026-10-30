@@ -9,6 +9,7 @@ import { PdfViewerModal } from "./components/PdfViewerModal";
 import { AuthenticatedPdf, openAuthenticatedPdf } from "./components/AuthenticatedPdf";
 import { AuthModal } from "./components/AuthModal";
 import { ThreadSidebar, ThreadItem } from "./components/ThreadSidebar";
+import { isExpiredSession, requestJson, pollHealth } from "./lib/apiRequest";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -38,6 +39,7 @@ interface Message {
 export default function UserSearchPage() {
   const [appLanguage, setAppLanguage] = useState<"cs" | "en">("cs");
   const [apiOnline, setApiOnline] = useState<boolean>(true);
+  const [resourceError, setResourceError] = useState("");
   const [query, setQuery] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -120,24 +122,25 @@ export default function UserSearchPage() {
   // Fetch logged in user profile
   const fetchUserProfile = async (token: string) => {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
+      const data = await requestJson(`${BACKEND_URL}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const data = await res.json();
-        setUserProfile(data);
-        fetchUserThreads(token);
-        fetchDocuments(token);
-      } else {
+      if (localStorage.getItem("dolphin_auth_token") !== token) return;
+      setUserProfile(data);
+      fetchUserThreads(token);
+      fetchDocuments(token);
+    } catch (error) {
+      if (localStorage.getItem("dolphin_auth_token") !== token) return;
+      if (isExpiredSession(error, token, localStorage.getItem("dolphin_auth_token"))) {
         localStorage.removeItem("dolphin_auth_token");
         setAuthToken(null);
         setUserProfile(null);
         setThreads([]);
         setDocuments([]);
         setAuthModalOpen(true);
+      } else {
+        setResourceError(error instanceof Error ? error.message : String(error));
       }
-    } catch {
-      console.error("Auth check failed");
     }
   };
 
@@ -148,13 +151,11 @@ export default function UserSearchPage() {
       const tok = token !== undefined ? token : authToken;
       if (tok) headers["Authorization"] = `Bearer ${tok}`;
       
-      const res = await fetch(`${BACKEND_URL}/api/threads`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setThreads(data);
-      }
-    } catch {
-      console.error("Threads fetch failed");
+      if (!tok) return;
+      const data = await requestJson(`${BACKEND_URL}/api/threads`, { headers });
+      if (localStorage.getItem("dolphin_auth_token") === tok) setThreads(data);
+    } catch (error) {
+      setResourceError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -168,13 +169,11 @@ export default function UserSearchPage() {
         headers["X-User-Groups"] = userProfile.groups.join(",");
       }
 
-      const res = await fetch(`${BACKEND_URL}/api/documents/list`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data);
-      }
-    } catch {
-      console.error("Documents fetch failed");
+      if (!tok) return;
+      const data = await requestJson(`${BACKEND_URL}/api/documents/list`, { headers });
+      if (localStorage.getItem("dolphin_auth_token") === tok) setDocuments(data);
+    } catch (error) {
+      setResourceError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -195,18 +194,7 @@ export default function UserSearchPage() {
 
   // Periodic API Health check
   useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const res = await fetch(`${BACKEND_URL}/health`, { method: "GET" });
-        setApiOnline(res.ok);
-      } catch {
-        setApiOnline(false);
-      }
-    };
-
-    checkHealth();
-    const interval = setInterval(checkHealth, 15000);
-    return () => clearInterval(interval);
+    return pollHealth(`${BACKEND_URL}/health`, setApiOnline);
   }, []);
 
   // Initialize greeting message when no active thread is selected
@@ -320,6 +308,7 @@ export default function UserSearchPage() {
 
   // Handle Auth Login Success
   const handleAuthSuccess = (token: string, user: any) => {
+    setResourceError("");
     localStorage.setItem("dolphin_auth_token", token);
     setAuthToken(token);
     setUserProfile(user);
@@ -329,6 +318,7 @@ export default function UserSearchPage() {
 
   // Logout
   const handleLogout = () => {
+    setResourceError("");
     localStorage.removeItem("dolphin_auth_token");
     setAuthToken(null);
     setUserProfile(null);
@@ -350,7 +340,7 @@ export default function UserSearchPage() {
 
   // Submit Query to Backend API
   const handleSubmit = async (userQuery: string) => {
-    if (!userQuery.trim() || loading || !modelCatalog.modelId || !queryIndexes.canQuery) return;
+    if (!userQuery.trim() || loading || !modelCatalog.canQuery || !queryIndexes.canQuery) return;
 
     if (!authToken) {
       setAuthModalOpen(true);
@@ -589,7 +579,7 @@ export default function UserSearchPage() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.7
+                v0.1.8
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -644,6 +634,15 @@ export default function UserSearchPage() {
           )}
         </div>
       </header>
+
+      {resourceError && <div role="alert" className="shrink-0 border-b border-amber-400/20 bg-amber-500/10 px-6 py-3 text-sm text-amber-200 flex flex-wrap items-center gap-3">
+        <span>{resourceError}</span>
+        <button type="button" className="underline font-semibold" onClick={() => {
+          setResourceError("");
+          if (authToken) void fetchUserProfile(authToken);
+          void modelCatalog.reload(); void queryIndexes.reload();
+        }}>{appLanguage === "cs" ? "Načíst znovu" : "Retry loading"}</button>
+      </div>}
 
       {/* 2. Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -745,6 +744,7 @@ export default function UserSearchPage() {
           <div className="p-6 bg-[#0c1222]/90 border-t border-white/10 backdrop-blur-md shrink-0">
             <div className="max-w-5xl mx-auto mb-3"><ModelPicker catalog={modelCatalog} locale={appLanguage} disabled={loading} /></div>
             <div className="max-w-5xl mx-auto mb-3"><EmbeddingIndexPicker catalog={queryIndexes} locale={appLanguage} disabled={loading} /></div>
+            {(!modelCatalog.canQuery || !queryIndexes.canQuery) && <p className="max-w-5xl mx-auto mb-3 text-xs text-amber-200">{appLanguage === "cs" ? "Pro odeslání dotazu načtěte a vyberte dostupný model a připravený index. Při chybě použijte Obnovit modely / Obnovit indexy." : "Load and select an available model and prepared index before sending a question. On failure, refresh the models or indexes."}</p>}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -761,7 +761,7 @@ export default function UserSearchPage() {
               />
               <button
                 type="submit"
-                disabled={loading || !query.trim() || !modelCatalog.modelId || !queryIndexes.canQuery}
+                disabled={loading || !query.trim() || !modelCatalog.canQuery || !queryIndexes.canQuery}
                 className="px-6 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
               >
                 <span>🔍</span>
@@ -770,7 +770,7 @@ export default function UserSearchPage() {
             </form>
             <p className="text-[10px] text-zinc-500 text-center mt-2 font-medium flex items-center justify-center gap-2">
               <span>{TRANSLATIONS[appLanguage].disclaimer}</span>
-              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.7</span>
+              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.8</span>
             </p>
           </div>
         </main>

@@ -47,6 +47,10 @@ def test_auth_login_demo_user():
     assert "access_token" in data
     assert data["user"]["email"] == "user@dolphin.cz"
     assert data["user"]["role"] == "User"
+    assert data["user"]["tenant_id"] == settings.TENANT_ID
+    profile = client.get("/api/auth/me", headers={"Authorization": f"Bearer {data['access_token']}"})
+    assert profile.status_code == 200
+    assert profile.json()["tenant_id"] == settings.TENANT_ID
 
 
 def test_auth_register_new_user():
@@ -66,6 +70,7 @@ def test_auth_register_new_user():
     assert data["user"]["email"] == unique_email
     assert data["user"]["role"] == "User"
     assert data["user"]["groups"] == ["User"]
+    assert data["user"]["tenant_id"] == settings.TENANT_ID
 
 
 def test_threads_crud_workflow():
