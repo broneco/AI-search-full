@@ -10,7 +10,7 @@ type Row = ModelOption & {kind: string; purposes: string[]; description_revision
   access: {allowed_groups: string[] | null; revision: number};
   registration?: {user_visible: boolean; revision: number} | null};
 
-export function ModelManagementPanel({url, token, locale}: {url: string; token: string; locale: "cs" | "en"}) {
+export function ModelManagementPanel({url, token, locale, onCreateIndex}: {url: string; token: string; locale: "cs" | "en"; onCreateIndex?: (profile:string)=>Promise<boolean>}) {
   const [rows, setRows] = useState<Row[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -72,7 +72,7 @@ export function ModelManagementPanel({url, token, locale}: {url: string; token: 
   };
   const purposeNames: Record<string,string> = cs ? {chat:"Odpovědi",summary:"Shrnutí",classification:"Klasifikace",embedding:"Embedding"} : {chat:"Answers",summary:"Summary",classification:"Classification",embedding:"Embedding"};
   return <div className="space-y-4 text-xs text-zinc-300">
-    <div className="flex flex-wrap gap-3 items-center"><ModelDiscoveryPanel url={url} token={token} locale={locale}/>
+    <div className="flex flex-wrap gap-3 items-center"><ModelDiscoveryPanel url={url} token={token} locale={locale} onCreateIndex={onCreateIndex}/>
       <input aria-label={cs ? "Hledat v přehledu modelů" : "Search model overview"} placeholder={cs ? "Hledat název nebo popis…" : "Search name or description…"} value={search} onChange={e => setSearch(e.target.value)} className="rounded-lg border border-white/20 p-2 bg-black/30 flex-1"/>
       <button type="button" disabled={busy} onClick={() => { if (drafts.current.size && !window.confirm(cs ? "Zahodit neuložené popisy, limity a oprávnění?" : "Discard unsaved descriptions, limits and access rules?")) return; drafts.current.clear(); void load(); }} className="underline">{cs ? "Znovu načíst přehled" : "Reload overview"}</button></div>
     <p className="text-zinc-400">{cs ? "API nabízí nové modely v samostatném okně. Tento přehled obsahuje konfiguraci aplikace. Publikace a členství v alespoň jedné povolené skupině řídí přístup uživatelů; prázdný výběr skupin zakazuje model všem. Popis nemění model ani embeddingový prostor." : "Discover new API models in the dialog. This overview shows app configuration. Publication and membership in any allowed group control user access; no groups denies everyone. Editing a description does not change the model or embedding space."}</p>

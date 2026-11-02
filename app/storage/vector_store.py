@@ -81,7 +81,7 @@ def vector_table(index: DBSearchIndex, profile: EmbeddingProfile) -> Table:
 
 
 def provision_index(session: Session, tenant: str, profile: EmbeddingProfile, *, native: bool) -> DBSearchIndex:
-    """Explicit provisioning, never called by cloud runtime writes."""
+    """Explicit operator/admin-job provisioning; never implicit in cloud ingestion."""
     if native:
         NativeVector(profile.dimensions)
     existing = session.get(DBEmbeddingProfile, profile.profile_id)

@@ -14,3 +14,5 @@
 - MSSQL kompilační regrese kontroluje nativní VECTOR→nvarchar(max), server-side HASHBYTES a parametrizovaný přesný tenant s DATALENGTH/BIN2.
 
 Lokální výsledky neprokazují Azure runtime, VPN, opravdové Blob soubory ani uskutečněné nasazení. Cloudové checkpointy a funkční akceptace patří do privátních receipts a dokončeného deployment reportu.
+
+Volitelná index_preparation_jobs je kontrolovaná stejnou SQL reflexí ve starém i novém ORM, včetně neprázdného stavu úlohy. Před první migrací smí chybět. Read-only ověření připouští pouze konkrétní čtecí metadata PRAGMA / INFORMATION_SCHEMA CTE vedle SELECT; nikoli DDL nebo DML.

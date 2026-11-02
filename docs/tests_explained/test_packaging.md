@@ -15,3 +15,5 @@ Managed integrace kontroluje přibalení a import `jhu_managed.py` a `jhu_secret
 Cloudový runtime musí být také v instalovaném wheelu: kontrola vyžaduje app/providers/jhu_sidecar.py. Žádné .ovpn/.auth/env hodnoty se nebalí.
 
 Trvalá nastavení přidávají povinný modul `app/storage/tenant_settings.py`; izolovaný import aplikace musí fungovat i s jeho lazy vazbou na resolver, bez připojení k produkční databázi.
+
+Wheel musí obsahovat také storage/ingestion index_jobs moduly. Backend Docker kontext obsahuje migrate_index_jobs.py, aby nová funkce nezávisela na soukromém lokálním skriptu.

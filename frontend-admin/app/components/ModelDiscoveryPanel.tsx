@@ -1,7 +1,8 @@
 "use client";
 import { useRef, useState } from "react";
+import { requestJson, registeredEmbeddingId } from "../lib/apiRequest";
 
-type Registration = {id: string; model: string; digest: string; user_visible: boolean; revision: number};
+type Registration = {id: string; model: string; digest: string; kind:string; user_visible: boolean; revision: number};
 type DiscoveredModel = {
   name: string; digest: string; kind: string; capabilities: string[];
   dimensions?: number | null; context_length?: number | null; size_bytes?: number | null;
@@ -12,7 +13,7 @@ type DiscoveredModel = {
 };
 type Inventory = { scanned_at: string; models: DiscoveredModel[] };
 
-export function ModelDiscoveryPanel({ url, token, locale }: { url: string; token: string; locale: "cs" | "en" }) {
+export function ModelDiscoveryPanel({ url, token, locale, onCreateIndex }: { url: string; token: string; locale: "cs" | "en"; onCreateIndex?: (profile:string)=>Promise<boolean> }) {
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,24 +32,34 @@ export function ModelDiscoveryPanel({ url, token, locale }: { url: string; token
     if (!models.length || pending.current) return;
     pending.current = true; setBusy(true); setError("");
     try {
-      const res = await fetch(`${url}/api/models/registry`, {method:"POST",
+      const body = await requestJson(`${url}/api/models/registry`, {method:"POST",
         headers:{Authorization:`Bearer ${token}`, "Content-Type":"application/json"},
-        body:JSON.stringify({models:models.map(model => ({name:model.name,digest:model.digest}))})});
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.detail || "Registration failed");
+        body:JSON.stringify({models:models.map(model => ({name:model.name,digest:model.digest}))})}, {timeoutMs:65000});
       mergeRegistrations(body.models);
     } catch(e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { pending.current = false; setBusy(false); }
+  };
+  const createIndex = async (model: DiscoveredModel) => {
+    if (!onCreateIndex || pending.current) return;
+    pending.current=true; setBusy(true); setError("");
+    try {
+      let id=model.registration?.id || (model.candidate_id && model.configured_embedding_ids.includes(model.candidate_id) ? model.candidate_id : undefined);
+      if (!id) {
+        const body=await requestJson(`${url}/api/models/registry`, {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({models:[{name:model.name,digest:model.digest}]})}, {timeoutMs:65000});
+        mergeRegistrations(body.models); id=registeredEmbeddingId(model,body.models);
+      }
+      if (!id || !(await onCreateIndex(id))) throw new Error(cs?"Vytvoření indexu se nespustilo. Podrobnosti jsou v přehledu indexů.":"Index creation did not start. See the index catalog for details.");
+      dialog.current?.close();
+    } catch(e) { setError(e instanceof Error?e.message:String(e)); }
+    finally { pending.current=false; setBusy(false); }
   };
   const publish = async (row: Registration, visible: boolean) => {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError("");
     try {
-      const res = await fetch(`${url}/api/models/registry/${row.id}`, {method:"PUT",
+      const body = await requestJson(`${url}/api/models/registry/${row.id}`, {method:"PUT",
         headers:{Authorization:`Bearer ${token}`, "Content-Type":"application/json"},
         body:JSON.stringify({revision:row.revision,user_visible:visible})});
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.detail || "Publication failed");
       mergeRegistrations([body]);
     } catch(e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { pending.current = false; setBusy(false); }
@@ -57,9 +68,7 @@ export function ModelDiscoveryPanel({ url, token, locale }: { url: string; token
     if (pending.current) return;
     pending.current = true; setBusy(true); setError("");
     try {
-      const response = await fetch(`${url}/api/models/discovery`, { headers: { Authorization: `Bearer ${token}` } });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.detail || "Discovery failed");
+      const body = await requestJson(`${url}/api/models/discovery`, { headers: { Authorization: `Bearer ${token}` } }, {timeoutMs:65000});
       setInventory(body);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { pending.current = false; setBusy(false); }
@@ -106,6 +115,7 @@ export function ModelDiscoveryPanel({ url, token, locale }: { url: string; token
             </> : model.registration_error === null ? <button type="button" disabled={busy} onClick={() => void register([model])}
               className="underline text-indigo-300">{cs ? "Přidat pro testování" : "Add for testing"}</button> : <p className="text-zinc-400">{model.registration_error}</p>}
             <p className="text-zinc-500">{[...model.configured_chat_ids, ...model.configured_embedding_ids].join(", ")}</p>
+            {model.kind === "embedding" && !model.registration_error && onCreateIndex && <button type="button" disabled={busy} onClick={() => void createIndex(model)} className="rounded bg-indigo-600 px-3 py-2">{cs?"Přidat embeddingový index":"Add embedding index"}</button>}
           </td>
         </tr>)}</tbody>
       </table></div>

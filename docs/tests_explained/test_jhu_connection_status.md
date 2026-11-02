@@ -9,3 +9,5 @@ API odmítne anonymní/běžné účty, podvrženou skupinu, odebraná Managemen
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/test_jhu_connection_status.py -q
 ```
+
+Běžný autentizovaný uživatel dostává na /availability pouze mode/state/code; nemá správní metadata ani oprávnění k reconnect. Backend health zůstává oddělený od dostupnosti JHU a podvržená skupina neodemkne ovládání.

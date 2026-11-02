@@ -11,7 +11,8 @@ from app.storage.vector_store import index_profile, revision, vector_table, writ
 
 
 async def backfill_index(session: Session, index: DBSearchIndex, *, provider: EmbeddingProvider | None = None,
-                         proven_legacy: bool = False, batch_size: int = 32, authorize=None) -> int:
+                         proven_legacy: bool = False, batch_size: int = 32, authorize=None, progress=None,
+                         strict_revisions: bool = False, activity=None) -> int:
     """Each batch commits atomically; retries skip current revisions.
 
     proven_legacy requires per-chunk profile_id AND content_hash evidence.
@@ -52,7 +53,12 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
             continue
         snapshots = [(chunk.chunk_id, chunk.content, revision(chunk.content), chunk.embedding if provider is None else None,
                       dict(chunk.metadata_json or {}), chunk.content_hash) for chunk in pending]
+        if strict_revisions and any(item[5] != item[2] for item in snapshots):
+            raise SearchIndexError("Shared chunk revisions changed; repair ingestion separately.")
+        document_ids = sorted({str(chunk.document_id) for chunk in pending})
         session.commit()  # release read transaction before the model call
+        if activity:
+            activity("embedding", document_ids)
         if provider is not None:
             vectors = await provider.embed_documents([item[1] for item in snapshots])
         else:
@@ -63,6 +69,8 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
         if len(vectors) != len(snapshots):
             raise SearchIndexError("Incomplete backfill embedding batch.")
         profile.validate_vectors(vectors)
+        if activity:
+            activity("saving", document_ids)
         try:
             if authorize:
                 authorize()
@@ -87,4 +95,6 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
             session.rollback()
             raise
         completed += len(rows)
+        if progress:
+            progress(completed)
     return completed

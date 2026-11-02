@@ -144,6 +144,73 @@ def test_backend_gateway_reference_cannot_resolve_vpn_credentials():
         resolver.vpn_credentials()
 
 
+def test_explicit_reconnect_uses_only_cloud_gateway_and_no_model_call(sidecar_service):
+    from app.providers.jhu_connection import reconnect_connection,slots
+    _,state,calls,_=sidecar_service
+    state['health_body'].update(state='degraded',code='vpn_upstream_unavailable',generation=2,reconnect_supported=True)
+    state['reconnect_status']=202
+    result=asyncio.run(reconnect_connection())
+    assert result['state']=='connecting'
+    assert [r.url.path for r in calls]==['/_jhu/health','/_jhu/reconnect']
+    import json
+    assert json.loads(calls[-1].content)=={'generation':2}
+    calls.clear();state['health_body']['reconnect_supported']=False
+    with pytest.raises(ModelError,match='helper'):
+        asyncio.run(reconnect_connection())
+    assert [r.url.path for r in calls]==['/_jhu/health']
+    calls.clear();assert slots.acquire(blocking=False)
+    try:
+        with pytest.raises(ModelError) as error:asyncio.run(reconnect_connection())
+        assert error.value.status==429 and calls==[]
+    finally:slots.release()
+
+
+def test_explicit_cloud_restart_returns_to_bootstrap_and_cleans_private_files(tmp_path,monkeypatch):
+    for name in ('profile','lifecycle','gateway'):
+        monkeypatch.setitem(sys.modules,name,importlib.import_module('scripts.vpn_spike.'+name))
+    spec=importlib.util.spec_from_file_location('restart_service_under_test',Path(__file__).resolve().parents[1]/'scripts/vpn_spike/service.py')
+    service=importlib.util.module_from_spec(spec);spec.loader.exec_module(service)
+    monkeypatch.setattr(service,'RUNTIME',tmp_path)
+    monkeypatch.setattr(service.signal,'signal',lambda *_:None)
+    monkeypatch.setattr(service.signal,'SIGUSR1',10,raising=False)
+    gateways=[];loads=[];closed=[];statuses=[]
+    # Status replaces are independently tested; avoid a rapid Windows/OneDrive replace race here.
+    monkeypatch.setattr(service,'write_json',lambda name,data:statuses.append(dict(data)))
+    class Event:
+        def __init__(self):self.value=False
+        def set(self):self.value=True
+        def clear(self):self.value=False
+        def is_set(self):return self.value
+        def wait(self,timeout=None):
+            if timeout is None:gateways[-1].reconnect_callback()
+            return self.value
+    class Gateway:
+        def __init__(self,*args,**kwargs):
+            self.reconnect_callback=kwargs.get('reconnect_callback')
+            if self.reconnect_callback:gateways.append(self)
+        def serve_forever(self):pass
+        def abort_upstreams(self):pass
+        def shutdown(self):closed.append('shutdown')
+        def server_close(self):closed.append('close')
+    monkeypatch.setattr(service.threading,'Event',Event)
+    monkeypatch.setattr(service.threading,'Thread',lambda **_:SimpleNamespace(start=lambda:None,join=lambda **_:None))
+    monkeypatch.setattr(service,'GatewayServer',Gateway)
+    monkeypatch.setattr(service,'LivenessServer',Gateway)
+    monkeypatch.setattr(service,'stop_child',lambda *_:None)
+    monkeypatch.setattr(service.subprocess,'Popen',lambda *_a,**_k:SimpleNamespace(stdout=[],poll=lambda:1))
+    from scripts.vpn_spike.lifecycle import Lifecycle
+    monkeypatch.setattr(service,'Lifecycle',lambda **kw:Lifecycle(max_attempts=1,**kw))
+    def load():
+        loads.append(1)
+        return dict(profile=PROFILE,vpn_username='synthetic-user',vpn_password='synthetic-password',target_ip='192.0.2.1',target_port=11434,gateway_key='a'*64)
+    generation=service.serve(load,{'application':'test'},generation=4)
+    assert generation==4 and len(loads)==1 and len(closed)==4
+    assert any(row.get('code')=='vpn_disconnected' for row in statuses)
+    assert not any((tmp_path/name).exists() for name in ('auth','client.conf','gateway.key','bootstrap.json'))
+    assert service.serve(load,{'application':'test'},generation=generation)==4
+    assert len(loads)==2
+
+
 def test_cloud_bootstrap_failure_stays_alive_without_retry_or_private_files(tmp_path,monkeypatch,capsys):
     # Load the flat container entrypoint with its actual sibling modules.
     for name in ('profile','lifecycle','gateway'):
@@ -164,7 +231,7 @@ def test_cloud_bootstrap_failure_stays_alive_without_retry_or_private_files(tmp_
         def wait(self,timeout=None):
             assert timeout is None;events.append('held-terminal');self.stopped=True
     class Gateway:
-        def __init__(self,address,*_):assert address==('127.0.0.1',18081)
+        def __init__(self,address,*_,**kwargs):assert address==('127.0.0.1',18081)
         def serve_forever(self):pass
         def abort_upstreams(self):pass
         def shutdown(self):pass

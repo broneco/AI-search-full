@@ -1,5 +1,6 @@
 """Administrative index preparation and selection metadata; no global activation."""
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,6 +14,82 @@ from app.ingestion.admin_indexes import list_indexes, prepare_index, available_q
 from app.storage.vector_store import SearchIndexError
 
 router = APIRouter()
+
+
+class IndexJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    embedding_profile: str = Field(min_length=1, max_length=100)
+    action: Literal["create", "backfill"]
+    index_id: uuid.UUID | None = None
+
+
+@router.post("/jobs", status_code=202)
+def create_job(request: IndexJobRequest, db: Session = Depends(get_db_session),
+               principal: Principal = Depends(require_manager)):
+    from app.ingestion.index_jobs import submit
+    try:
+        return {"job": submit(db, principal, request.embedding_profile, request.action, request.index_id)}
+    except DBAPIError:
+        db.rollback()
+        raise ModelError("index_job_unavailable", "Správa úloh není dostupná. Ověřte migraci.", 503) from None
+
+
+@router.get("/jobs/current")
+def get_job(db: Session = Depends(get_db_session), principal: Principal = Depends(require_manager)):
+    from app.storage.index_jobs import require_schema, current, public
+    try:
+        require_schema(db)
+        return {"job": public(db, current(db, principal.tenant_id))}
+    except DBAPIError:
+        raise ModelError("index_job_unavailable", "Stav úlohy není dostupný.", 503) from None
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_job(job_id: uuid.UUID, db: Session = Depends(get_db_session), principal: Principal = Depends(require_manager)):
+    from app.storage.index_jobs import require_schema, cancel
+    try:
+        require_schema(db)
+        return {"job": cancel(db, principal.tenant_id, job_id)}
+    except DBAPIError:
+        db.rollback()
+        raise ModelError("index_job_unavailable", "Úlohu se nepodařilo zastavit. Obnovte její stav.", 503) from None
+
+
+@router.get("/jobs/{job_id}/files")
+def job_files(job_id: uuid.UUID, db: Session = Depends(get_db_session), principal: Principal = Depends(require_manager)):
+    """Current per-document coverage, without reading vector contents or document text."""
+    from sqlalchemy import select, func, and_
+    from app.storage.index_jobs import require_schema, current, public
+    from app.storage.models import DBDocument, DBChunk, DBSearchIndex
+    from app.storage.vector_store import index_profile, vector_table
+    from app.retrieval.filters import exact_value
+    try:
+        require_schema(db)
+        job = current(db, principal.tenant_id)
+        if job is None or job.job_id != job_id:
+            raise ModelError("index_job_not_found", "Úloha byla nahrazena jinou. Obnovte přehled.", 404)
+        if job.index_id is None:
+            return {"files": []}
+        index = db.get(DBSearchIndex, job.index_id)
+        if index is None or index.tenant_id != principal.tenant_id:
+            raise ModelError("search_index_not_found", "Index není dostupný.", 404)
+        vectors = vector_table(index, index_profile(db, index))
+        dialect = db.bind.dialect.name
+        counts = (select(DBChunk.document_id.label("document_id"), func.count(DBChunk.chunk_id).label("total"),
+                         func.count(vectors.c.chunk_id).label("valid"))
+            .outerjoin(vectors, and_(vectors.c.chunk_id == DBChunk.chunk_id, vectors.c.input_revision == DBChunk.content_hash))
+            .where(exact_value(DBChunk.tenant_id, principal.tenant_id, dialect)).group_by(DBChunk.document_id).subquery())
+        rows = db.execute(select(DBDocument.document_id, DBDocument.title, counts.c.total, counts.c.valid)
+            .outerjoin(counts, counts.c.document_id == DBDocument.document_id)
+            .where(exact_value(DBDocument.tenant_id, principal.tenant_id, dialect))
+            .order_by(DBDocument.title, DBDocument.document_id)).all()
+        active = public(db, job)["state"] in {"running", "cancelling"}
+        current_ids = (job.activity or {}).get("document_ids", []) if active else []
+        return {"files": [{"id": str(ident), "name": title, "total": total or 0, "valid": valid or 0,
+            "state": "empty" if not total else "completed" if valid == total else "running" if str(ident) in current_ids else "pending"}
+            for ident, title, total, valid in rows]}
+    except DBAPIError:
+        raise ModelError("index_job_unavailable", "Přehled souborů není dostupný.", 503) from None
 
 
 @router.get("/available")

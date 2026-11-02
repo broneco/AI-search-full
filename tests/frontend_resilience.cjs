@@ -12,6 +12,17 @@ for (const frontend of ['frontend-admin', 'frontend-user']) {
   new Function('exports', compiled)(module.exports);
   const { requestJson, ApiRequestError, chooseIndexSelection, chooseModelSelection, isExpiredSession, pollHealth } = module.exports;
 
+  if (frontend === 'frontend-admin') test('registration chooses the exact embedding profile, never the first registry row', () => {
+    const candidate = { candidate_id: 'new-space', name: 'nomic', digest: 'digest' };
+    const expected = { id: 'new-space', kind: 'embedding', model: 'nomic', digest: 'digest' };
+    const oldRecipe = { ...expected, id: 'old-recipe' };
+    const rows = [{ ...expected, kind: 'chat', id: 'chat' }, oldRecipe, expected];
+    assert.equal(module.exports.registeredEmbeddingId(candidate, rows), 'new-space');
+    assert.equal(module.exports.registeredEmbeddingId(candidate, [oldRecipe]), undefined);
+    assert.equal(module.exports.registeredEmbeddingId({ ...candidate, digest: 'changed' }, rows), undefined);
+    assert.equal(module.exports.registeredEmbeddingId({ name:'nomic',digest:'digest' }, [oldRecipe,expected]), undefined);
+  });
+
   test(`${frontend}: failed gateway replies, session ownership and recovery`, async () => {
     const original = global.fetch;
     try {

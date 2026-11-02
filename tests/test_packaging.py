@@ -33,6 +33,7 @@ def test_wheel_contains_runtime_and_public_resources(tmp_path):
         for required in ("app/core/config.py", "app/storage/vector_store.py", "app/api/routes/chat.py",
                          "app/providers/jhu_managed.py", "app/providers/jhu_secrets.py", "app/providers/jhu_sidecar.py",
                          "app/api/routes/jhu_connection.py", "app/storage/tenant_settings.py",
+                         "app/storage/index_jobs.py", "app/ingestion/index_jobs.py",
                          "tenants/jhu/prompts.json", "fixtures/local-university/studijni-rad.pdf"):
             assert required in names
         for resource in (stage/"tenants").rglob("*.json"):

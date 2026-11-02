@@ -168,6 +168,18 @@ def test_initial_upstream_failure_never_publishes_ready():
     assert not health.initialized
 
 
+def test_only_proven_stability_replenishes_consecutive_failure_budget():
+    lifecycle=Lifecycle(state='ready',attempts=3,generation=2)
+    assert not lifecycle.stable(299)
+    lifecycle.state='auth_failed'
+    assert not lifecycle.stable(3600) and lifecycle.attempts==3
+    lifecycle.state='degraded'
+    assert not lifecycle.stable(3600)
+    lifecycle.state='ready'
+    assert lifecycle.stable(300) and lifecycle.attempts==1 and lifecycle.generation==2
+    assert not lifecycle.stable(600)
+
+
 def test_failed_bootstrap_removes_only_the_new_container(tmp_path):
     docker = Docker()
 

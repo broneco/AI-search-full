@@ -19,13 +19,15 @@ class GatewayServer(ThreadingHTTPServer):
     daemon_threads = True
     block_on_close = False
 
-    def __init__(self, address, key, status_path: Path, upstream_factory=http.client.HTTPConnection):
+    def __init__(self, address, key, status_path: Path, upstream_factory=http.client.HTTPConnection, *, reconnect_callback=None):
         self.key, self.status_path = key, status_path
         self.upstream_factory = upstream_factory
         self.slots = threading.BoundedSemaphore(4)
         self.active_lock = threading.Lock()
         self.active = set()
         self.forwarded = {path: 0 for _, path in ALLOWED}
+        self.reconnect_callback = reconnect_callback
+        self.reconnect_pending = False
         super().__init__(address, GatewayHandler)
 
     def status(self):
@@ -56,6 +58,17 @@ class GatewayServer(ThreadingHTTPServer):
     def metrics(self):
         with self.active_lock:
             return dict(active_requests=len(self.active), forwarded=dict(self.forwarded))
+
+    def request_reconnect(self, generation):
+        with self.active_lock:
+            status = self.status()
+            if (not callable(self.reconnect_callback) or self.reconnect_pending or self.active
+                    or status.get('generation') != generation
+                    or status.get('state') not in {'degraded', 'auth_failed'}):
+                return False
+            self.reconnect_pending = True
+        self.reconnect_callback()
+        return True
 
     def abort_upstreams(self):
         """Interrupt socket reads when the supervisor withdraws VPN readiness."""
@@ -137,7 +150,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
         if self.headers.get('Transfer-Encoding') or len(self.headers.get_all('Content-Length', [])) > 1:
             self.reply(400)
             return
-        if (self.command, self.path) not in ALLOWED and (self.command, self.path) != ('GET', '/_jhu/health'):
+        control = (self.command, self.path) == ('POST', '/_jhu/reconnect') and callable(self.server.reconnect_callback)
+        if (self.command, self.path) not in ALLOWED and (self.command, self.path) != ('GET', '/_jhu/health') and not control:
             self.reply(405)
             return
         try:
@@ -153,7 +167,18 @@ class GatewayHandler(BaseHTTPRequestHandler):
             # with unread body bytes can turn the intended 503 into a TCP reset.
             status = self.server.status()
             if self.path == '/_jhu/health':
-                self.reply(200, json.dumps({**status, **self.server.metrics()}).encode())
+                self.reply(200, json.dumps({**status, **self.server.metrics(),
+                    'reconnect_supported': callable(self.server.reconnect_callback)}).encode())
+                return
+            if control:
+                data = json.loads(body)
+                if (not isinstance(data, dict) or set(data) != {'generation'}
+                        or type(data['generation']) is not int or data['generation'] < 0):
+                    self.reply(400)
+                elif self.server.request_reconnect(data['generation']):
+                    self.reply(202, b'{"state":"connecting"}')
+                else:
+                    self.reply(409, b'{"code":"reconnect_not_available"}')
                 return
             self.server.require_ready()
             # The upstream is always the inherited-VPN-fd forward, never a user URL.

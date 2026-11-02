@@ -6,6 +6,24 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+## [v0.1.9] - 2026-11-02
+
+### Added
+
+- Administrativní průběhové okno pro indexové úlohy a reindexaci: přehled všech souborů, aktuální dávka/fáze, pokrytí chunků, hledání, znovuotevření a zastavení indexové úlohy. Chyby jednotlivých souborů zůstávají viditelné.
+
+- v0.1.9: explicitně aktivovaná cloudová správa nativních embeddingových indexů, vytvoření z ověřeného API inventáře a samostatný backfill z menu Chunkování. Trvalý stav poslední úlohy v SQL, heartbeat, podmíněné převzetí, průběh, zastavení a resume hotových dávek; ochrana ingestovaného defaultu a kontrola oprávnění před každým potvrzením.
+- `migrate_index_jobs.py`: read-only plán, aditivní migrace s přesnými host/DB/tenant guards a generátor kontrolovaného payloadu pro předchozí cloudovou image. Cloudový startup tabulku nevytváří; zapnutí vyžaduje `INDEX_PREPARATION_ENABLED` / `--enable-index-preparation`.
+- Samostatný stav JHU v obou konzolích a Management-only explicitní znovupřipojení sidecaru; chráněná loopback kontrola s generací a zákazem souběžné inference. [Diagnostika skutečného výpadku](incidents/2026-11-02-jhu-availability.md) a [návod správy indexů](development/cloud-embedding-management.md).
+
+### Fixed
+
+- Odstraněna univerzální chybová rada o FastAPI na portu 8000; cloudová JHU nedostupnost se nevydává za lokální chybu serveru. Discovery používá bezpečný parser gateway odpovědí. Výběr registrovaného embeddingu kontroluje konkrétní profil/digest, nikoli první řádek registru.
+- Po pěti minutách souvisle ověřeného tunelu se obnoví rozpočet následných přechodných chyb. Vyčerpaný helper lze explicitně znovu bootstrapovat v témže procesu, bez souběžné druhé VPN relace nebo replay modelového požadavku. Auth/cert chyby nadále nesmějí vytvářet nekonečný přihlašovací cyklus.
+- Read-only ověření nasazení zachytí i volitelnou tabulku úloh prostřednictvím stejné reflexe ve starší a novější image; první migrace zůstává oddělená od striktního testu výměny image.
+
+[Souhrn vydání](releases/v0.1.9.md). Vydání zdrojů a skutečné Azure nasazení jsou samostatně ověřované kroky. Dřívější R_583/Nomic relevance zůstává otevřená.
+
 ## [v0.1.8] - 2026-10-30
 
 [Souhrn vydání](releases/v0.1.8.md). Trvalá nastavení, cloudový JHU sidecar, stabilizace a opakovatelný test zachování dat. GitHub a Forgejo jsou samostatná zdrojová vydání; dnešní publikace nemění Azure.

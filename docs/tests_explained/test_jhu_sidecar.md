@@ -5,3 +5,5 @@ Izolované testy používají syntetické ACA metadata, mock KV a skutečné pro
 Helper testuje čtyři vyjmenované MI reads bez API credentials a redakci chybných secrets. Test bootstrap řízení simuluje službu a ověřuje jediné načtení, terminální sanitizovanou chybu, samostatný liveness a cleanup bez přihlašovacího retry cyklu. Windows test nahrazuje Linux signal konstantu a souborový report; skutečný filesystem/process start se ověřuje zvlášť v Linux Docker smoke. Neprovádí žádný Azure ani VPN login.
 
 Spuštění: `python -m pytest tests/test_jhu_sidecar.py -q`. Živá managed identity a Azure síť jsou samostatná akceptace podle [runbooku](../development/jhu-sidecar-azure.md).
+
+Pracovní v0.1.9 ověřuje explicitní restart přes cloudový gateway, nikoli Docker nebo modelový endpoint. Starý helper bez schopnosti obnovy je odmítnutý, obsazený inference slot zabrání zásahu. Deterministický service test ověřuje návrat k novému bootstrapu, zachování generace a úklid soukromých souborů před další relací. Nejde o skutečnou cloudovou akceptaci.

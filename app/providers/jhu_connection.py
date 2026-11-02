@@ -119,6 +119,9 @@ async def helper_health(client, connection) -> dict:
         if code is not None and (not isinstance(code, str) or not re.fullmatch(r'vpn_[a-z_]{1,60}', code)):
             raise ValueError()
         result = dict(state=body['state'], code=code)
+        if settings.JHU_CONNECTION_MODE == 'sidecar':
+            result['can_reconnect'] = body.get('reconnect_supported') is True and body['state'] in {'degraded', 'auth_failed'}
+            result['status_age_seconds'] = round(age)
         for name in ('attempts', 'generation', 'tls_channels'):
             value = body.get(name, 0)
             if type(value) is not int or value < 0:
@@ -142,6 +145,28 @@ async def connection_status() -> dict:
         return dict(mode=settings.JHU_CONNECTION_MODE, **result, health_ms=round(1000 * (time.monotonic() - started)))
     except ModelError as exc:
         return dict(mode=settings.JHU_CONNECTION_MODE, state='degraded', code=exc.code)
+
+
+async def reconnect_connection() -> dict:
+    """Explicit Management action; never retries or replays a model request."""
+    if settings.JHU_CONNECTION_MODE != 'sidecar':
+        raise ModelError('jhu_reconnect_sidecar_only', 'Znovupřipojení z konzole je určené pro cloudový sidecar.', 409)
+    if not slots.acquire(blocking=False):
+        raise ModelError('model_busy', 'JHU právě zpracovává požadavek. Obnovte připojení po dokončení.', 429)
+    try:
+        connection = await embedding_connection()
+        async with jhu_client(connection, httpx.Timeout(5), require_ready=False) as client:
+            status = await helper_health(client, connection)
+            if not status.get('can_reconnect'):
+                raise ModelError('jhu_reconnect_unavailable', 'Připojení není v obnovitelném stavu nebo helper vyžaduje aktualizaci.', 409)
+            response = await client.post(connection['endpoint']+'/_jhu/reconnect', json={'generation':status['generation']})
+            if response.status_code != 202:
+                raise ModelError('jhu_reconnect_not_confirmed', 'Obnovení nebylo potvrzeno. Načtěte stav; požadavek se automaticky neopakuje.', 503)
+        return dict(mode='sidecar', state='connecting', code=None)
+    except httpx.HTTPError:
+        raise ModelError('jhu_reconnect_not_confirmed', 'Potvrzení obnovení nedorazilo. Nejprve ověřte stav připojení.', 503) from None
+    finally:
+        slots.release()
 
 
 async def refresh_connection() -> dict:

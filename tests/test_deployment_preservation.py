@@ -68,6 +68,28 @@ def checkpoint(db, *, revision_name="revision-before", config=None):
         state=audit.capture_state(db, TENANT, require_settings=True), blobs=None)
 
 
+def test_index_job_table_optional_before_migration_and_reflected_with_previous_orm(seeded,monkeypatch):
+    from sqlalchemy import MetaData
+    import app.storage.models as models
+    from app.storage.models import DBIndexPreparationJob
+    db,data=seeded
+    from datetime import datetime,timedelta
+    db.add(DBIndexPreparationJob(tenant_key=revision(TENANT),tenant_id=TENANT,job_id=uuid.uuid4(),
+        requested_by=data.user.user_id,embedding_profile='synthetic-profile',profile_id=data.indexes[0][1].profile_id,
+        action='backfill',state='running',created_at=datetime.now(),updated_at=datetime.now(),
+        lease_until=datetime.now()+timedelta(seconds=90)))
+    db.commit()
+    current=checkpoint(db)
+    assert 'index_preparation_jobs' in current['state']['tables']
+    old=MetaData()
+    for table in models.Base.metadata.sorted_tables:
+        if table.name!='index_preparation_jobs':table.to_metadata(old)
+    monkeypatch.setattr(models,'Base',SimpleNamespace(metadata=old))
+    assert checkpoint(db)['state']==current['state']
+    DBIndexPreparationJob.__table__.drop(db.connection());db.commit()
+    assert 'index_preparation_jobs' not in checkpoint(db)['state']['tables']
+
+
 def test_capture_is_read_only_private_and_includes_both_spaces(seeded):
     db, data = seeded
     statements = []
@@ -79,7 +101,10 @@ def test_capture_is_read_only_private_and_includes_both_spaces(seeded):
     finally:
         event.remove(db.bind, "before_cursor_execute", observed)
     audit.validate_checkpoint(value)
-    assert statements and all(statement.startswith("SELECT") for statement in statements)
+    metadata_reads=tuple('PRAGMA '+scope+'.'+operation+'(' for scope in ('MAIN','TEMP')
+                         for operation in ('TABLE_INFO','TABLE_XINFO','INDEX_LIST','INDEX_INFO','FOREIGN_KEY_LIST'))
+    unexpected = [statement[:250] for statement in statements if not statement.startswith(("SELECT","WITH FK_INFO AS (",*metadata_reads))]
+    assert statements and not unexpected, unexpected
     assert len(value["state"]["indexes"]) == 2
     assert sorted(item["dimensions"] for item in value["state"]["indexes"].values()) == [768, 1536]
     assert all(item["coverage"] == [1, 1] for item in value["state"]["indexes"].values())

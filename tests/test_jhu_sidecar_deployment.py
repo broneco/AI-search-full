@@ -34,6 +34,16 @@ def deployment():
     return current,account,metadata,options
 
 
+def test_index_management_opt_in_is_explicit_and_existing_flag_is_preserved(deployment):
+    current,account,metadata,options=deployment
+    plan=build_plan(current,account,metadata,options)
+    assert 'INDEX_PREPARATION_ENABLED' not in env_values(plan.template['containers'][0])
+    enabled=build_plan(current,account,metadata,replace(options,enable_index_preparation=True))
+    assert env_values(enabled.template['containers'][0])['INDEX_PREPARATION_ENABLED']=='true'
+    current['properties']['template']['containers'][0]['env'].append(dict(name='INDEX_PREPARATION_ENABLED',value='true'))
+    assert env_values(build_plan(current,account,metadata,options).template['containers'][0])['INDEX_PREPARATION_ENABLED']=='true'
+
+
 def test_plan_is_redacted_preserves_credentials_and_only_adds_sidecar(deployment):
     current,account,metadata,options=deployment;before=deepcopy(current)
     plan=build_plan(*deployment)
@@ -185,7 +195,9 @@ def test_cli_defaults_to_plan_and_checks_account_before_app(deployment,monkeypat
         read_app=lambda:current,secret_metadata=lambda:metadata))
     args=['deploy_jhu_sidecar.py']
     for key,value in vars(options).items():
-        if value is not None:args.extend(['--'+key.replace('_','-'),str(value)])
+        if isinstance(value,bool):
+            if value:args.append('--'+key.replace('_','-'))
+        elif value is not None:args.extend(['--'+key.replace('_','-'),str(value)])
     monkeypatch.setattr('sys.argv',args)
     assert cli.main()==0
     assert json.loads(capsys.readouterr().out)['mode']=='plan'

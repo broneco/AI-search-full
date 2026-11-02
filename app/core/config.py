@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     APP_ENV: str = _APP_ENV
     DATABASE_BACKEND: Literal["auto", "azure_sql", "sqlserver", "postgresql"] = "auto"
     APP_NAME: str = "ai-search-app"
-    APP_VERSION: str = "v0.1.8"
+    APP_VERSION: str = "v0.1.9"
     LOG_LEVEL: str = "INFO"
     TENANT_ID: str = "dolphin"
     JWT_SECRET: str = Field(default="dolphin-ai-search-secret-key-2026", repr=False, exclude=True)
@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     JHU_HELPER_WORKSPACE: Optional[str] = None
     JHU_GATEWAY_KEY_SECRET: Optional[str] = None
     JHU_SIDECAR_APP_NAME: Optional[str] = None
+    # Explicit cloud opt-in after the additive index_preparation_jobs migration.
+    INDEX_PREPARATION_ENABLED: bool = False
 
     # PostgreSQL
     POSTGRES_HOST: str = "localhost"

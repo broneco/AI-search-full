@@ -4,7 +4,9 @@ import { openAuthenticatedPdf } from "./components/authenticatedPdf";
 import { ModelPicker, useModelCatalog } from "./components/ModelPicker";
 import { ModelManagementPanel } from "./components/ModelManagementPanel";
 import { ResultsComparison } from "./components/ResultsComparison";
-import { EmbeddingIndexPanel, EmbeddingIndexPicker, useEmbeddingIndexes } from "./components/EmbeddingIndexes";
+import { EmbeddingIndexPanel, EmbeddingIndexPicker, IndexProgress, useEmbeddingIndexes } from "./components/EmbeddingIndexes";
+import { ProcessingProgress, ProcessingFile } from "./components/ProcessingProgress";
+import { JhuConnectionStatus } from "./components/JhuConnectionStatus";
 import React, { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { TRANSLATIONS } from "./translations";
 import { CLIENT_THEMES, DEFAULT_THEME_ID } from "./config/themes";
@@ -618,6 +620,7 @@ export default function Home() {
   const [reindexProgress, setReindexProgress] = useState<{
     status: "idle" | "running" | "completed" | "failed";
     type?: "reindex_fast" | "reindex_full";
+    files?: ProcessingFile[];
     total_files: number;
     processed_files: number;
     current_file: string | null;
@@ -625,43 +628,35 @@ export default function Home() {
     error: string | null;
   } | null>(null);
 
-  // Polling handler for re-indexing progress
+  // Serial polling is independent of the dialog; identity changes cancel old requests.
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
+  const progressAbort = useRef<AbortController | null>(null);
+  const progressIdentity = useRef(authToken);
+  progressIdentity.current = authToken;
   const startPollingProgress = () => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-    }
-
-    pollIntervalRef.current = setInterval(async () => {
+    if (pollIntervalRef.current) clearTimeout(pollIntervalRef.current);
+    progressAbort.current?.abort();
+    const abort = new AbortController();
+    progressAbort.current = abort;
+    const owner = authToken;
+    const poll = async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/documents/reindex-progress`, { headers: getHeaders() });
-        if (res.ok) {
-          const data = await res.json();
-          setReindexProgress(data);
-          if (data.status === "completed" || data.status === "failed") {
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            // Refresh documents when complete
-            fetchDocuments();
-          }
-        }
-      } catch (err) {
-        console.error("Error polling re-index progress:", err);
+        const data = await requestJson(`${BACKEND_URL}/api/documents/reindex-progress`, {headers:getHeaders(), signal:abort.signal});
+        if (abort.signal.aborted || progressIdentity.current !== owner) return;
+        setReindexProgress(data);
+        if (data.status !== "running") { if (data.status !== "idle") void fetchDocuments(); return; }
+      } catch(err) {
+        if (abort.signal.aborted || progressIdentity.current !== owner) return;
+        setReindexProgress(previous=>previous?{...previous,error:err instanceof Error?err.message:String(err)}:previous);
       }
-    }, 1000);
-  };
-
-  // Clean up interval on unmount
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
+      if (!abort.signal.aborted) pollIntervalRef.current=setTimeout(poll,2500);
     };
-  }, []);
+    void poll();
+  };
+  useEffect(() => {
+    setShowReindexModal(false); setReindexProgress(null);
+    return () => { progressAbort.current?.abort(); if (pollIntervalRef.current) clearTimeout(pollIntervalRef.current); };
+  }, [authToken]);
 
   const getReindexPercentage = () => {
     if (!reindexProgress) return 0;
@@ -678,7 +673,7 @@ export default function Home() {
     }
     if (phase === "ingesting") {
       if (!total_files) return 60;
-      return Math.round(50 + (processed_files / total_files) * 50);
+      return reindexProgress.type === "reindex_fast" ? Math.round((processed_files / total_files) * 100) : Math.round(50 + (processed_files / total_files) * 50);
     }
     return 0;
   };
@@ -1571,7 +1566,7 @@ export default function Home() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.8
+                v0.1.9
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -1720,6 +1715,12 @@ export default function Home() {
         </div>
       </header>
 
+      <JhuConnectionStatus url={BACKEND_URL} token={authToken} tenant={userProfile?.tenant_id} manager={Boolean(userProfile?.groups?.includes("Management"))} locale={appLanguage} />
+
+      {userProfile?.groups?.includes("Management") && (embeddingIndexes.job || reindexProgress) && <div className="flex gap-4 px-6 py-2 text-xs border-b border-white/10">
+        {embeddingIndexes.job && <button type="button" onClick={embeddingIndexes.openProgress} className="text-indigo-300 underline">{appLanguage === "cs" ? "Průběh embeddingového indexu" : "Embedding index progress"}</button>}
+        {reindexProgress && <button type="button" onClick={()=>setShowReindexModal(true)} className="text-indigo-300 underline">{appLanguage === "cs" ? "Průběh zpracování dokumentů" : "Document processing progress"}</button>}
+      </div>}
       {resourceError && <div role="alert" className="shrink-0 border-b border-amber-400/20 bg-amber-500/10 px-6 py-3 text-sm text-amber-200 flex flex-wrap items-center gap-3">
         <span>{resourceError}</span>
         <button type="button" className="underline font-semibold" onClick={() => {
@@ -3064,7 +3065,8 @@ export default function Home() {
         )}
 
         {activeTab === "chunking" && (
-          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex justify-center">
+          <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex flex-col items-center gap-6">
+            {userProfile?.groups?.includes("Management") && <section className="w-full max-w-7xl glass-panel p-5 rounded-xl border border-white/10"><EmbeddingIndexPanel controller={embeddingIndexes} locale={appLanguage} expanded /></section>}
             <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl items-start">
               
               {/* Left Column: Settings & Triggers */}
@@ -3878,7 +3880,7 @@ export default function Home() {
                 </section>
                 <section className="glass-panel p-6 rounded-2xl bg-[#0c1222] border border-white/10 space-y-4">
                   <h3 className="font-bold text-white">{appLanguage === "cs" ? "Dostupné modely a oprávnění" : "Available models and access"}</h3>
-                  <ModelManagementPanel key={`management:${BACKEND_URL}:${authToken}`} url={BACKEND_URL} token={authToken} locale={appLanguage} />
+                  <ModelManagementPanel key={`management:${BACKEND_URL}:${authToken}`} url={BACKEND_URL} token={authToken} locale={appLanguage} onCreateIndex={embeddingIndexes.catalog?.can_prepare ? embeddingIndexes.create : undefined} />
                 </section>
               </>}
 
@@ -4053,124 +4055,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* Dynamic Re-indexing Progress Modal */}
-      {showReindexModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn">
-          <div className="glass-panel max-w-md w-full p-6 space-y-5 border-white/[0.08] shadow-2xl bg-[#0c1222]">
-            <div className="text-center space-y-2">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 mb-1">
-                {reindexProgress?.status === "running" && (
-                  <svg className="animate-spin h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                )}
-                {reindexProgress?.status === "completed" && (
-                  <span className="text-xl text-emerald-400">✓</span>
-                )}
-                {reindexProgress?.status === "failed" && (
-                  <span className="text-xl text-red-400">✕</span>
-                )}
-              </div>
-              <h3 className="text-md font-extrabold text-white tracking-wide">
-                {reindexProgress?.status === "running" && TRANSLATIONS[appLanguage].reindexProgressTitle}
-                {reindexProgress?.status === "completed" && TRANSLATIONS[appLanguage].reindexSuccessTitle}
-                {reindexProgress?.status === "failed" && TRANSLATIONS[appLanguage].reindexFailedTitle}
-              </h3>
-              <p className="text-[11px] text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                {reindexProgress?.type === "reindex_fast"
-                  ? TRANSLATIONS[appLanguage].reindexProgressDescFast
-                  : TRANSLATIONS[appLanguage].reindexProgressDesc}
-              </p>
-            </div>
-
-            {/* Progress Bar Container */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-[11px] font-semibold">
-                <span className="text-indigo-400">
-                  {reindexProgress?.status === "running" && (
-                    reindexProgress.phase === "clearing_db" ? TRANSLATIONS[appLanguage].reindexPhaseClearing :
-                    reindexProgress.phase === "scanning_files" || reindexProgress.phase === "scanning" ? TRANSLATIONS[appLanguage].reindexPhaseScanning :
-                    reindexProgress.phase === "analyzing" ? TRANSLATIONS[appLanguage].reindexPhaseAnalyzing :
-                    reindexProgress.phase === "ingesting" ? (
-                      reindexProgress.type === "reindex_fast" ? TRANSLATIONS[appLanguage].reindexPhaseIngestingFast : TRANSLATIONS[appLanguage].reindexPhaseIngesting
-                    ) :
-                    TRANSLATIONS[appLanguage].reindexPhaseWorking
-                  )}
-                  {reindexProgress?.status === "completed" && TRANSLATIONS[appLanguage].reindexSuccessMsg}
-                  {reindexProgress?.status === "failed" && TRANSLATIONS[appLanguage].reindexErrorMsg}
-                </span>
-                <span className="text-indigo-300 font-bold">{getReindexPercentage()}%</span>
-              </div>
-
-              <div className="w-full h-2.5 rounded-full bg-white/[0.03] border border-white/[0.05] overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ease-out ${
-                    reindexProgress?.status === "failed" 
-                      ? "bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.4)]" 
-                      : reindexProgress?.status === "completed"
-                      ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
-                      : "bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-[0_0_10px_rgba(99,102,241,0.4)] animate-pulse"
-                  }`}
-                  style={{ width: `${getReindexPercentage()}%` }}
-                />
-              </div>
-
-              {/* Detail info */}
-              {reindexProgress?.status === "running" && reindexProgress.total_files > 0 && (
-                <div className="rounded-xl bg-black/40 border border-white/[0.05] p-3 text-[11px] font-semibold text-zinc-300 space-y-1 mt-2">
-                  <div className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider">
-                    {reindexProgress.phase === "analyzing"
-                      ? TRANSLATIONS[appLanguage].reindexSubphaseAnalyzing
-                      : (reindexProgress.type === "reindex_fast"
-                         ? (appLanguage === "cs" ? "Rozdělování & přeceňování chunků" : "Re-chunking & re-embedding content")
-                         : TRANSLATIONS[appLanguage].reindexSubphaseIngesting)}
-                  </div>
-                  {reindexProgress.current_file && (
-                    <div className="truncate text-white text-[11px]">
-                      📁 {reindexProgress.current_file}
-                    </div>
-                  )}
-                  <div className="text-indigo-400 text-[10px]">
-                    {TRANSLATIONS[appLanguage].reindexProgressFile
-                      .replace("{current}", String(Math.min(reindexProgress.processed_files + 1, reindexProgress.total_files)))
-                      .replace("{total}", String(reindexProgress.total_files))}
-                  </div>
-                </div>
-              )}
-
-              {reindexProgress?.status === "failed" && reindexProgress.error && (
-                <div className="rounded-xl bg-red-950/20 border border-red-500/20 p-3 text-[11px] text-red-400 font-semibold leading-relaxed mt-2">
-                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-red-500 mb-1">
-                    {TRANSLATIONS[appLanguage].errorMessageTitle}
-                  </div>
-                  {reindexProgress.error}
-                </div>
-              )}
-            </div>
-
-            {/* Close/Action buttons */}
-            {(reindexProgress?.status === "completed" || reindexProgress?.status === "failed") && (
-              <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowReindexModal(false);
-                    setReindexProgress(null);
-                  }}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
-                    reindexProgress?.status === "failed"
-                      ? "bg-red-600 hover:bg-red-500 text-white"
-                      : "bg-indigo-600 hover:bg-indigo-500 text-white"
-                  }`}
-                >
-                  {TRANSLATIONS[appLanguage].closeBtn}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <IndexProgress controller={embeddingIndexes} locale={appLanguage}/>
+      <ProcessingProgress open={showReindexModal} close={() => setShowReindexModal(false)} locale={appLanguage}
+        title={appLanguage === "cs" ? "Zpracování dokumentů" : "Document processing"}
+        state={reindexProgress?.status === "completed" ? (appLanguage === "cs" ? "Dokončeno" : "Completed") : reindexProgress?.status === "failed" ? (appLanguage === "cs" ? "Selhalo" : "Failed") : (appLanguage === "cs" ? "Probíhá" : "Running")}
+        phase={`${reindexProgress?.phase === "analyzing" ? (appLanguage === "cs" ? "Analyzuji metadata" : "Analyzing metadata") : reindexProgress?.phase === "ingesting" ? (appLanguage === "cs" ? "Zpracovávám dokumenty" : "Processing documents") : reindexProgress?.status === "running" ? (appLanguage === "cs" ? "Připravuji zpracování" : "Preparing processing") : ""}${reindexProgress?.current_file ? ` · ${reindexProgress.current_file}` : ""}`}
+        files={reindexProgress?.files || []} value={getReindexPercentage()} total={100} error={reindexProgress?.error}/>
 
       {/* Chunking Preview Modal */}
       {chunkPreviewDocTitle && (

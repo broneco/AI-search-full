@@ -7,3 +7,5 @@ Synthetic provider fixture nyní deklaruje odpovídající embeddingový prostor
 Ověřuje, že fast reindex čte/embeddí pouze přesný tenant včetně suffixu a chybějící zdroj nezamění za stejně pojmenovaný cizí soubor. Full refresh nevolá zápisy při chybějícím či prázdném zdroji, modelová chyba zachová původní data a stale cleanup nikdy nezasáhne cizí tenant. Pokrývá také výchozí read-only CLI plán, potvrzení cíle, pozdní selhání, nové souběžné uploady, změnu stale dokumentu a přesun vztahů na nová UUID. Model při detekci vztahu nedostane názvy cizích dokumentů.
 
 Spuštění: `python -m pytest tests/test_maintenance.py -q`. SQLite zde neprokazuje výkon ani native Azure DDL.
+
+Průběh reindexace vrací seznam úspěšných a neúspěšných souborů; test hlídá, že správce jiného tenantu nedostane názvy z cizí běžící úlohy.

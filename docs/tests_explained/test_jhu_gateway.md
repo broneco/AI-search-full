@@ -9,3 +9,5 @@ Nepřipravené stavy vracejí 503 bez upstream volání, request body se před �
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/test_jhu_gateway.py -q
 ```
+
+Explicitní cloudové znovupřipojení testuje skutečný loopback HTTP server: capability, přesná generace, odmítnutí zdravého nebo aktivního helperu, jediné přijetí a nulové forwarding/modelové volání. Lokální gateway bez control callbacku tuto operaci nepovoluje.

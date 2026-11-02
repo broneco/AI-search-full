@@ -66,6 +66,8 @@ def test_fast_reindex_cannot_process_foreign_tenant(maintenance):
     factory, provider, tagger = maintenance
     asyncio.run(run_reindex_all_task("ju-prod"))
     assert reindex_progress["status"] == "completed"
+    assert reindex_progress["files"][0]["state"] == "completed"
+    assert reindex_progress["files"][0]["name"] == "current"
     assert ("other-prod", "old-foreign") in contents(factory)
     assert all("foreign" not in text for call in provider.embed_documents.await_args_list for text in call.args[0])
     assert any(tenant == "ju-prod" and "unique content" in text for tenant, text in contents(factory))
@@ -93,8 +95,18 @@ def test_fast_reindex_never_substitutes_a_foreign_file_with_same_name(maintenanc
     Path("data/current/doc.txt").unlink()
     asyncio.run(run_reindex_all_task("ju-prod"))
     assert reindex_progress["status"] == "failed"
+    assert reindex_progress["files"][0]["state"] == "failed"
     assert contents(factory) == before
     provider.embed_documents.assert_not_called()
+
+
+def test_reindex_progress_never_exposes_another_tenant(maintenance):
+    from app.api.routes.documents import get_reindex_progress, reindex_progress
+    from app.api.identity import Principal
+    import uuid
+    reindex_progress.update(tenant_id="foreign", files=[{"name": "private-title", "state": "running"}])
+    result = asyncio.run(get_reindex_progress(Principal(uuid.uuid4(), "ju-prod", ("Management",))))
+    assert result["files"] == [] and "private-title" not in str(result)
 
 
 def test_refresh_failure_retains_entire_remaining_corpus(maintenance):

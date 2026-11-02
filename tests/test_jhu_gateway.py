@@ -50,6 +50,40 @@ def test_capability_required_before_any_upstream(gateway):
     assert calls == []
 
 
+def test_explicit_reconnect_is_capability_protected_fenced_and_never_forwarded(tmp_path):
+    path=tmp_path/'status.json'
+    state=dict(state='degraded',generation=2,updated_at=time.time())
+    path.write_text(json.dumps(state))
+    requests=[]
+    server=GatewayServer(('127.0.0.1',0),'a'*64,path,
+        upstream_factory=lambda *_a,**_k:pytest.fail('No upstream/model call for control'),
+        reconnect_callback=lambda:requests.append('restart'))
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    def post(payload,key='a'*64):
+        connection=http.client.HTTPConnection(*server.server_address,timeout=3)
+        try:
+            connection.request('POST','/_jhu/reconnect',body=None if key=='bad' else json.dumps(payload),headers={'X-JHU-Connection':key})
+            response=connection.getresponse();response.read();return response.status
+        finally:connection.close()
+    try:
+        assert post({'generation':2},'bad')==403
+        assert post({'generation':True})==400
+        assert post({'generation':2,'url':'http://example.test'})==400
+        assert post({'generation':1})==409
+        state['state']='ready';path.write_text(json.dumps(state))
+        assert post({'generation':2})==409
+        state['state']='degraded';path.write_text(json.dumps(state))
+        server.active.add(object())
+        assert post({'generation':2})==409
+        server.active.clear()
+        assert requests==[]
+        assert post({'generation':2})==202
+        assert post({'generation':2})==409
+        assert requests==['restart'] and sum(server.metrics()['forwarded'].values())==0
+    finally:
+        server.shutdown();server.server_close();thread.join(2)
+
+
 @pytest.mark.parametrize('method,path', [('POST','/api/pull'), ('DELETE','/api/delete'),
     ('CONNECT','example.test:443'), ('GET','http://example.test/api/tags'),
     ('GET','/api/tags?url=example.test'), ('POST','/api/generate/../pull')])

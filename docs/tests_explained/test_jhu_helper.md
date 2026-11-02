@@ -11,3 +11,5 @@ Tyto testy nepřistupují na Docker ani JHU. Živý start/status/reconnect/resta
 Protokol2 ověřuje výhradně `127.0.0.1::18081` publish; capability vzniká pouze v bootstrap stdin, nikoli Docker args/env/labels. Runtime používá explicitní lokální image bez automatického pullu.
 
 ForwardHealth regrese ověřují okamžité odvolání ready při neúspěšném health probe, toleranci dvou přechodných chyb, reset čítače po úspěchu a restart až při třetí souvislé chybě. Návrat upstreamu ve stejném VPN procesu nezvyšuje generation ani attempts; neúspěšná počáteční kontrola nikdy nepublikuje ready.
+
+Rozpočet po sobě jdoucích poruch se obnoví pouze po 300 sekundách ověřeného ready. Degraded ani auth_failed jej nezíská pouhým uplynutím času, generace zůstává zachovaná; po kratší době se rozpočet nemění.

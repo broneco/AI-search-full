@@ -36,6 +36,13 @@ class Lifecycle:
     def public(self) -> dict:
         return dict(state=self.state, code=self.code, attempts=self.attempts, generation=self.generation)
 
+    def stable(self, seconds: float) -> bool:
+        """Replenish consecutive-failure budget only after five minutes of proven readiness."""
+        if self.state == 'ready' and seconds >= 300 and self.attempts > 1:
+            self.attempts = 1
+            return True
+        return False
+
 
 @dataclass
 class ForwardHealth:

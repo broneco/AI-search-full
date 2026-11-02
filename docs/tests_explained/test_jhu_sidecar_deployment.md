@@ -5,3 +5,5 @@ Testy staví plán nad syntetickým Container App dokumentem a ověřují přesn
 Apply se nepovolí bez stejného fingerprintu/revize a potvrzení migrací, modelů, VPN relace, kapacitní změny a případného souběhu revizí. Změna stavu těsně před zápisem přeruší rollout. Mock HTTP ověřuje jediný ARM PATCH s location/template, zachovaným If-Match, bez CLI argumentů nesoucích tělo či token. Timeout se neopakuje a chyba je sanitizovaná. CLI testuje Windows launcher/UTF8, odmítnutí shell syntaxe, standardní read-only režim a kontrolu účtu před čtením aplikace.
 
 Spuštění: `python -m pytest tests/test_jhu_sidecar_deployment.py -q`. Tyto testy neprokazují akceptaci skutečného ARM template ani dostupnost image/modelu v Azure.
+
+Cloudová správa indexů má explicitní enable-index-preparation opt-in. Bez přepínače se existující hodnota zachová; nový plán ji musí zveřejnit jako nekredenciální změnu. CLI bool argumenty se předávají jako přepínače, nikoli text False. Samostatné potvrzení migrací nadále zůstává povinné.

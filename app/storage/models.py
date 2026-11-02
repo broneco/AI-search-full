@@ -107,6 +107,29 @@ class DBActiveSearchIndex(Base):
     index_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("search_indexes.index_id"), nullable=False)
 
 
+class DBIndexPreparationJob(Base):
+    """Latest resumable administrative operation per exact tenant, with a fenced lease."""
+    __tablename__ = "index_preparation_jobs"
+    tenant_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    job_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, unique=True)
+    index_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    requested_by: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    embedding_profile: Mapped[str] = mapped_column(String(100), nullable=False)
+    profile_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    processed_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    valid_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    activity: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    lease_until: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+
+
 class DBChunk(Base):
     __tablename__ = "chunks"
 

@@ -151,15 +151,22 @@ def blob_fingerprint(db, config, *, client=None) -> dict:
 
 
 def capture_state(db, tenant: str, *, require_indexes=(), require_settings=False) -> dict:
-    from sqlalchemy import func, select
+    from sqlalchemy import func, select, inspect, MetaData, Table
     from app.retrieval.filters import exact_value
     from app.storage.models import Base, DBActiveSearchIndex, DBSearchIndex
     from app.storage.tenant_settings import MUTABLE_CONFIG_FILES, read_setting
     from app.storage.vector_store import coverage, index_profile, vector_table, tenant_key
     tables = {}
+    jobs_exist = inspect(db.connection()).has_table("index_preparation_jobs")
     for name, table in sorted(Base.metadata.tables.items()):
+        if name == "index_preparation_jobs":
+            continue  # Reflect this optional operational table identically in old and new images.
         if "tenant_id" in table.c or name in {"document_acl_grants", "chunk_acl_grants", "embedding_profiles"}:
             tables[name] = table_fingerprint(db, table, tenant, profiles=name == "embedding_profiles")
+    if jobs_exist:
+        # A new verifier can run in the previous image, whose ORM does not know this table yet.
+        jobs = Table("index_preparation_jobs", MetaData(), autoload_with=db.connection())
+        tables[jobs.name] = table_fingerprint(db, jobs, tenant)
     indexes = {}
     active = db.get(DBActiveSearchIndex, tenant_key(tenant))
     if active is not None and active.tenant_id != tenant:

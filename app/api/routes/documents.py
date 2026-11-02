@@ -33,7 +33,9 @@ reindex_progress = {
     "processed_files": 0,
     "current_file": None,
     "phase": None,          # "clearing_db" | "scanning_files" | "analyzing" | "ingesting"
-    "error": None
+    "error": None,
+    "files": [],
+    "tenant_id": None,
 }
 
 
@@ -850,20 +852,25 @@ async def run_reindex_full_task(tenant_id: str | None = None, model_selection=No
     from app.ingestion.refresh import refresh_files, refresh_documents
     tenant_id = tenant_id or settings.TENANT_ID
     reindex_progress.update(status="running", type="reindex_full", phase="scanning_files",
-                            total_files=0, processed_files=0, current_file=None, error=None)
+                            total_files=0, processed_files=0, current_file=None, error=None, files=[], tenant_id=tenant_id)
     try:
         files = refresh_files(tenant_id)
         await refresh_documents(tenant_id, files, reindex_progress, model_selection=model_selection, principal=principal)
         reindex_progress["status"] = "completed"
     except Exception:
         logger.exception("Tenant full refresh failed; stale cleanup was not completed.")
+        for item in reindex_progress.get("files", []):
+            if item["state"] in {"analyzing", "running"}:
+                item["state"] = "failed"
         reindex_progress.update(status="failed", error="Refresh failed; inspect server logs. Remaining corpus was retained.", phase=None)
 
 
 @router.get("/reindex-progress", dependencies=[Depends(require_manager)])
-async def get_reindex_progress():
+async def get_reindex_progress(principal: Principal = Depends(require_manager)):
     """Get the current progress of the background re-indexing task."""
-    return reindex_progress
+    if reindex_progress.get("tenant_id") not in (None, principal.tenant_id):
+        return {"status": "idle", "total_files": 0, "processed_files": 0, "files": []}
+    return {key: value for key, value in reindex_progress.items() if key != "tenant_id"}
 
 
 @router.post("/reindex-full", dependencies=[Depends(require_manager)])
@@ -898,6 +905,8 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
     reindex_progress["processed_files"] = 0
     reindex_progress["current_file"] = None
     reindex_progress["error"] = None
+    reindex_progress["tenant_id"] = tenant_id
+    reindex_progress["files"] = []
 
     db = SessionLocal()
     try:
@@ -913,6 +922,7 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
             return
 
         reindex_progress["total_files"] = len(docs)
+        reindex_progress["files"] = [{"id": str(doc.document_id), "name": doc.title, "state": "pending"} for doc in docs]
         reindex_progress["phase"] = "ingesting"
 
         selection = model_selection or {}
@@ -920,6 +930,8 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
         pipeline = IngestionPipeline(db, summary_provider=summary, principal=principal) if summary else IngestionPipeline(db)
 
         for idx, doc in enumerate(docs):
+            file_progress = reindex_progress["files"][idx]
+            file_progress["state"] = "extracting"
             reindex_progress["current_file"] = doc.title
             reindex_progress["processed_files"] = idx
             
@@ -939,6 +951,7 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
                 # A basename match elsewhere in data/ may belong to another tenant.
                 logger.warning("Exact source missing for document %s; retaining its chunks.", doc.document_id)
                 reindex_progress["error"] = "An exact document source is missing; its existing chunks were retained."
+                file_progress["state"] = "failed"
                 continue
 
             logger.info(f"Fast re-indexing document: {doc.title} from {file_path}")
@@ -946,13 +959,18 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
                 if safe_data_path(file_path) is None:
                     raise ValueError("Reindex source is outside the data directory.")
                 extracted_pages = pipeline.extractor.extract(file_path)
+                file_progress["state"] = "splitting"
                 chunks = pipeline.splitter.split_pages(extracted_pages)
                 if not chunks:
                     logger.warning(f"No text split from document: {doc.title}. Skipping.")
+                    file_progress["state"] = "failed"
+                    reindex_progress["error"] = "A document produced no chunks; its existing chunks were retained."
                     continue
                 
                 chunk_texts = [chunk.content for chunk in chunks]
+                file_progress.update(state="embedding", total=len(chunks), valid=0)
                 embeddings = await pipeline.embedding_provider.embed_documents(chunk_texts)
+                file_progress["state"] = "saving"
                 
                 db.query(DBChunk).filter(DBChunk.document_id == doc.document_id,
                     exact_value(DBChunk.tenant_id, tenant_id, db.bind.dialect.name)).delete()
@@ -970,11 +988,13 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
                     for chunk_idx, chunk in enumerate(chunks)], pipeline.embedding_provider.profile)
                 
                 db.commit()
+                file_progress.update(state="completed", valid=len(chunks))
                 logger.info(f"Successfully fast-reindexed document: {doc.title}")
             except Exception as inner_e:
                 db.rollback()
                 logger.error(f"Failed to fast-reindex document {doc.title}: {inner_e}")
-                reindex_progress["error"] = f"Failed for {doc.title}: {inner_e}"
+                file_progress["state"] = "failed"
+                reindex_progress["error"] = "Document processing failed; existing data was retained. Inspect server logs."
 
         reindex_progress["status"] = "failed" if reindex_progress["error"] else "completed"
         reindex_progress["processed_files"] = len(docs)
@@ -982,11 +1002,12 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
         reindex_progress["phase"] = None
 
     except ModelError:
+        reindex_progress.update(status="failed", error="Model access or availability check failed.", phase=None)
         raise
     except Exception as e:
         logger.error(f"Fast re-indexing failed: {e}")
         reindex_progress["status"] = "failed"
-        reindex_progress["error"] = str(e)
+        reindex_progress["error"] = "Document processing failed; inspect server logs."
     finally:
         db.close()
         logger.info("Background fast re-indexing finished.")

@@ -24,6 +24,13 @@ def test_status_is_separate_from_backend_health_and_sanitized(models_db, models_
     assert not {'endpoint','key','credentials','username','password','forwarded'} & result.json().keys()
 
 
+def test_ordinary_user_sees_only_availability_and_cannot_reconnect(models_db,models_client,managed_service):
+    _,headers=account(models_db,['User'])
+    result=models_client.get('/api/models/connection/availability',headers=headers)
+    assert result.status_code==200 and set(result.json())=={'mode','state','code'}
+    assert models_client.post('/api/models/connection/reconnect',headers={**headers,'X-User-Groups':'Management'}).status_code==403
+
+
 def test_status_and_refresh_require_current_management_and_exact_tenant(models_db, models_client, managed_service, monkeypatch):
     assert models_client.get('/api/models/connection').status_code == 401
     normal, headers = account(models_db, ['User'])

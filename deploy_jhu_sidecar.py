@@ -18,7 +18,7 @@ def main():
     parser.add_argument('--app-version',required=True)
     parser.add_argument('--expected-fingerprint')
     parser.add_argument('--expected-revision')
-    for name in ('apply','migrations-confirmed','resources-confirmed','session-policy-confirmed','models-confirmed','overlap-confirmed'):
+    for name in ('apply','migrations-confirmed','resources-confirmed','session-policy-confirmed','models-confirmed','overlap-confirmed','enable-index-preparation'):
         parser.add_argument('--'+name,action='store_true')
     args=parser.parse_args()
     options=Options(**{key:getattr(args,key) for key in Options.__dataclass_fields__})

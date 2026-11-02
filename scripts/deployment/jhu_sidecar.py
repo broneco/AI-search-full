@@ -46,6 +46,7 @@ class Options:
     verified_model: str | None = None
     app_version: str | None = None
     advanced_model_deployment: str | None = None
+    enable_index_preparation: bool = False
 
 
 def fingerprint(app: dict) -> str:
@@ -148,6 +149,8 @@ def build_plan(current: dict, account: dict, metadata: list[dict], options: Opti
                      'AZURE_OPENAI_THINKING_DEPLOYMENT':options.advanced_model_deployment or ''}
     remove=('JHU_LLM_USERNAME','JHU_LLM_PASSWORD','AZURE_KEY_VAULT_SECRET_JHU_LLM_USERNAME',
             'AZURE_KEY_VAULT_SECRET_JHU_LLM_PASSWORD','JHU_HELPER_WORKSPACE')
+    if options.enable_index_preparation:
+        backend_updates['INDEX_PREPARATION_ENABLED'] = 'true'
     replace_env(backend,backend_updates,remove)
     previous_resources=deepcopy(backend['resources'])
     backend['resources']={key:value for key,value in backend['resources'].items() if key!='ephemeralStorage'}
@@ -190,6 +193,9 @@ def build_plan(current: dict, account: dict, metadata: list[dict], options: Opti
                              ('minReplicas','maxReplicas','cooldownPeriod','pollingInterval')}),
         location=current['location'],
         runtime_version=options.app_version,
+        index_preparation=dict(previous=runtime.get('INDEX_PREPARATION_ENABLED','false'),
+                               proposed=env_values(backend).get('INDEX_PREPARATION_ENABLED','false'),
+                               migration_required=env_values(backend).get('INDEX_PREPARATION_ENABLED')=='true'),
         advanced_model=dict(previous=runtime.get('AZURE_OPENAI_THINKING_DEPLOYMENT'),
                             proposed=options.advanced_model_deployment,
                             state='requires_deployment_verification' if options.advanced_model_deployment else 'not_configured'),

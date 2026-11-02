@@ -46,6 +46,13 @@ export function chooseIndexSelection(current: string, indexes: { index_id: strin
   return indexes.find(index => index.ingestion_default && index.ready !== false)?.index_id || "";
 }
 
+export function registeredEmbeddingId(candidate: {candidate_id?:string;name:string;digest:string},
+  rows: {id:string;model:string;digest:string;kind:string}[]): string | undefined {
+  const matches=rows.filter(row=>row.kind==="embedding" && row.model===candidate.name && row.digest===candidate.digest &&
+    (!candidate.candidate_id || row.id===candidate.candidate_id));
+  return matches.length===1 ? matches[0].id : undefined;
+}
+
 export function chooseModelSelection(current: string, models: { id: string; available: boolean }[], defaultId: string, initialCandidate?: string): string {
   const candidate = initialCandidate ?? current;
   if (models.some(model => model.id === candidate && model.available)) return candidate;

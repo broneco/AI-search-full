@@ -52,6 +52,8 @@ def managed_service(monkeypatch):
         if request.url.path == '/_jhu/health':
             return httpx.Response(200, json=state.get('health_body', dict(state='ready' if state['ready'] else 'connecting',
                 protocol_version=2, updated_at=time.time())))
+        if request.url.path == '/_jhu/reconnect' and 'reconnect_status' in state:
+            return httpx.Response(state['reconnect_status'], json={'state':'connecting'})
         if request.url.path == '/api/tags':
             return httpx.Response(200, json={'models':[{'name':entry.space().model_id, 'digest':digest}]})
         if request.url.path == '/api/show':

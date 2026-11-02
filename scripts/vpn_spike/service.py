@@ -91,13 +91,17 @@ def forward_responds() -> bool:
         connection.close()
 
 
-def serve(cloud_loader=None, cloud_context=None) -> None:
+def serve(cloud_loader=None, cloud_context=None, *, generation=0):
     os.umask(0o077)
     stop, reconnect = threading.Event(), threading.Event()
-    signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    explicit_restart = threading.Event()
+    def shutdown(*_):
+        explicit_restart.clear()
+        stop.set()
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGUSR1, lambda *_: reconnect.set())
-    lifecycle = Lifecycle()
+    lifecycle = Lifecycle(generation=generation)
     tls_channels = 0
     recovery_causes = {}
 
@@ -117,7 +121,11 @@ def serve(cloud_loader=None, cloud_context=None) -> None:
         if cloud_loader is not None:
             # Process health is independent of vault/VPN health. A terminal
             # bootstrap error stays visible; ACA must not retry credentials.
-            gateway = GatewayServer(('127.0.0.1', 18081), secrets.token_hex(32), RUNTIME/'status.json')
+            def request_restart():
+                explicit_restart.set()
+                stop.set()
+            gateway = GatewayServer(('127.0.0.1', 18081), secrets.token_hex(32), RUNTIME/'status.json',
+                                    reconnect_callback=request_restart)
             threading.Thread(target=gateway.serve_forever, daemon=True).start()
             # Platform TCP probes target the replica IP, not its loopback.
             # Keep model traffic on loopback and use a separate no-data port.
@@ -176,7 +184,7 @@ def serve(cloud_loader=None, cloud_context=None) -> None:
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True)
             reader = threading.Thread(target=drain, args=(process.stdout,), daemon=True)
             reader.start()
-            started, next_health = time.monotonic(), 0.0
+            started, next_health, healthy_since = time.monotonic(), 0.0, None
             code = 'vpn_disconnected'
             while not stop.wait(.2):
                 if errors:
@@ -192,6 +200,10 @@ def serve(cloud_loader=None, cloud_context=None) -> None:
                     healthy = forward_responds()
                     next_health = now + (10 if healthy else .5)
                     restart = forward_health.observe(lifecycle, healthy)
+                    healthy_since = (healthy_since if healthy_since is not None else now) if healthy else None
+                    if healthy_since is not None and lifecycle.stable(now-healthy_since):
+                        # The budget is for consecutive instability, not three outages over the whole uptime.
+                        recovery_causes['vpn_stable_budget_reset'] = recovery_causes.get('vpn_stable_budget_reset', 0)+1
                     report()
                     if restart:
                         code = 'vpn_upstream_unavailable'
@@ -237,6 +249,7 @@ def serve(cloud_loader=None, cloud_context=None) -> None:
         if stop.is_set() or lifecycle.state == 'disabled':
             lifecycle.state = 'disabled'
         report()
+    return lifecycle.generation if explicit_restart.is_set() else None
 
 
 if __name__ == '__main__':
@@ -255,7 +268,11 @@ if __name__ == '__main__':
                 context.update(config['context'])
                 return load_payload(config)
             context = {}
-            serve(cloud_payload, context)
+            generation = 0
+            while True:
+                generation = serve(cloud_payload, context, generation=generation)
+                if generation is None:
+                    break
         else:
             raise ValueError('invalid_mode')
     except Exception:

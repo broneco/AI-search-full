@@ -2,6 +2,7 @@
 
 import { ModelPicker, useModelCatalog } from "./components/ModelPicker";
 import { EmbeddingIndexPicker, useQueryIndexes } from "./components/EmbeddingIndexPicker";
+import { JhuConnectionStatus } from "./components/JhuConnectionStatus";
 import React, { useState, useEffect, useRef } from "react";
 import { TRANSLATIONS } from "./translations";
 import { CLIENT_THEMES, DEFAULT_THEME_ID } from "./config/themes";
@@ -579,7 +580,7 @@ export default function UserSearchPage() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.8
+                v0.1.9
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -634,6 +635,8 @@ export default function UserSearchPage() {
           )}
         </div>
       </header>
+
+      <JhuConnectionStatus url={BACKEND_URL} token={authToken} tenant={userProfile?.tenant_id} manager={false} locale={appLanguage} />
 
       {resourceError && <div role="alert" className="shrink-0 border-b border-amber-400/20 bg-amber-500/10 px-6 py-3 text-sm text-amber-200 flex flex-wrap items-center gap-3">
         <span>{resourceError}</span>
@@ -770,7 +773,7 @@ export default function UserSearchPage() {
             </form>
             <p className="text-[10px] text-zinc-500 text-center mt-2 font-medium flex items-center justify-center gap-2">
               <span>{TRANSLATIONS[appLanguage].disclaimer}</span>
-              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.8</span>
+              <span className="font-mono text-[9px] text-zinc-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded select-none">v0.1.9</span>
             </p>
           </div>
         </main>

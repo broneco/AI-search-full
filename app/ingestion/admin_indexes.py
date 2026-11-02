@@ -36,16 +36,21 @@ def index_description(session, index, entries, active):
 
 
 def list_indexes(session: Session, tenant: str) -> dict:
+    from app.ingestion.index_jobs import capability
+    from app.storage.index_jobs import available, current, public
     catalog = embedding_catalog(session, tenant)
     indexes = session.scalars(select(DBSearchIndex).where(
         exact_value(DBSearchIndex.tenant_id, tenant, session.bind.dialect.name)).order_by(DBSearchIndex.index_id)).all()
     active = session.get(DBActiveSearchIndex, tenant_key(tenant))
     documents = session.scalar(select(func.count()).select_from(DBDocument).where(
         exact_value(DBDocument.tenant_id, tenant, session.bind.dialect.name)))
+    allowed, reason = capability(session)
+    job = public(session, current(session, tenant)) if available(session) else None
     return dict(indexes=[index_description(session, index, catalog.profiles, active) for index in indexes],
-                profiles=[dict(id=entry.id, model=entry.space().model_id, dimensions=entry.space().dimensions)
+                profiles=[dict(id=entry.id, model=entry.space().model_id, dimensions=entry.space().dimensions,
+                               embedding_location="local" if entry.provider == "ollama_embed" else "cloud")
                           for entry in catalog.profiles], documents=documents,
-                can_prepare=can_prepare_locally(session))
+                can_prepare=allowed, preparation_unavailable_reason=reason, job=job)
 
 
 def available_query_indexes(session: Session, principal) -> dict:

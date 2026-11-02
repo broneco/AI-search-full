@@ -6,6 +6,18 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 
 ## Verzované zdroje
 
+- `app/storage/index_jobs.py` — Uchovává přesně tenantovaný stav úlohy a atomické rezervace pracovníků v SQL.
+- `app/ingestion/index_jobs.py` — Provádí oddělené vytvoření/backfill indexů na pozadí s průběhem, oprávněními a resume.
+- `migrate_index_jobs.py` — Plánuje a explicitně migruje tabulku správních úloh včetně payloadu pro starší image.
+- `frontend-admin/app/components/JhuConnectionStatus.tsx` — Zobrazuje nezávislý stav JHU a správci umožňuje explicitní znovupřipojení.
+- `frontend-user/app/components/JhuConnectionStatus.tsx` — Ukazuje uživateli dostupnost JHU odděleně od backend health bez správních oprávnění.
+- `tests/test_index_jobs.py` — Ověřuje rezervace, zrušení, ztrátu oprávnění, pokračování dávek a nezměněný původní korpus.
+- `docs/tests_explained/test_index_jobs.md` — Vysvětluje izolované SQLite/MSSQL testy trvalých indexovacích úloh a hranice cloudové akceptace.
+- `docs/development/cloud-embedding-management.md` — Popisuje vytvoření, dopočítání, zastavení a první explicitní cloudové zapnutí správy embeddingů.
+- `docs/incidents/2026-11-02-jhu-availability.md` — Dokládá vyčerpaný cloudový VPN helper, skutečné frontendové URL a připravovanou nápravu.
+- `docs/adr/ADR-0043-administrative-index-jobs.md` — Zdůvodňuje trvalé správní úlohy, atomické rezervace a explicitní cloudovou aktivaci.
+- `.agents/inbox/2026-11-02-jhu-v019-index-management-deployment.md` — Předává konkrétní návrh aktualizace existujícího JHU cloudu a aditivní migrace bez změny kapacit.
+
 - `docs/releases/v0.1.8.md` — Shrnuje stabilizaci JHU, trvalá nastavení, ověření zachování dat a úplnou veřejnou dokumentaci předání.
 
 - `verify_deployment.py` — Pořizuje read-only otisky tenantových SQL/vektorových/Blob dat a offline porovnává zachování přes nasazení.
@@ -574,6 +586,7 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 - `app/core/search_index_selection.py` — Ověření konkrétního UUID/profilu a úplného korpusu před query embeddingem.
 - `app/ingestion/admin_indexes.py` — Idempotentní příprava/doplnění lokálního indexu bez aktivace či změny chunků.
 - `frontend-admin/app/components/EmbeddingIndexes.tsx` — Admin panel přípravy a selector jednoho embeddingového indexu pro otázku.
+- `frontend-admin/app/components/ProcessingProgress.tsx` — Přístupné průběhové okno se stavy souborů, vyhledáváním a možností návratu k běžící úloze.
 - `tests/test_admin_indexes.py` — API, SQL a opt-in živé regrese dvou prostorů bez fan-out a změny ingestace.
 - `docs/adr/ADR-0034-admin-embedding-index-comparison.md` — Rozhodnutí přidat lokální administrační porovnání s přesně jedním indexem na dotaz.
 - `docs/tests_explained/test_admin_indexes.md` — Význam regresí přípravy, oprávnění, pinned plánu a skutečných Nomic PDF embeddingů.
@@ -606,6 +619,7 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 ## Správcovské limity výstupu modelů
 
 - `docs/releases/v0.1.7.md` — Souhrn vydání automatického lokálního JHU připojení, odolnosti, testovací hygieny a hranic cloudového nasazení.
+- `docs/releases/v0.1.9.md` — Vydání správy cloudových embeddingových indexů, přehledu souborů a obnovy VPN s oddělením zdrojových a cloudových kontrol.
 
 - `app/core/model_limits.py` — Revizované tenantové stropy generování, bezpečné lokální rozsahy a skládání efektivního profilu.
 - `migrate_model_limits.py` — Read-only plán a guarded vytvoření SQL tabulky provozních limitů modelů.

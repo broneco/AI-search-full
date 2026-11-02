@@ -82,10 +82,14 @@ async def refresh_documents(tenant_id: str, files: list[str], progress: dict | N
         config = await tagger.load_config()
         categories = {item["key"]: item for item in config.get("categories", [])}
         progress.update(phase="analyzing", total_files=len(files), processed_files=0)
+        progress["files"] = [{"id": str(position), "name": Path(name).name, "state": "pending"} for position, name in enumerate(files)]
+        by_file = dict(zip(files, progress["files"]))
         analyzed = []
         for position, name in enumerate(files):
             progress.update(current_file=Path(name).name, processed_files=position)
+            by_file[name]["state"] = "analyzing"
             suggestion = await tagger.analyze_file(name)
+            by_file[name]["state"] = "analyzed"
             category = categories.get(suggestion["suggested_category"])
             if category is None or not isinstance(category.get("allowed_groups"), list):
                 raise ValueError("Classification returned an unknown category or invalid ACL; refresh stopped.")
@@ -102,6 +106,7 @@ async def refresh_documents(tenant_id: str, files: list[str], progress: dict | N
         progress.update(phase="ingesting", processed_files=0)
         for position, (date, name, suggestion, category) in enumerate(sorted(analyzed, key=lambda item: item[0])):
             progress.update(current_file=Path(name).name, processed_files=position)
+            by_file[name]["state"] = "running"
             metadata = {"department": category["key"], "year": date.year,
                         "created_at": date.isoformat(), "freshness_status": "current",
                         "relationship_type": (suggestion.get("relationship") or {}).get("relationship_type", "none")}
@@ -119,6 +124,7 @@ async def refresh_documents(tenant_id: str, files: list[str], progress: dict | N
             doc.title = suggestion["title"]
             doc.created_at = date
             db.commit()
+            by_file[name]["state"] = "completed"
             kept_ids.add(doc.document_id)
             for old_id, _, _, uri in original:
                 if source_key(uri) == source_key(name):
