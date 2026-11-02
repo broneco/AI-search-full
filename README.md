@@ -2,9 +2,9 @@
 
 AI vyhledávání nad dokumenty s citacemi a PDF náhledy. Backend používá Python/FastAPI, uživatelská aplikace a administrace Next.js/React. Aktuální cloudová cesta je Azure SQL + Blob Storage + Azure OpenAI; lokální vývoj má vlastní SQL Server v Dockeru.
 
-Vydání: **[v0.1.9](docs/releases/v0.1.9.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
+Vydání: **[v0.1.10](docs/releases/v0.1.10.md)** · [Changelog](docs/CHANGELOG.md) · [Mapa repozitáře](docs/navigation_guide.md)
 
-Verze **v0.1.9** přidává [cloudovou správu embeddingových indexů a průběh zpracování souborů](docs/development/cloud-embedding-management.md) a řízenou obnovu JHU připojení. [Diagnostika výpadku 2. 11. 2026](docs/incidents/2026-11-02-jhu-availability.md). Vydání zdrojů a nasazení do Azure jsou samostatné operace; verzi běžící aplikace ověřte přes API health.
+Verze **v0.1.10** přidává [cloudovou správu embeddingových indexů a průběh zpracování souborů](docs/development/cloud-embedding-management.md) a řízenou obnovu JHU připojení. [Diagnostika výpadku 2. 11. 2026](docs/incidents/2026-11-02-jhu-availability.md). Vydání zdrojů a nasazení do Azure jsou samostatné operace; verzi běžící aplikace ověřte přes API health.
 
 ## Rychlý start ve VS Code
 

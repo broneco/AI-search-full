@@ -139,7 +139,7 @@ def run_job(tenant, job_id, session_factory=None):
             protect_default(db, index, action)
             initial_valid, initial_total = coverage(db, index)
             store.touch(db, tenant, job_id, valid_chunks=initial_valid, total_chunks=initial_total)
-            if action == "backfill":
+            if action == "backfill" and initial_valid != initial_total:
                 if not initial_total:
                     raise ModelError("search_index_empty_corpus", "Tenant nemá žádné chunky k dopočítání.", 409)
                 provider = catalog_embedding_provider(tenant, profile_name, session=db)
@@ -153,6 +153,8 @@ def run_job(tenant, job_id, session_factory=None):
                     store.touch(db, tenant, job_id, activity={"phase": phase, "document_ids": document_ids})
                 asyncio.run(backfill_index(db, index, provider=provider, batch_size=32,
                                           authorize=check, progress=progress, strict_revisions=True, activity=activity))
+            elif action == "backfill" and not initial_total:
+                raise ModelError("search_index_empty_corpus", "Tenant nemá žádné chunky k dopočítání.", 409)
             check()
             valid, total = coverage(db, index)
             if action == "backfill" and (valid != total or total != initial_total):

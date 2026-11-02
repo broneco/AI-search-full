@@ -62,6 +62,7 @@ def job_files(job_id: uuid.UUID, db: Session = Depends(get_db_session), principa
     from app.storage.index_jobs import require_schema, current, public
     from app.storage.models import DBDocument, DBChunk, DBSearchIndex
     from app.storage.vector_store import index_profile, vector_table
+    from app.storage.sql_joins import InnerHashJoin
     from app.retrieval.filters import exact_value
     try:
         require_schema(db)
@@ -75,19 +76,24 @@ def job_files(job_id: uuid.UUID, db: Session = Depends(get_db_session), principa
             raise ModelError("search_index_not_found", "Index není dostupný.", 404)
         vectors = vector_table(index, index_profile(db, index))
         dialect = db.bind.dialect.name
-        counts = (select(DBChunk.document_id.label("document_id"), func.count(DBChunk.chunk_id).label("total"),
-                         func.count(vectors.c.chunk_id).label("valid"))
-            .outerjoin(vectors, and_(vectors.c.chunk_id == DBChunk.chunk_id, vectors.c.input_revision == DBChunk.content_hash))
-            .where(exact_value(DBChunk.tenant_id, principal.tenant_id, dialect)).group_by(DBChunk.document_id).subquery())
-        rows = db.execute(select(DBDocument.document_id, DBDocument.title, counts.c.total, counts.c.valid)
-            .outerjoin(counts, counts.c.document_id == DBDocument.document_id)
+        # Separate grouped counts avoid Azure SQL's slow nested outer-join plan.
+        # The hint applies only to this vector/chunk join, never ACL/JSON filters.
+        totals = dict(db.execute(select(DBChunk.document_id, func.count())
+            .where(exact_value(DBChunk.tenant_id, principal.tenant_id, dialect))
+            .group_by(DBChunk.document_id)).all())
+        valid_counts = dict(db.execute(select(DBChunk.document_id, func.count())
+            .select_from(InnerHashJoin(DBChunk.__table__, vectors, and_(vectors.c.chunk_id == DBChunk.chunk_id,
+                vectors.c.input_revision == DBChunk.content_hash)))
+            .where(exact_value(DBChunk.tenant_id, principal.tenant_id, dialect))
+            .group_by(DBChunk.document_id)).all())
+        rows = db.execute(select(DBDocument.document_id, DBDocument.title)
             .where(exact_value(DBDocument.tenant_id, principal.tenant_id, dialect))
             .order_by(DBDocument.title, DBDocument.document_id)).all()
         active = public(db, job)["state"] in {"running", "cancelling"}
         current_ids = (job.activity or {}).get("document_ids", []) if active else []
         return {"files": [{"id": str(ident), "name": title, "total": total or 0, "valid": valid or 0,
             "state": "empty" if not total else "completed" if valid == total else "running" if str(ident) in current_ids else "pending"}
-            for ident, title, total, valid in rows]}
+            for ident, title in rows for total, valid in [(totals.get(ident, 0), valid_counts.get(ident, 0))]]}
     except DBAPIError:
         raise ModelError("index_job_unavailable", "Přehled souborů není dostupný.", 503) from None
 

@@ -626,3 +626,5 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 - `docs/adr/ADR-0037-editable-model-output-limits.md` — Oddělení editovatelných generačních limitů od immutable profilů a vektorů.
 - `.agents/inbox/2026-10-21-model-output-limits-handoff.md` — Oddělený cloudový handoff runtime tabulky a administračního releasu.
 - `.agents/inbox/2026-10-21-jhu-connectivity-keyvault-handoff.md` — JHU audit secrets, lokální připojení a ověřený cloud preflight s plánem sidecaru, migrací, releasu a rollbacku.
+
+- `docs/releases/v0.1.10.md` — Oprava rezervace při přeskakování hotových dávek a změřené zrychlení průběhu souborů v Azure.

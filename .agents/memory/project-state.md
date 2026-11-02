@@ -4,6 +4,9 @@ Last updated: 2026-11-02
 
 ## Current work
 
+**2026-11-02 HOTFIX CURRENT:** v0.1.9 GitHub642e186/Forgejoa57e091 tags published and cloud deployed v019-1102-184946; full before/after original state+431Blobs match, helperready1, bothSWA servedv19, passwordGUI login passed. Live popup gate found skipped-batch SQL lock/heartbeat expiry and slow per-file outer joins14.201s. Preparing authorized v0.1.10 without retaggingv19: complete-index no-op fastpath, commit skipped batches, grouped counts with scoped INNER HASH JOIN; exact new Azure read-only function431/9372 took0.128s. Actual native Nomic3chunk create/backfill/interrupt/resume(1+2)/zero-repeat/default preservation/owncleanup passed. User notebookVPN OFF. Must finish hotfix GitHub/Forgejo/backend/bothSWA and final GUI/data proof; no new capacity/schema/indexdefault. Previous v19 notes below are historical within this task.
+
+
 **2026-11-02 NEW AUTHORIZATION:** user requested file-level progress popup and explicitly authorized GitHub/Forgejo/backend/both frontend rollout of v0.1.9. Implemented SQL activity metadata and tenant-scoped per-file coverage, native modal, reopen/search/phase details; rechunking reports per-file states. Tests/publication/deployment still in progress. VPN now ON only for Forgejo; do not start local JHU helper. Preserve all existing data/default/capacity/keys. Existing preparation notes below describe the previous boundary, superseded only within this authorization.
 
 

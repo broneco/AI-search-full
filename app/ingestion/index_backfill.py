@@ -50,6 +50,10 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
         pending = [chunk for chunk in chunks if stored.get(chunk.chunk_id) != revision(chunk.content)
                    or chunk.content_hash != revision(chunk.content)]
         if not pending:
+            # The administrative authorization check holds a fenced job lock.
+            # Release it even when this whole batch already has valid vectors,
+            # so heartbeat, cancellation and progress readers can proceed.
+            session.commit()
             continue
         snapshots = [(chunk.chunk_id, chunk.content, revision(chunk.content), chunk.embedding if provider is None else None,
                       dict(chunk.metadata_json or {}), chunk.content_hash) for chunk in pending]

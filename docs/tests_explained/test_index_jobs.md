@@ -9,3 +9,5 @@ Zrušení, odebrání Management a převzetí vypršelé rezervace během modelo
 Cloudová brána vyžaduje explicitní flag, MSSQL a existující tabulku úloh. Aditivní migrace je opakovatelná; CLI s nesprávným očekávaným cílem nesmí zavolat zápis. SQLite ani SQL Server 2022 nejsou důkazem podpory nativního Azure `VECTOR`; skutečná native/UI akceptace zůstává samostatná.
 
 Průběh navíc ověřuje tenantově omezený přehled souborů bez čtení textů/vektorů, aktuální fázi během modelového požadavku, pokrytí po potvrzení dávky a odmítnutí neznámé nebo nahrazené úlohy.
+
+Hotfix v0.1.10: úplný index nesmí inicializovat provider ani procházet dávky. U již hotových dávek musí druhá SQL session obnovit heartbeat do1s; test SET LOCK_TIMEOUT po sobě vždy obnovuje. Tento scénář by bez uvolnění původní transakce na skutečném SQL Serveru selhal.

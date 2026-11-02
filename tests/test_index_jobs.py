@@ -99,6 +99,47 @@ def test_file_progress_is_tenant_scoped_and_tracks_committed_coverage(jobs, api_
     assert api_client.get(f"/api/search-indexes/jobs/{uuid.uuid4()}/files", headers=e.headers).status_code == 404
 
 
+def test_complete_index_finishes_without_provider_setup_or_corpus_rescan(jobs, api_client, monkeypatch):
+    e = jobs
+    ident = create(api_client, e)
+    assert run(e, submit(api_client, e, action="backfill", index_id=ident))["state"] == "completed"
+    def forbidden(*args, **kwargs):
+        pytest.fail("A complete index must not construct a provider or scan batches.")
+    monkeypatch.setattr(index_jobs, "catalog_embedding_provider", forbidden)
+    monkeypatch.setattr(index_jobs, "backfill_index", forbidden)
+    result = run(e, submit(api_client, e, action="backfill", index_id=ident))
+    assert result["state"] == "completed" and result["processed_chunks"] == 0
+
+
+def test_skipped_batches_release_job_lock_for_heartbeat(jobs, api_client):
+    import asyncio
+    from sqlalchemy import text
+    from app.ingestion.index_backfill import backfill_index
+    e = jobs
+    ident = create(api_client, e)
+    assert run(e, submit(api_client, e, action="backfill", index_id=ident))["state"] == "completed"
+    job = submit(api_client, e, action="backfill", index_id=ident)
+    job_id = uuid.UUID(job["job_id"])
+    calls = []
+    def authorize():
+        if calls:
+            with e.factory() as heartbeat_db:
+                sql_server = heartbeat_db.bind.dialect.name == "mssql"
+                try:
+                    if sql_server:
+                        heartbeat_db.execute(text("SET LOCK_TIMEOUT 1000"))
+                    store.touch(heartbeat_db, "alpha", job_id)
+                finally:
+                    heartbeat_db.rollback()
+                    if sql_server:
+                        heartbeat_db.execute(text("SET LOCK_TIMEOUT -1")); heartbeat_db.commit()
+        store.owned(e.db, "alpha", job_id)
+        calls.append(1)
+    index = e.db.get(DBSearchIndex, ident)
+    assert asyncio.run(backfill_index(e.db, index, provider=e.local, batch_size=1, authorize=authorize)) == 0
+    assert len(calls) >= 2
+
+
 def test_failed_second_batch_is_resumable_without_repeating_first(jobs, api_client, monkeypatch):
     e = jobs
     ident = create(api_client, e)

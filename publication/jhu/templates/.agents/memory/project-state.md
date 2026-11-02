@@ -1,3 +1,7 @@
+# Current hotfix v0.1.10
+
+User authorized the complete source/cloud release. Published v0.1.9 source/runtime preserved all original data, but its live popup gate found skipped-batch lease blocking and a slow Azure file-count query. v0.1.10 skips already complete indexes, releases skipped-batch transactions and uses grouped/scoped hash counts (actual Azure431files9372vectors0.128s vs14.201s). A second SQL session heartbeat regression and native3chunk backfill/resume/default/cleanup passed. GitHub and Forgejo retain separate histories and immutable old tags. No new capacity/schema/default/keys; cloud rollout and final UI proof remain distinct from source release. Read docs/releases/v0.1.10.md and docs/incidents/2026-11-02-jhu-availability.md. Earlier preparation state below is historical.
+
 # Current Project State
 
 Working source supports explicitly enabled Azure index jobs (after additive migration), model-inventory creation and Chunking backfill/progress/cancel/resume. Protect the ingestion default and all old spaces; no automatic activation/deletion or restart replay. Read docs/development/cloud-embedding-management.md. The 2026-11-02 incident confirmed a terminal VPN retry budget despite healthy API; explicit helper reconnect and 300s stable-budget reset are source fixes, not proof of cloud rollout. Read docs/incidents/2026-11-02-jhu-availability.md before trusting older acceptance. No source publication or deployment is automatic.

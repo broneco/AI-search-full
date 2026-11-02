@@ -6,6 +6,13 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+## [v0.1.10] - 2026-11-02
+
+### Fixed
+
+- Hotový index neprochází korpus ani nevytváří provider; přeskočené dávky uvolní rezervaci pro heartbeat, cancel a průběh. Oprava chyby odhalené skutečnou cloudovou akceptací v0.1.9, bez přepočtu vektorů.
+- Tenantový přehled souborů používá dávkové agregace a scoped hash join: skutečný Azure read-only průchod431souborů/9372chunků14,201s→0,128s. [Důkazy a hranice](releases/v0.1.10.md).
+
 ## [v0.1.9] - 2026-11-02
 
 ### Added
