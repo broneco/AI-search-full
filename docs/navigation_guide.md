@@ -16,7 +16,6 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 - `docs/development/cloud-embedding-management.md` — Popisuje vytvoření, dopočítání, zastavení a první explicitní cloudové zapnutí správy embeddingů.
 - `docs/incidents/2026-11-02-jhu-availability.md` — Dokládá vyčerpaný cloudový VPN helper, skutečné frontendové URL a připravovanou nápravu.
 - `docs/adr/ADR-0043-administrative-index-jobs.md` — Zdůvodňuje trvalé správní úlohy, atomické rezervace a explicitní cloudovou aktivaci.
-- `.agents/inbox/2026-11-02-jhu-v019-index-management-deployment.md` — Předává konkrétní návrh aktualizace existujícího JHU cloudu a aditivní migrace bez změny kapacit.
 
 - `docs/releases/v0.1.8.md` — Shrnuje stabilizaci JHU, trvalá nastavení, ověření zachování dat a úplnou veřejnou dokumentaci předání.
 
@@ -628,3 +627,4 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 - `.agents/inbox/2026-10-21-jhu-connectivity-keyvault-handoff.md` — JHU audit secrets, lokální připojení a ověřený cloud preflight s plánem sidecaru, migrací, releasu a rollbacku.
 
 - `docs/releases/v0.1.10.md` — Oprava rezervace při přeskakování hotových dávek a změřené zrychlení průběhu souborů v Azure.
+- `docs/deployments/2026-11-02-v010-rollout.md` — Dokončený cloudový rollout, skutečné GUI/native testy, zachování původních dat a hranice latence/relevance.

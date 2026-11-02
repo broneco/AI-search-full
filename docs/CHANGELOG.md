@@ -6,6 +6,10 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+### Added
+
+- [Dokončený provozní protokol v0.1.10](deployments/2026-11-02-v010-rollout.md): skutečná GUI/API/native akceptace, shodné původní SQL/vector/Blob otisky a nezměněné kapacity. Protokol vznikl až po neměnných zdrojových tagách.
+
 ## [v0.1.10] - 2026-11-02
 
 ### Fixed

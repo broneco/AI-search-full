@@ -87,3 +87,5 @@ Model-selection design/checklist is in docs/architecture/model-catalog-roadmap.m
 - Python reference version is 3.12. Next.js dependency versions are pinned by package locks. Current frontend builds are static exports.
 
 For earlier deployment debugging, see archive/2026-10-15-implementation-notes.md and the dated deployment report; earlier partial states and test counts are historical.
+
+2026-11-02 closure: cloud v0.1.10 is deployed and actual popup/native/data gate passed. Complete-index fastpath and commits of skipped batches prevent lease lock starvation; per-file scoped hash aggregates reduce actual Azure read14.201s to0.128s. Source and runtime refs/data evidence: docs/deployments/2026-11-02-v010-rollout.md. Do not repeat completed migrations/deployment because older pending notes remain.
