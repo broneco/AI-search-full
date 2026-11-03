@@ -21,10 +21,14 @@ COPY app ./app
 COPY tenants ./tenants
 COPY fixtures ./fixtures
 RUN pip install --no-cache-dir .
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
+# Fetch public tokenizer data at build time; document text is tokenized offline at runtime.
+RUN python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
 COPY migrate_search_acl.py migrate_search_vectors.py benchmark_search.py ./
 COPY migrate_model_access.py migrate_model_registry.py migrate_model_metadata.py migrate_model_limits.py ./
 COPY migrate_tenant_settings.py ./
 COPY migrate_index_jobs.py ./
+COPY migrate_index_corpora.py ./
 COPY verify_deployment.py ./
 
 EXPOSE 8000

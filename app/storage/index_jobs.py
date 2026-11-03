@@ -38,7 +38,15 @@ def public(db, row):
     if row is None:
         return None
     state = "interrupted" if row.state in ACTIVE and row.lease_until <= now(db) else row.state
+    logical_id = row.index_id
+    if row.index_id is not None:
+        from app.storage.models import DBSearchIndex
+        from app.storage.index_settings import metadata
+        index = db.get(DBSearchIndex, row.index_id)
+        spec = metadata(db, index) if index is not None and index.tenant_id == row.tenant_id else None
+        logical_id = spec.owner_index_id if spec is not None and spec.owner_index_id else row.index_id
     return dict(job_id=str(row.job_id), index_id=str(row.index_id) if row.index_id else None,
+                logical_index_id=str(logical_id) if logical_id else None,
                 embedding_profile=row.embedding_profile, action=row.action, state=state,
                 processed_chunks=row.processed_chunks, valid_chunks=row.valid_chunks,
                 total_chunks=row.total_chunks, error_code=row.error_code,

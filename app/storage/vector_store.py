@@ -80,7 +80,7 @@ def vector_table(index: DBSearchIndex, profile: EmbeddingProfile) -> Table:
     )
 
 
-def provision_index(session: Session, tenant: str, profile: EmbeddingProfile, *, native: bool) -> DBSearchIndex:
+def provision_index(session: Session, tenant: str, profile: EmbeddingProfile, *, native: bool, isolated: bool = False) -> DBSearchIndex:
     """Explicit operator/admin-job provisioning; never implicit in cloud ingestion."""
     if native:
         NativeVector(profile.dimensions)
@@ -92,7 +92,7 @@ def provision_index(session: Session, tenant: str, profile: EmbeddingProfile, *,
     ident = uuid.uuid4()
     index = DBSearchIndex(index_id=ident, tenant_id=tenant, profile_id=profile.profile_id,
                           table_name=f"chunk_vectors_{ident.hex}", storage_kind="native" if native else "local_json",
-                          corpus_id="tenant-chunks-v1")
+                          corpus_id="index-" + ident.hex if isolated else "tenant-chunks-v1")
     session.add(index)
     session.flush()
     table = vector_table(index, profile)
@@ -112,6 +112,10 @@ def active_index(session: Session, tenant: str, profile: EmbeddingProfile) -> DB
     index = session.get(DBSearchIndex, active.index_id)
     if index is None or index.tenant_id != tenant or index.corpus_id != "tenant-chunks-v1":
         raise SearchIndexError("Active index does not belong to this tenant/corpus.")
+    from app.storage.index_settings import current_index, corpus_ready
+    index = current_index(session, index)
+    if not corpus_ready(session, index):
+        raise SearchIndexError("Current query index needs its documents prepared.")
     if index_profile(session, index) != profile:
         raise SearchIndexError("Query provider profile differs from the active index profile.")
     if settings.DATABASE_BACKEND == "azure_sql" and index.storage_kind != "native":
@@ -120,11 +124,12 @@ def active_index(session: Session, tenant: str, profile: EmbeddingProfile) -> DB
 
 
 def coverage(session: Session, index: DBSearchIndex) -> tuple[int, int]:
+    from app.storage.index_settings import corpus_filter
     profile = index_profile(session, index)
     vectors = vector_table(index, profile)
     tenant_filter = exact_value(DBChunk.tenant_id, index.tenant_id, session.bind.dialect.name)
     stmt = select(func.count()).select_from(DBChunk).join(DBDocument).where(
-        tenant_filter, exact_value(DBDocument.tenant_id, index.tenant_id, session.bind.dialect.name))
+        tenant_filter, exact_value(DBDocument.tenant_id, index.tenant_id, session.bind.dialect.name), corpus_filter(index.corpus_id))
     total = session.scalar(stmt)
     valid = session.scalar(stmt.join(vectors, vectors.c.chunk_id == DBChunk.chunk_id).where(
         vectors.c.input_revision == DBChunk.content_hash, DBChunk.content_hash.is_not(None)))
@@ -133,6 +138,8 @@ def coverage(session: Session, index: DBSearchIndex) -> tuple[int, int]:
 
 def activate_index(session: Session, index: DBSearchIndex) -> None:
     """Caller stops writes during activation; coverage must be complete."""
+    if index.corpus_id != "tenant-chunks-v1":
+        raise SearchIndexError("An isolated chunk corpus cannot become the ingestion default.")
     if settings.DATABASE_BACKEND == "azure_sql" and index.storage_kind != "native":
         raise SearchIndexError("A local JSON index cannot be activated for Azure SQL.")
     valid, total = coverage(session, index)
@@ -162,7 +169,8 @@ def write_embeddings(session: Session, index: DBSearchIndex, profile: EmbeddingP
         parameters = []
         for row in batch:
             chunk = chunks.get(row["chunk_id"])
-            if chunk is None or chunk.tenant_id != index.tenant_id or chunk.content_hash != row["input_revision"]:
+            if (chunk is None or chunk.tenant_id != index.tenant_id or chunk.content_hash != row["input_revision"]
+                    or (chunk.corpus_id or "tenant-chunks-v1") != index.corpus_id):
                 raise SearchIndexError("Embedding input revision/tenant mismatch.")
             parameters.append({"chunk_id": chunk.chunk_id, "input_revision": chunk.content_hash,
                                "vector_json": json.dumps(row["embedding"], allow_nan=False)})
@@ -180,6 +188,8 @@ def write_chunks(session: Session, mappings: list[dict], profile: EmbeddingProfi
     from app.storage.acl import insert_chunks
     if not mappings:
         return
+    if any(row.get("corpus_id") not in {None, "tenant-chunks-v1"} for row in mappings):
+        raise SearchIndexError("Ingestion writes only the baseline corpus.")
     profile.validate_vectors([row["embedding"] for row in mappings])
     rows = [{**row, "chunk_id": row.get("chunk_id") or uuid.uuid4(), "content_hash": revision(row["content"])}
             for row in mappings]
@@ -191,7 +201,7 @@ def write_chunks(session: Session, mappings: list[dict], profile: EmbeddingProfi
     for tenant in set(parents.values()):
         indexes = session.scalars(select(DBSearchIndex).where(
             exact_value(DBSearchIndex.tenant_id, tenant, session.bind.dialect.name),
-            DBSearchIndex.profile_id == profile.profile_id)).all()
+            DBSearchIndex.profile_id == profile.profile_id, DBSearchIndex.corpus_id == "tenant-chunks-v1")).all()
         if not indexes:
             if settings.DATABASE_BACKEND == "azure_sql":
                 raise SearchIndexError("Provision a native index for this profile before ingestion.")
@@ -210,7 +220,8 @@ def activate_local_ready_index(session: Session, profile: EmbeddingProfile) -> N
         return
     indexes = session.scalars(select(DBSearchIndex).where(
         exact_value(DBSearchIndex.tenant_id, settings.TENANT_ID, session.bind.dialect.name),
-        DBSearchIndex.profile_id == profile.profile_id)).all()
+        DBSearchIndex.profile_id == profile.profile_id,
+        DBSearchIndex.corpus_id == "tenant-chunks-v1")).all()
     if len(indexes) != 1:
         raise SearchIndexError("Choose and activate one local index with migrate_search_vectors.py.")
     activate_index(session, indexes[0])
@@ -219,6 +230,11 @@ def activate_local_ready_index(session: Session, profile: EmbeddingProfile) -> N
 @event.listens_for(Session, "before_flush")
 def invalidate_changed_inputs(session, flush_context, instances):
     for owner in session.dirty:
+        from app.storage.models import DBIndexSettings
+        if isinstance(owner, DBIndexSettings) and inspect(owner).attrs.chunking.history.has_changes():
+            raise SearchIndexError("Chunking settings are immutable; create a new index.")
+        if isinstance(owner, DBChunk) and inspect(owner).attrs.corpus_id.history.has_changes():
+            raise SearchIndexError("Chunk corpus identity is immutable.")
         if isinstance(owner, DBEmbeddingProfile) and inspect(owner).attrs.definition.history.has_changes():
             raise SearchIndexError("Embedding profiles are immutable; create a new profile.")
         if isinstance(owner, DBSearchIndex) and any(inspect(owner).attrs[name].history.has_changes()
@@ -253,6 +269,7 @@ def clear_pending_invalidations(session):
 
 def exact_statement(index: DBSearchIndex, profile: EmbeddingProfile, context, query: list[float], limit: int):
     """Native SQL applies all eligibility predicates before ordered TOP K."""
+    context = context.model_copy(update={"corpus_id": index.corpus_id})
     vectors = vector_table(index, profile)
     distance = func.VECTOR_DISTANCE(literal_column("'cosine'"),
         _native_vector_cast(bindparam("query_json", json.dumps(query), type_=Text), profile.dimensions),
@@ -274,6 +291,7 @@ def exact_candidates(session: Session, context, query: list[float], profile: Emb
     if not any(value != 0 for value in query):
         raise SearchIndexError("Query cosine vector must be non-zero.")
     index = index or active_index(session, context.tenant_id, profile)
+    context = context.model_copy(update={"corpus_id": index.corpus_id})
     if index.tenant_id != context.tenant_id or index.profile_id != profile.profile_id:
         raise SearchIndexError("Selected exact index tenant/profile mismatch.")
     if settings.DATABASE_BACKEND == "azure_sql" and index.storage_kind != "native":

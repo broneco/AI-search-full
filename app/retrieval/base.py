@@ -23,6 +23,7 @@ class QueryContext(BaseModel):
 
     query: str
     tenant_id: str = Field(default_factory=lambda: settings.TENANT_ID)
+    corpus_id: str = "tenant-chunks-v1"
     user_id: Optional[str] = None
     filters: Dict[str, Any] = {}
     acl_groups: List[str] = []

@@ -44,11 +44,43 @@ def authorize(db, principal, profile_name, expected_profile=None):
     return entry
 
 
-def submit(db, principal, profile_name, action, index_id=None):
+def submit(db, principal, profile_name, action, index_id=None, *, chunking=None, name=None, populate=False):
     allowed, reason = capability(db)
     if not allowed:
         raise ModelError(reason, "Správa indexů vyžaduje povolení cloudové funkce a migraci tabulky úloh.", 409)
     entry = authorize(db, principal, profile_name)
+    if chunking is not None:
+        from app.storage.index_settings import available
+        from app.storage.models import DBIndexSettings
+        from app.ingestion.chunk_settings import ChunkingSettings
+        from app.core.model_selection import model_provider
+        if action != "create" or index_id is not None:
+            raise ModelError("index_settings_immutable", "Nastavení patří k novému indexu; existující index nelze přepsat.", 422)
+        if not available(db):
+            raise ModelError("index_settings_migration_required", "Nejdříve proveďte migraci nastavení indexů.", 503)
+        config = ChunkingSettings.model_validate(chunking)
+        if config.enrich_with_summary:
+            config.summary_model_id = model_provider(db, principal.tenant_id, "summary", config.summary_model_id, principal).profile.id
+        if config.chunking_strategy == "agentic":
+            config.classification_model_id = model_provider(db, principal.tenant_id, "classification", config.classification_model_id, principal).profile.id
+        # Acquire the same singleton lease BEFORE provisioning; busy requests cannot leave empty indexes.
+        row, started = store.begin(db, principal, entry, "backfill" if populate else action, None)
+        if not started:
+            raise ModelError("index_preparation_busy", "Jiná úloha právě běží; obnovte přehled.", 409)
+        try:
+            store.owned(db, principal.tenant_id, row.job_id)
+            index = provision_index(db, principal.tenant_id, entry.space(), native=settings.DATABASE_BACKEND == "azure_sql", isolated=True)
+            db.add(DBIndexSettings(index_id=index.index_id, tenant_id=principal.tenant_id,
+                name=(name or f"{entry.space().model_id[:103]} · {str(index.index_id)[:8]}"), chunking=config.model_dump(), settings_origin="recorded"))
+            row.index_id = index.index_id
+            db.commit()
+        except Exception:
+            db.rollback()
+            store.touch(db, principal.tenant_id, row.job_id, state="failed", error_code="index_creation_failed")
+            raise
+        result = store.public(db, store.current(db, principal.tenant_id))
+        launch(principal.tenant_id, row.job_id)
+        return result
     if action == "backfill" and index_id is None:
         raise ModelError("index_id_required", "Vyberte konkrétní index k dopočítání.", 422)
     if index_id is not None:
@@ -63,7 +95,7 @@ def submit(db, principal, profile_name, action, index_id=None):
 
 def get_index(db, tenant, index_id, entry):
     index = db.get(DBSearchIndex, index_id, populate_existing=True)
-    if index is None or index.tenant_id != tenant or index.corpus_id != "tenant-chunks-v1":
+    if index is None or index.tenant_id != tenant or index.corpus_id not in {"tenant-chunks-v1", "index-" + index.index_id.hex}:
         raise ModelError("search_index_not_found", "Index nebyl nalezen v tomto tenantu.", 404)
     if index_profile(db, index) != entry.space():
         raise ModelError("search_index_profile_mismatch", "Profil nesouhlasí s indexem.", 422)
@@ -137,6 +169,13 @@ def run_job(tenant, job_id, session_factory=None):
             else:
                 index = get_index(db, tenant, row.index_id, entry)
             protect_default(db, index, action)
+            def activity(phase, document_ids):
+                check()
+                store.touch(db, tenant, job_id, activity={"phase": phase, "document_ids": document_ids})
+            if action == "backfill" and index.corpus_id != "tenant-chunks-v1":
+                from app.ingestion.index_corpus import prepare_corpus
+                provider = catalog_embedding_provider(tenant, profile_name, session=db)
+                prepare_corpus(db, index, principal, provider, check, activity)
             initial_valid, initial_total = coverage(db, index)
             store.touch(db, tenant, job_id, valid_chunks=initial_valid, total_chunks=initial_total)
             if action == "backfill" and initial_valid != initial_total:
@@ -159,6 +198,11 @@ def run_job(tenant, job_id, session_factory=None):
             valid, total = coverage(db, index)
             if action == "backfill" and (valid != total or total != initial_total):
                 raise ModelError("index_corpus_changed", "Korpus se během výpočtu změnil. Hotové dávky zůstaly uložené; doplňte index znovu.", 409)
+            from app.storage.index_settings import corpus_ready
+            if action == "backfill" and not corpus_ready(db, index):
+                raise ModelError("index_corpus_changed", "Dokumenty se během přípravy změnily. Doplňte index znovu.", 409)
+            from app.storage.index_settings import publish_version
+            publish_version(db, index)
             store.touch(db, tenant, job_id, state="completed", valid_chunks=valid, total_chunks=total, activity=None)
         except Exception as error:
             db.rollback()

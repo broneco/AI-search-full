@@ -52,6 +52,7 @@ class SearchConfigSchema(BaseModel):
     freshness_boost: float = Field(0.0, ge=0.0, le=0.5)
     context_expansion: str = Field("none", pattern="^(none|siblings|page|section)$")
     context_expansion_size: int = Field(1, ge=1, le=3)
+    summaries_only_for_matched_chunk: bool = True
     chunk_size: int = Field(1500, ge=200, le=5000)
     chunk_overlap: int = Field(250, ge=0, le=1000)
     chunk_cross_page: bool = Field(False)
@@ -146,6 +147,7 @@ class SearchConfigManager:
             "freshness_boost": 0.0,
             "context_expansion": "none",
             "context_expansion_size": 1,
+            "summaries_only_for_matched_chunk": True,
             "chunk_size": 1500,
             "chunk_overlap": 250,
             "chunk_cross_page": False,

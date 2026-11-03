@@ -16,3 +16,5 @@
 Lokální výsledky neprokazují Azure runtime, VPN, opravdové Blob soubory ani uskutečněné nasazení. Cloudové checkpointy a funkční akceptace patří do privátních receipts a dokončeného deployment reportu.
 
 Volitelná index_preparation_jobs je kontrolovaná stejnou SQL reflexí ve starém i novém ORM, včetně neprázdného stavu úlohy. Před první migrací smí chybět. Read-only ověření připouští pouze konkrétní čtecí metadata PRAGMA / INFORMATION_SCHEMA CTE vedle SELECT; nikoli DDL nebo DML.
+
+Přechod na vlastní korpusy má explicitní projekci všech původních sloupců z SQL reflexe. Regrese porovná shodná původní data přes nový nullable sloupec, ověří serverovou projekci bez něj a zachytí změnu textu. Chybějící původní tabulka či nepovolený další sloupec nesmí projít. Nové struktury se validují odděleně jako prázdné a všechny corpus_id musí být NULL. Běžný checkpoint už zahrnuje také index_documents, nikoli pouze index_settings. Finální lokální sada před vydáním v0.1.11: 47 passed včetně skutečného lokálního SQL.

@@ -5,6 +5,36 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('../frontend-admin/node_modules/typescript');
 
+test('context capacity follows result count and the effective metadata budget', () => {
+  const source=fs.readFileSync(path.join(__dirname,'../frontend-admin/app/lib/contextCapacity.ts'),'utf8');
+  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+  const module={exports:{}};new Function('exports',compiled)(module.exports);
+  const estimate=module.exports.estimateContextCapacity;
+  const data={sample:{tokens:200,characters:600,utf8_bytes:900},model:{context_tokens:8192,max_output_tokens:2048,reserved_tokens:256,max_input_chars:120000,input_guard_bytes:null}};
+  let result=estimate(data,5);
+  assert.equal(result.tokens,1000);assert.equal(result.budgetTokens,5888);assert.equal(result.basis,'context');
+  assert.equal(estimate(data,10).tokens,2000);
+  result=estimate({...data,model:{...data.model,context_tokens:null,max_input_chars:6000}},5);
+  assert.equal(result.basis,'characters');assert.equal(result.budgetTokens,2000);assert.equal(result.percentage,50);assert.equal(result.approximate,true);
+  result=estimate({...data,model:{...data.model,input_guard_bytes:900}},5);
+  assert.equal(result.basis,'context');assert.equal(result.applicationPercentage,500);assert.equal(result.exceeds,true);
+  assert.equal(estimate({...data,sample:null},5),null);assert.equal(estimate(data,0),null);
+  const zero=estimate({...data,model:{...data.model,context_tokens:2048}},5);
+  assert.equal(zero.budgetTokens,0);assert.equal(zero.percentage,null);assert.equal(zero.exceeds,true);
+});
+
+test('an index snapshot includes chunking and chosen task models, excluding ranking settings', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../frontend-admin/app/lib/chunkingSnapshot.ts'), 'utf8');
+  const compiled = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+  const module={exports:{}};new Function('exports',compiled)(module.exports);
+  const snapshot=module.exports.chunkingSnapshot;
+  assert.equal(snapshot(null,'',''),null);
+  const config={chunk_size:300,chunk_overlap:40,chunking_strategy:'agentic',enrich_with_summary:true,vector_limit:200,summary_custom_prompt:'Shrň přesně'};
+  const result=snapshot(config,'summary-selected','classification-selected');
+  assert.deepEqual(result,{schema_version:1,chunk_size:300,chunk_overlap:40,chunking_strategy:'agentic',enrich_with_summary:true,summary_custom_prompt:'Shrň přesně',summary_model_id:'summary-selected',classification_model_id:'classification-selected'});
+  assert.equal(snapshot({...config,enrich_with_summary:false,chunking_strategy:'standard'},'summary-selected','classification-selected').summary_model_id,undefined);
+});
+
 for (const frontend of ['frontend-admin', 'frontend-user']) {
   const source = fs.readFileSync(path.join(__dirname, '..', frontend, 'app/lib/apiRequest.ts'), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

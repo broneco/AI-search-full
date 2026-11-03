@@ -89,7 +89,15 @@ def check_embedding_access(db, principal, entry, index_id):
     if row is not None:
         return  # Publication and group checks above are authoritative.
     active = db.get(DBActiveSearchIndex, tenant_key(principal.tenant_id))
-    if active is None or active.tenant_id != principal.tenant_id or str(active.index_id) != str(index_id):
+    from app.storage.index_settings import logical_index
+    from app.storage.models import DBSearchIndex
+    import uuid
+    selected = db.get(DBSearchIndex, uuid.UUID(str(index_id)))
+    root = logical_index(db, selected) if selected is not None and selected.tenant_id == principal.tenant_id else None
+    from app.storage.index_settings import current_index
+    if root is not None and selected.index_id != root.index_id and current_index(db, root).index_id != selected.index_id:
+        raise ModelError("embedding_not_published", "Tato verze indexu ještě není zveřejněná.", 403)
+    if active is None or active.tenant_id != principal.tenant_id or root is None or active.index_id != root.index_id:
         raise ModelError("embedding_not_published", "Experimentální embeddingový index zatím není povolený uživatelům.", 403)
 
 

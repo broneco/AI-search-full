@@ -67,6 +67,11 @@ async def chat_interaction(
     config_manager = SearchConfigManager()
     search_config = await config_manager.load_config()
     vector_plan = None
+    query_corpus = "tenant-chunks-v1"
+    if request.search_strategy == "keyword":
+        import asyncio
+        from app.storage.index_settings import default_query_corpus
+        query_corpus = await asyncio.to_thread(default_query_corpus, db, principal.tenant_id)
     query_provider = embedding_provider
     if request.search_strategy in {"vector", "hybrid"}:
         try:
@@ -154,6 +159,7 @@ async def chat_interaction(
         retriever = VectorRetriever(db)
         
         context = QueryContext(
+            corpus_id=query_corpus,
             query=retrieval_query,
             tenant_id=principal.tenant_id,
             user_id=str(principal.user_id),

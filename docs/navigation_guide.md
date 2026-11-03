@@ -6,6 +6,25 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 
 ## Verzované zdroje
 
+- `app/ingestion/index_editor.py` — Spojuje inicializaci původních parametrů a bezpečný přepočet nové verze logického indexu v jedné úloze.
+- `frontend-admin/app/components/IndexEditorHeader.tsx` — Přepíná úpravu existujícího a vytvoření nového indexu s odpovídající volbou modelu.
+- `tests/test_index_editor.py` — Ověřuje stabilní identitu, převzetí parametrů, přepočet, resume a dostupnost výchozího indexu pro běžného uživatele.
+- `docs/tests_explained/test_index_editor.md` — Popisuje izolované regrese propojeného editoru a jejich hranice vůči cloudové akceptaci.
+- `docs/adr/ADR-0045-logical-index-editor.md` — Zdůvodňuje stabilní logický index a atomické zveřejnění dokončené fyzické verze.
+
+- `app/ingestion/sources.py` — Načítá přesný oprávněný originál z Blobu nebo data s checksumem a úklidem dočasného souboru.
+- `app/ingestion/chunk_settings.py` — Validuje neměnný snapshot chunkování a sdílí konstrukci splitteru mezi náhledem a indexem.
+- `app/ingestion/index_corpus.py` — Připravuje vlastní sadu chunků indexu po dokumentech s rezervací úlohy, ACL a kontrolou revize originálu.
+- `app/storage/index_settings.py` — Spravuje názvy, neměnnou provenienci, hranice korpusů a chráněné odstranění indexu.
+- `app/storage/index_corpus_schema.py` — Sdílí explicitní aditivní migraci korpusů mezi CLI a lokální inicializací z wheelu.
+- `migrate_index_corpora.py` — Plánuje migraci vlastních korpusů s přesnými guards a generuje payload pro starší cloudovou image.
+- `frontend-admin/app/lib/chunkingSnapshot.ts` — Sestavuje snapshot parametrů chunkování bez vyhledávacích a rankingových nastavení.
+- `frontend-admin/app/components/ChunkingSettingsView.tsx` — Čitelně zobrazuje uložené neměnné parametry dělení textu.
+- `tests/test_index_corpora.py` — Ověřuje izolaci chunků, resume, názvy, mazání, historii, ACL, původní data a Blob náhled.
+- `docs/tests_explained/test_index_corpora.md` — Vysvětluje SQLite a lokální SQL regrese dvojic indexu a chunkování i jejich cloudové hranice.
+- `docs/development/index-chunking-pairs.md` — Popisuje správu variant, cloudový náhled, migraci a podmínky bezpečného rollbacku.
+- `docs/adr/ADR-0044-index-chunking-pairs.md` — Zdůvodňuje vlastní textové korpusy, neměnné snapshoty a zachování historických citací.
+
 - `app/storage/index_jobs.py` — Uchovává přesně tenantovaný stav úlohy a atomické rezervace pracovníků v SQL.
 - `app/ingestion/index_jobs.py` — Provádí oddělené vytvoření/backfill indexů na pozadí s průběhem, oprávněními a resume.
 - `migrate_index_jobs.py` — Plánuje a explicitně migruje tabulku správních úloh včetně payloadu pro starší image.
@@ -111,6 +130,7 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 
 - `.agents/` — Kanonická pravidla, workflow, paměť a Azure handoffy pro AI agenty.
   - `.agents/inbox/` — Konkrétní integrační handoffy a provozní požadavky bez hodnot secrets.
+    - `.agents/inbox/2026-11-03-index-chunking-pairs.md` — Připravuje migraci vlastních korpusů a oddělené cloudové ověření se zachováním dat a kompatibilním rollbackem.
     - `.agents/inbox/2026-06-08-dolphin-consulting-db-storage-handoff.md` — Handoff soubor s pokyny pro manuální nastavení Azure infrastruktury (2026-06-08-dolphin-consulting-db-storage-handoff.md).
     - `.agents/inbox/2026-08-18-azure-sql-manual-setup-handoff.md` — Handoff soubor s pokyny pro manuální zřízení Azure SQL Serveru a Databáze (2026-08-18-azure-sql-manual-setup-handoff.md).
     - `.agents/inbox/2026-09-02-azure-resource-deployment-handoff.md` — Handoff soubor s pokyny pro ruční nastavení Azure zdrojů ve 3 Resource Group a DTU módu (2026-09-02-azure-resource-deployment-handoff.md).
@@ -628,3 +648,15 @@ Aktuální zdrojové soubory a adresáře v0.1.8 (2026-10-30); závislosti, cach
 
 - `docs/releases/v0.1.10.md` — Oprava rezervace při přeskakování hotových dávek a změřené zrychlení průběhu souborů v Azure.
 - `docs/deployments/2026-11-02-v010-rollout.md` — Dokončený cloudový rollout, skutečné GUI/native testy, zachování původních dat a hranice latence/relevance.
+
+## Shrnutí sousedů a odhad vstupní kapacity
+
+- `docs/releases/v0.1.11.md` — Souhrn editoru indexů, Blob náhledu, shrnutí sousedů a odhadu kapacity s podmínkami migrace a rollbacku.
+
+- `app/retrieval/summary_context.py` — Odstranění pouze generovaného prefixu shrnutí sousedního chunku při skládání kontextu.
+- `app/retrieval/context_capacity.py` — Autorizovaný vzorek aktuálního indexu, lokální tokenizace a efektivní metadata modelu bez inference.
+- `frontend-admin/app/lib/contextCapacity.ts` — Výpočet násobku a kapacity modelu i přísnějších aplikačních limitů.
+- `frontend-admin/app/components/ContextCapacity.tsx` — Reaktivní panel odhadu pod tokenovými limity s ochranou identity požadavku.
+- `tests/test_context_capacity.py` — SQL/API regrese vzorku, oprávnění, generačního indexu a shrnutí bez změn uloženého obsahu.
+- `docs/tests_explained/test_context_capacity.md` — Význam testů shrnutí a kapacity včetně hranic lokální GUI/offline evidence.
+- `docs/development/context-capacity.md` — Použití checkboxu, výpočet kapacity, metadata a offline tokenizer.

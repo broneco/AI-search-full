@@ -68,6 +68,34 @@ def checkpoint(db, *, revision_name="revision-before", config=None):
         state=audit.capture_state(db, TENANT, require_settings=True), blobs=None)
 
 
+def test_original_column_projection_preserves_originals_and_detects_content_changes(seeded):
+    db, data = seeded
+    columns = audit.original_columns(db, TENANT)
+    columns['chunks'].remove('corpus_id')
+    columns.pop('index_settings', None); columns.pop('index_documents', None)
+    before = audit.capture_state(db, TENANT, column_projection=columns)
+    assert audit.verify_empty_index_migration(db) == {'assigned_corpora': 0, 'index_settings': 0, 'index_documents': 0}
+    after = audit.capture_state(db, TENANT, column_projection=columns)
+    assert before == after
+    statement = audit.row_statement(DBChunk.__table__, TENANT, 'mssql', columns=columns['chunks'])
+    sql = str(statement.compile(dialect=mssql.dialect()))
+    assert 'audit_rows.corpus_id' not in sql and 'audit_rows.content' in sql
+    data.chunk.content = 'Changed original text'; db.commit()
+    changed = audit.capture_state(db, TENANT, column_projection=columns)
+    assert changed['tables']['chunks'] != before['tables']['chunks']
+
+
+def test_projection_rejects_missing_originals_and_nonempty_migration(seeded):
+    db, data = seeded
+    columns = audit.original_columns(db, TENANT)
+    del columns['users']
+    with pytest.raises(audit.AuditError, match='protected_table_missing'):
+        audit.capture_state(db, TENANT, column_projection=columns)
+    db.execute(update(DBChunk).where(DBChunk.chunk_id == data.chunk.chunk_id).values(corpus_id='unexpected-rewrite')); db.commit()
+    with pytest.raises(audit.AuditError, match='index_migration_not_empty'):
+        audit.verify_empty_index_migration(db)
+
+
 def test_index_job_table_optional_before_migration_and_reflected_with_previous_orm(seeded,monkeypatch):
     from sqlalchemy import MetaData
     import app.storage.models as models

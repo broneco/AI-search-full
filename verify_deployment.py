@@ -86,20 +86,26 @@ def scoped(alias, tenant: str, dialect: str):
     raise AuditError("unsupported_table_scope")
 
 
-def row_statement(table, tenant: str, dialect: str, *, profiles=False, native=False):
+def row_statement(table, tenant: str, dialect: str, *, profiles=False, native=False, columns=None):
     """SQL Server hashes server-side, so content/password/vector values never leave SQL."""
     from sqlalchemy import func, literal, literal_column, select
     alias = table.alias("audit_profiles" if profiles else "audit_rows")
+    if columns is not None and (not columns or len(set(columns)) != len(columns) or any(name not in alias.c for name in columns)):
+        raise AuditError("invalid_column_projection")
     predicate = scoped(alias, tenant, dialect)
     if dialect == "mssql":
         projection = "audit_profiles.*" if profiles else "audit_rows.*"
+        if columns is not None:
+            from sqlalchemy.dialects.mssql import dialect as ms_dialect
+            quote = ms_dialect().identifier_preparer.quote
+            projection = ",".join(alias.name + "." + quote(name) for name in columns)
         if native:
             projection = ("audit_rows.vector_id,audit_rows.chunk_id,audit_rows.input_revision,"
                           "CAST(audit_rows.embedding AS nvarchar(max)) AS embedding")
         value = literal_column(f"(SELECT {projection} FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES)")
         statement = select(func.HASHBYTES(literal_column("'SHA2_256'"), value)).select_from(alias)
     else:
-        statement = select(alias)
+        statement = select(*(alias.c[name] for name in columns)) if columns is not None else select(alias)
     return statement.where(predicate).order_by(*alias.primary_key)
 
 
@@ -150,23 +156,71 @@ def blob_fingerprint(db, config, *, client=None) -> dict:
     return dict(count=len(references), bytes=byte_count, sha256=digest.hexdigest())
 
 
-def capture_state(db, tenant: str, *, require_indexes=(), require_settings=False) -> dict:
+def original_columns(db, tenant: str) -> dict:
+    """Record all existing protected columns before an additive schema transition."""
+    from sqlalchemy import inspect, select
+    from app.storage.models import DBSearchIndex
+    from app.retrieval.filters import exact_value
+    from app.storage.vector_store import vector_table, index_profile
+    inspector = inspect(db.connection())
+    names = set(STATE_TABLES) | {"index_preparation_jobs", "index_settings", "index_documents"}
+    names &= set(inspector.get_table_names())
+    for index in db.scalars(select(DBSearchIndex).where(exact_value(DBSearchIndex.tenant_id, tenant, db.bind.dialect.name))):
+        names.add(vector_table(index, index_profile(db, index)).name)
+    return {name: [c["name"] for c in inspector.get_columns(name)] for name in sorted(names)}
+
+
+def verify_empty_index_migration(db) -> dict:
+    """Separate DDL gate: no original chunk rewritten, new metadata still empty."""
+    from sqlalchemy import MetaData, Table, select, func
+    chunks = Table("chunks", MetaData(), autoload_with=db.connection())
+    if "corpus_id" not in chunks.c:
+        raise AuditError("corpus_column_missing")
+    counts = {"assigned_corpora": db.scalar(select(func.count()).select_from(chunks).where(chunks.c.corpus_id.is_not(None)))}
+    for name in ("index_settings", "index_documents"):
+        table = Table(name, MetaData(), autoload_with=db.connection())
+        counts[name] = db.scalar(select(func.count()).select_from(table))
+    if any(counts.values()):
+        raise AuditError("index_migration_not_empty")
+    return counts
+
+
+def capture_state(db, tenant: str, *, require_indexes=(), require_settings=False, column_projection=None) -> dict:
     from sqlalchemy import func, select, inspect, MetaData, Table
     from app.retrieval.filters import exact_value
     from app.storage.models import Base, DBActiveSearchIndex, DBSearchIndex
     from app.storage.tenant_settings import MUTABLE_CONFIG_FILES, read_setting
     from app.storage.vector_store import coverage, index_profile, vector_table, tenant_key
     tables = {}
+    def audited_table(table):
+        if column_projection is None:
+            return table, {}
+        if table.name not in column_projection:
+            if table.name in {"index_settings", "index_documents"}:
+                return None, {}
+            raise AuditError("protected_table_missing_from_projection")
+        reflected = Table(table.name, MetaData(), autoload_with=db.connection())
+        expected = column_projection[table.name]
+        additions = set(reflected.c.keys()) - set(expected)
+        allowed = {"corpus_id"} if table.name == "chunks" else set()
+        if additions - allowed:
+            raise AuditError("unreviewed_schema_addition")
+        return reflected, {"columns": expected}
     jobs_exist = inspect(db.connection()).has_table("index_preparation_jobs")
     for name, table in sorted(Base.metadata.tables.items()):
         if name == "index_preparation_jobs":
             continue  # Reflect this optional operational table identically in old and new images.
-        if "tenant_id" in table.c or name in {"document_acl_grants", "chunk_acl_grants", "embedding_profiles"}:
-            tables[name] = table_fingerprint(db, table, tenant, profiles=name == "embedding_profiles")
+        if "tenant_id" in table.c or name in {"document_acl_grants", "chunk_acl_grants", "embedding_profiles", "index_documents"}:
+            if name in {"index_settings", "index_documents"} and not inspect(db.connection()).has_table(name):
+                continue
+            checked, options = audited_table(table)
+            if checked is not None:
+                tables[name] = table_fingerprint(db, checked, tenant, profiles=name == "embedding_profiles", **options)
     if jobs_exist:
         # A new verifier can run in the previous image, whose ORM does not know this table yet.
         jobs = Table("index_preparation_jobs", MetaData(), autoload_with=db.connection())
-        tables[jobs.name] = table_fingerprint(db, jobs, tenant)
+        checked, options = audited_table(jobs)
+        tables[jobs.name] = table_fingerprint(db, checked, tenant, **options)
     indexes = {}
     active = db.get(DBActiveSearchIndex, tenant_key(tenant))
     if active is not None and active.tenant_id != tenant:
@@ -185,7 +239,14 @@ def capture_state(db, tenant: str, *, require_indexes=(), require_settings=False
         indexes[key] = dict(model=profile.model_id, dimensions=profile.dimensions,
                             profile_id=index.profile_id, storage=index.storage_kind, coverage=[valid, total],
                             ingestion_default=bool(active and active.index_id == index.index_id))
-        tables["vectors:" + key] = table_fingerprint(db, table, tenant, native=index.storage_kind == "native")
+        checked, options = audited_table(table)
+        tables["vectors:" + key] = table_fingerprint(db, checked, tenant, native=index.storage_kind == "native", **options)
+    if column_projection is not None:
+        present = {name for name in column_projection if name not in {"index_settings", "index_documents"}}
+        captured = {name for name in tables if not name.startswith("vectors:")}
+        captured |= {vector_table(index, index_profile(db, index)).name for index in db.scalars(select(DBSearchIndex).where(exact_value(DBSearchIndex.tenant_id, tenant, db.bind.dialect.name)))}
+        if present - captured:
+            raise AuditError("projected_table_not_captured")
     for ident in require_indexes:
         item = indexes.get(str(uuid.UUID(ident)))
         if item is None or not item["coverage"][1] or item["coverage"][0] != item["coverage"][1]:
@@ -299,7 +360,8 @@ def capture(args) -> dict:
         try:
             with Session(bind=connection, autoflush=False) as db, sql_query_timeout(db, 30):
                 result["state"] = capture_state(db, settings.TENANT_ID,
-                    require_indexes=args.require_index, require_settings=args.require_settings)
+                    require_indexes=args.require_index, require_settings=args.require_settings,
+                    column_projection=getattr(args, "column_projection", None))
                 if args.blobs:
                     result["blobs"] = blob_fingerprint(db, settings)
         finally:

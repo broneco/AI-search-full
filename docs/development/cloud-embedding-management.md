@@ -1,5 +1,7 @@
 # Správa embeddingových indexů v administraci
 
+Nově připravená správa názvů a izolovaných konfigurací je popsána v [indexech s vlastním chunkováním](index-chunking-pairs.md), včetně samostatné migrace a omezení rollbacku. Následující postup popisuje již nasazené sdílené korpusy v0.1.9/v0.1.10.
+
 Pracovní verze v0.1.9 umožňuje správu také nad Azure SQL. První cloudové zapnutí vyžaduje níže uvedenou aditivní migraci a explicitní povolení. Samotná přítomnost kódu funkci v dosavadní cloudové verzi neaktivuje.
 
 „Lokální embedding“ označuje model běžící na JHU API. Cloudový backend k němu přistupuje přes vlastní VPN sidecar v Azure; notebook, jeho VPN ani lokální Docker nejsou potřeba pro provoz aplikace. SQL indexy zůstávají v Azure SQL, v nativních `VECTOR(dimensions)` tabulkách.

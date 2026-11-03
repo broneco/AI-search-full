@@ -25,14 +25,23 @@ def can_prepare_locally(session: Session) -> bool:
 
 
 def index_description(session, index, entries, active):
+    from app.storage.index_settings import metadata, corpus_ready, current_index
+    root = index
+    root_spec = metadata(session, root)
+    index = current_index(session, root)
+    spec = metadata(session, index)
     space = index_profile(session, index)
     entry = next((entry for entry in entries if entry.space() == space), None)
     valid, total = coverage(session, index)
-    return dict(index_id=str(index.index_id), model=space.model_id, dimensions=space.dimensions,
+    return dict(index_id=str(root.index_id), current_index_id=str(index.index_id), model=space.model_id, dimensions=space.dimensions,
                 embedding_location=("local" if entry.provider == "ollama_embed" else "cloud") if entry else None,
                 profile_id=space.profile_id, embedding_profile=entry.id if entry else None,
-                valid_chunks=valid, total_chunks=total, ready=bool(entry and total and valid == total),
-                ingestion_default=bool(active and active.tenant_id == index.tenant_id and active.index_id == index.index_id))
+                name=root_spec.name if root_spec else f"{space.model_id} · {str(root.index_id)[:8]}",
+                chunking=spec.chunking if spec else None, settings_revision=root_spec.revision if root_spec else 0,
+                settings_origin=(spec.settings_origin or "recorded") if spec else None,
+                corpus_id=index.corpus_id, chunking_recorded=bool(spec and spec.chunking),
+                valid_chunks=valid, total_chunks=total, ready=bool(entry and total and valid == total and corpus_ready(session, index)),
+                ingestion_default=bool(active and active.tenant_id == root.tenant_id and active.index_id == root.index_id))
 
 
 def list_indexes(session: Session, tenant: str) -> dict:
@@ -45,12 +54,15 @@ def list_indexes(session: Session, tenant: str) -> dict:
     documents = session.scalar(select(func.count()).select_from(DBDocument).where(
         exact_value(DBDocument.tenant_id, tenant, session.bind.dialect.name)))
     allowed, reason = capability(session)
+    from app.storage.index_settings import available as settings_available
+    from app.storage.index_settings import metadata
+    indexes = [i for i in indexes if not ((spec := metadata(session, i)) and spec.owner_index_id)]
     job = public(session, current(session, tenant)) if available(session) else None
     return dict(indexes=[index_description(session, index, catalog.profiles, active) for index in indexes],
                 profiles=[dict(id=entry.id, model=entry.space().model_id, dimensions=entry.space().dimensions,
                                embedding_location="local" if entry.provider == "ollama_embed" else "cloud")
                           for entry in catalog.profiles], documents=documents,
-                can_prepare=allowed, preparation_unavailable_reason=reason, job=job)
+                can_prepare=allowed, can_manage_settings=settings_available(session), preparation_unavailable_reason=reason, job=job)
 
 
 def available_query_indexes(session: Session, principal) -> dict:
@@ -62,8 +74,13 @@ def available_query_indexes(session: Session, principal) -> dict:
         exact_value(DBSearchIndex.tenant_id, tenant, session.bind.dialect.name)))
     indexes = []
     for index in candidates:
+        from app.storage.index_settings import metadata, current_index
+        root = index
+        spec = metadata(session, root)
+        if spec is not None and spec.owner_index_id is not None:
+            continue
         entry = entries.get(index.profile_id)
-        if entry is None or index.corpus_id != "tenant-chunks-v1":
+        if entry is None or index.corpus_id not in {"tenant-chunks-v1", "index-" + index.index_id.hex}:
             continue
         try:
             check_embedding_access(session, principal, entry, index.index_id)
@@ -71,11 +88,16 @@ def available_query_indexes(session: Session, principal) -> dict:
             if error.status == 403:
                 continue
             raise
+        index = current_index(session, root)
         valid, total = coverage(session, index)
-        if total and valid == total:
-            indexes.append(dict(index_id=str(index.index_id), model=entry.space().model_id,
+        from app.storage.index_settings import metadata, corpus_ready
+        spec = metadata(session, index)
+        if total and valid == total and corpus_ready(session, index):
+            root_spec = metadata(session, root)
+            indexes.append(dict(index_id=str(root.index_id), model=entry.space().model_id,
+                name=root_spec.name if root_spec else f"{entry.space().model_id} · {str(root.index_id)[:8]}",
                 dimensions=entry.space().dimensions,
-                ingestion_default=bool(active and active.tenant_id == tenant and active.index_id == index.index_id)))
+                ingestion_default=bool(active and active.tenant_id == tenant and active.index_id == root.index_id)))
     return {"indexes": indexes}
 
 
@@ -97,6 +119,8 @@ async def prepare_index(session: Session, principal, profile_name: str, index_id
         authorize()
         if index_id is not None:
             index = selected_index(session, principal.tenant_id, index_id)
+            if index.corpus_id != "tenant-chunks-v1":
+                raise ModelError("index_preparation_requires_job", "Index s vlastním chunkováním připravte pomocí trvalé úlohy.", 409)
             if index.profile_id != entry.space().profile_id:
                 raise ModelError("search_index_profile_mismatch", "Profil nesouhlasí s vybraným indexem.", 422)
         else:

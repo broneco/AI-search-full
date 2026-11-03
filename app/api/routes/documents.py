@@ -14,6 +14,7 @@ from app.api.identity import Principal, get_principal, require_manager
 from app.retrieval.access import access_context, visible_document, safe_data_path
 from app.retrieval.filters import document_filters, eligibility_filters, exact_value
 from app.storage.vector_store import write_chunks
+from app.storage.index_settings import corpus_filter
 from app.core.model_selection import model_provider
 from app.core.model_config import ModelError
 from app.storage.tenant_settings import TenantSettingsError
@@ -280,7 +281,7 @@ async def view_document(
                 chunk_uuid = uuid.UUID(highlight_chunk_id)
                 chunk = db.query(DBChunk).join(DBDocument).filter(
                     DBChunk.chunk_id == chunk_uuid, DBChunk.document_id == doc_uuid,
-                    *eligibility_filters(access_context(principal), db.bind.dialect.name, metadata=False)
+                    *eligibility_filters(access_context(principal), db.bind.dialect.name, metadata=False, corpus=False)
                 ).first()
                 if chunk:
                     import fitz
@@ -973,7 +974,8 @@ async def run_reindex_all_task(tenant_id: str | None = None, model_selection=Non
                 file_progress["state"] = "saving"
                 
                 db.query(DBChunk).filter(DBChunk.document_id == doc.document_id,
-                    exact_value(DBChunk.tenant_id, tenant_id, db.bind.dialect.name)).delete()
+                    exact_value(DBChunk.tenant_id, tenant_id, db.bind.dialect.name),
+                    corpus_filter()).delete(synchronize_session=False)
                 
                 replacement_metadata = dict(doc.metadata_json or {})
                 replacement_metadata.pop("summary_model_id", None)
@@ -1068,110 +1070,44 @@ async def get_document_chunks(
 
 
 @router.post("/preview-chunks")
-async def preview_document_chunks(
-    payload: Dict[str, Any],
-    db: Session = Depends(get_db_session),
+def preview_document_chunks(
+    payload: Dict[str, Any], db: Session = Depends(get_db_session),
     principal: Principal = Depends(get_principal),
 ):
-    """Simulate and preview text segmentation into chunks using custom chunk_size and chunk_overlap without writing to DB."""
+    """Preview the exact authorized PDF/TXT source; no database or Blob writes."""
     import uuid
-    import os
-    from app.storage.models import DBDocument
+    from pydantic import ValidationError
+    from app.ingestion.chunk_settings import ChunkingSettings, splitter_for
+    from app.ingestion.sources import document_source
     from app.ingestion.extraction import DocumentExtractor
-    from app.ingestion.chunking import RecursiveCharacterTextSplitter
-    
-    document_id = payload.get("document_id")
-    chunk_size = payload.get("chunk_size", 1500)
-    chunk_overlap = payload.get("chunk_overlap", 250)
-    chunk_cross_page = payload.get("chunk_cross_page", False)
-    overlap_cross_page = payload.get("overlap_cross_page", False)
-    chunk_splitter_type = payload.get("chunk_splitter_type", "recursive")
-    chunking_strategy = payload.get("chunking_strategy", "standard")
-    enrich_with_summary = payload.get("enrich_with_summary", False)
-    summary_custom_prompt = payload.get("summary_custom_prompt", "")
-    force_ai = payload.get("force_ai", False)
-    semantic_params = payload.get("semantic_params")
-    structure_params = payload.get("structure_params")
-    token_params = payload.get("token_params")
-    agentic_params = payload.get("agentic_params")
-    
-    llm_provider = model_provider(db, principal.tenant_id, "classification", principal=principal) if chunking_strategy == "agentic" and force_ai else None
-    
-    if not document_id:
-        raise HTTPException(status_code=400, detail="Missing document_id")
-        
     try:
-        doc_uuid = uuid.UUID(document_id)
+        ident = uuid.UUID(str(payload.get("document_id", "")))
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid document UUID format.")
-        
-    doc = visible_document(db, doc_uuid, principal, full_document=True)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found.")
-        
-    # Resolve file path
-    uri = doc.source_uri
-    relative_path = uri
-    if uri.startswith("file://"):
-        relative_path = uri[7:]
-    elif uri.startswith("azure://"):
-        parts = uri.split("/", 3)
-        if len(parts) > 3:
-            relative_path = parts[3]
-            
-    file_path = safe_data_path(os.path.join("data", relative_path))
-    if file_path is None:
-        raise HTTPException(404, "Document source is outside the data directory.")
-    if not os.path.exists(file_path):
-        # Fallback search
-        found_path = None
-        data_dir = os.path.abspath("data")
-        if os.path.exists(data_dir):
-            basename = os.path.basename(relative_path)
-            for root, dirs, files in os.walk(data_dir):
-                if basename in files:
-                    found_path = os.path.join(root, basename)
-                    break
-        if found_path:
-            file_path = found_path
-        else:
-            raise HTTPException(status_code=404, detail=f"File not found on server.")
-            
-    if safe_data_path(file_path) is None:
-        raise HTTPException(404, "Document source is outside the data directory.")
-    # Extract pages and run custom splitter
-    extractor = DocumentExtractor()
-    pages = extractor.extract(file_path)
-    
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        chunk_cross_page=chunk_cross_page,
-        overlap_cross_page=overlap_cross_page,
-        chunk_splitter_type=chunk_splitter_type,
-        chunking_strategy=chunking_strategy,
-        enrich_with_summary=enrich_with_summary,
-        summary_custom_prompt=summary_custom_prompt,
-        semantic_params=semantic_params,
-        structure_params=structure_params,
-        token_params=token_params,
-        agentic_params=agentic_params,
-        embedding_provider=active_embedding_provider(db, principal.tenant_id, fallback=embedding_provider),
-        llm_provider=llm_provider,
-        summary_provider=model_provider(db, principal.tenant_id, "summary", payload.get("summary_model_id"), principal) if enrich_with_summary else None,
-        strict_summary=bool(force_ai and enrich_with_summary),
-    )
-    chunks = splitter.split_pages(pages, force_ai=force_ai)
-    
-    return [
-        {
-            "chunk_index": c.index,
-            "content": c.content,
-            "page_number": c.page_number,
-            "section_title": c.section_title
-        }
-        for c in chunks
-    ]
-
-
-
+        raise HTTPException(422, "Invalid document UUID.") from None
+    doc = visible_document(db, ident, principal, full_document=True)
+    if doc is None:
+        raise HTTPException(404, "Document not found.")
+    try:
+        config = ChunkingSettings.model_validate({k: v for k, v in payload.items() if k in ChunkingSettings.model_fields})
+    except ValidationError:
+        raise HTTPException(422, "Neplatné nastavení chunkování; překryv musí být menší než velikost chunku.") from None
+    force = payload.get("force_ai", False)
+    if type(force) is not bool:
+        raise HTTPException(422, "force_ai must be a boolean.")
+    provider = None
+    if config.chunking_strategy == "semantic" and force:
+        from app.core.embedding_config import embedding_entry
+        from app.core.model_selection import check_access
+        from app.providers.factory import catalog_embedding_provider
+        entry = embedding_entry(principal.tenant_id, payload.get("embedding_profile"), session=db)
+        check_access(db, principal, entry)
+        provider = catalog_embedding_provider(principal.tenant_id, entry.id, session=db)
+    if config.chunking_strategy == "semantic" and not force:
+        # Slider previews never trigger remote embedding calls.
+        config.chunking_strategy = "standard"
+    splitter = splitter_for(db, principal, config.model_dump(), embedding_provider=provider, force_ai=force)
+    with document_source(doc) as path:
+        pages = DocumentExtractor().extract(path)
+    chunks = splitter.split_pages(pages, force_ai=force)
+    return [{"chunk_index": c.index, "content": c.content, "page_number": c.page_number,
+             "section_title": c.section_title} for c in chunks]

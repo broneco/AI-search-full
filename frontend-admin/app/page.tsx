@@ -1,10 +1,13 @@
 "use client";
+import { chunkingSnapshot } from "./lib/chunkingSnapshot";
 import { openAuthenticatedPdf } from "./components/authenticatedPdf";
 
 import { ModelPicker, useModelCatalog } from "./components/ModelPicker";
 import { ModelManagementPanel } from "./components/ModelManagementPanel";
 import { ResultsComparison } from "./components/ResultsComparison";
 import { EmbeddingIndexPanel, EmbeddingIndexPicker, IndexProgress, useEmbeddingIndexes } from "./components/EmbeddingIndexes";
+import { IndexEditorHeader } from "./components/IndexEditorHeader";
+import { ContextCapacity } from "./components/ContextCapacity";
 import { ProcessingProgress, ProcessingFile } from "./components/ProcessingProgress";
 import { JhuConnectionStatus } from "./components/JhuConnectionStatus";
 import React, { useState, useEffect, useRef, useMemo, Fragment } from "react";
@@ -75,6 +78,7 @@ interface SearchConfig {
   freshness_boost: number;
   context_expansion: "none" | "siblings" | "page" | "section";
   context_expansion_size: number;
+  summaries_only_for_matched_chunk?: boolean;
   context_max_tokens: number;
   chunk_size: number;
   chunk_overlap: number;
@@ -452,6 +456,56 @@ export default function Home() {
   // Backend API URL Base
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+  const modelScope = userProfile ? `${userProfile.tenant_id}:${userProfile.user_id || userProfile.email}` : "";
+  const chatModels = useModelCatalog(BACKEND_URL, authToken, "chat", modelScope);
+  const summaryModels = useModelCatalog(BACKEND_URL, authToken, "summary", modelScope);
+  const classificationModels = useModelCatalog(BACKEND_URL, authToken, "classification", modelScope);
+  const [indexMode, setIndexMode] = useState<"existing"|"new">("existing");
+  const [editorIndexId, setEditorIndexId] = useState("");
+  const [editorName, setEditorName] = useState("");
+  const [indexDraft, setIndexDraft] = useState<SearchConfig | null>(null);
+  const editorLoaded = useRef("");
+  const initializationAttempt = useRef("");
+  const creationSnapshot = chunkingSnapshot(indexDraft, summaryModels.modelId, classificationModels.modelId);
+  const embeddingIndexes = useEmbeddingIndexes(BACKEND_URL, authToken, modelScope, Boolean(userProfile?.groups?.includes("Management")), creationSnapshot);
+
+  const editorIndex = embeddingIndexes.catalog?.indexes.find(i=>i.index_id===editorIndexId);
+  const previewProfile = indexMode === "existing" ? editorIndex?.embedding_profile || "" : embeddingIndexes.creationProfile;
+  useEffect(()=>{
+    if(activeTab!=="chunking" || !embeddingIndexes.catalog?.can_manage_settings || !embeddingIndexes.catalog.indexes.some(i=>!i.chunking))return;
+    const identity=`${BACKEND_URL}:${modelScope}:${authToken}`;
+    if(initializationAttempt.current===identity)return;
+    initializationAttempt.current=identity;
+    void embeddingIndexes.initializeLegacy();
+  },[activeTab,embeddingIndexes.catalog,modelScope,authToken]);
+  useEffect(()=>{
+    if(indexMode!=="existing" || editorIndexId || !embeddingIndexes.catalog?.indexes.length)return;
+    setEditorIndexId(embeddingIndexes.catalog.indexes.find(i=>i.ingestion_default)?.index_id || embeddingIndexes.catalog.indexes[0].index_id);
+  },[indexMode,editorIndexId,embeddingIndexes.catalog]);
+  useEffect(()=>{
+    if(!searchConfig)return;
+    const key=`${modelScope}:${indexMode}:${editorIndexId}:${editorIndex?.settings_revision || 0}`;
+    if(editorLoaded.current===key)return;
+    if(indexMode==="existing" && !editorIndex?.chunking){setIndexDraft(null);return;}
+    editorLoaded.current=key;
+    setIndexDraft({...searchConfig,...(indexMode==="existing"?editorIndex?.chunking:{})});
+    setEditorName(indexMode==="existing"?editorIndex?.name || "":"");
+    if(indexMode==="existing" && editorIndex?.chunking?.summary_model_id)summaryModels.select(editorIndex.chunking.summary_model_id);
+    if(indexMode==="existing" && editorIndex?.chunking?.classification_model_id)classificationModels.select(editorIndex.chunking.classification_model_id);
+  },[indexMode,editorIndexId,editorIndex?.settings_revision,editorIndex?.chunking,searchConfig,modelScope]);
+  const openIndexEditor = (id?: string, profile?: string) => {
+    editorLoaded.current="";
+    setIndexMode(id?"existing":"new");setEditorIndexId(id || "");
+    if(profile){embeddingIndexes.setCreationProfile(profile);void embeddingIndexes.reload();}
+    setActiveTab("chunking");
+  };
+  const saveEditorIndex = async () => {
+    if(!creationSnapshot || embeddingIndexes.loading || embeddingIndexes.preparing || (indexMode==="existing"&&!editorIndex))return;
+    const job=await embeddingIndexes.saveEditor({chunking:creationSnapshot,name:editorName.trim() || undefined,
+      ...(indexMode==="existing"?{index_id:editorIndexId,expected_revision:editorIndex?.settings_revision || 0}:{embedding_profile:embeddingIndexes.creationProfile})});
+    if(job){setIndexMode("existing");setEditorIndexId(job.logical_index_id || job.index_id || "");}
+  };
+
   // Live Chunking Preview State
   const [selectedPreviewDocId, setSelectedPreviewDocId] = useState<string>("");
   const [previewChunks, setPreviewChunks] = useState<any[]>([]);
@@ -464,81 +518,42 @@ export default function Home() {
     }
   }, [activeTab, documents, selectedPreviewDocId]);
 
+  const previewAbort = useRef<AbortController | null>(null);
+  const previewGeneration = useRef(0);
+  const previewKey = JSON.stringify([activeTab, BACKEND_URL, authToken, modelScope, selectedPreviewDocId, creationSnapshot, previewProfile, indexMode, editorIndexId]);
+  const previewKeyRef = useRef(previewKey);
+  previewKeyRef.current = previewKey;
   const fetchPreview = async (force: boolean = false) => {
-    if (!selectedPreviewDocId || !editingSearchConfig || (force && editingSearchConfig.enrich_with_summary && !summaryModels.modelId)) {
-      setPreviewChunks([]);
-      return;
-    }
+    previewAbort.current?.abort();
+    const ticket = ++previewGeneration.current;
+    const owner = previewKey;
+    const abort = new AbortController();
+    previewAbort.current = abort;
+    setPreviewChunks([]); setPreviewError(null);
+    if (activeTab !== "chunking" || !authToken || !selectedPreviewDocId || !creationSnapshot) { setLoadingPreviewChunks(false); return; }
     setLoadingPreviewChunks(true);
-    setPreviewError(null);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/documents/preview-chunks`, {
-        method: "POST",
-        headers: getHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          document_id: selectedPreviewDocId,
-          summary_model_id: summaryModels.modelId || undefined,
-          chunk_size: editingSearchConfig.chunk_size,
-          chunk_overlap: editingSearchConfig.chunk_overlap,
-          chunk_cross_page: editingSearchConfig.chunk_cross_page,
-          overlap_cross_page: editingSearchConfig.overlap_cross_page,
-          chunk_splitter_type: editingSearchConfig.chunk_splitter_type,
-          chunking_strategy: editingSearchConfig.chunking_strategy || "standard",
-          enrich_with_summary: editingSearchConfig.enrich_with_summary,
-          summary_custom_prompt: editingSearchConfig.summary_custom_prompt,
-          force_ai: force,
-          semantic_params: editingSearchConfig.semantic_params,
-          structure_params: editingSearchConfig.structure_params,
-          token_params: editingSearchConfig.token_params,
-          agentic_params: editingSearchConfig.agentic_params,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setPreviewChunks(data);
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        if ([403, 422, 503].includes(res.status)) await summaryModels.reload();
-        setPreviewError(errData.detail || "Failed to load preview chunks.");
-      }
-    } catch (err) {
-      console.error(err);
-      setPreviewError("Network error loading preview chunks.");
+      const data = await requestJson(`${BACKEND_URL}/api/documents/preview-chunks`, {
+        method: "POST", signal: abort.signal,
+        headers: getHeaders({"Content-Type":"application/json"}),
+        body: JSON.stringify({...creationSnapshot, document_id:selectedPreviewDocId, embedding_profile:previewProfile || undefined, force_ai:force})
+      }, {timeoutMs:force?180000:45000, language:appLanguage});
+      if (ticket === previewGeneration.current && owner === previewKeyRef.current && !abort.signal.aborted) setPreviewChunks(data);
+    } catch(e) {
+      if (ticket === previewGeneration.current && owner === previewKeyRef.current && !abort.signal.aborted)
+        setPreviewError(e instanceof Error?e.message:String(e));
     } finally {
-      setLoadingPreviewChunks(false);
+      if (ticket === previewGeneration.current && owner === previewKeyRef.current) setLoadingPreviewChunks(false);
     }
   };
-
-  const triggerManualPreviewFetch = () => {
-    fetchPreview(true);
-  };
-
+  const triggerManualPreviewFetch = () => { void fetchPreview(true); };
   useEffect(() => {
-    if (!selectedPreviewDocId || !editingSearchConfig) {
-      setPreviewChunks([]);
-      return;
-    }
-
-    const delayDebounceFn = setTimeout(() => {
-      fetchPreview(false);
-    }, 450);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [
-    selectedPreviewDocId,
-    editingSearchConfig?.chunk_size,
-    editingSearchConfig?.chunk_overlap,
-    editingSearchConfig?.chunk_cross_page,
-    editingSearchConfig?.overlap_cross_page,
-    editingSearchConfig?.chunk_splitter_type,
-    editingSearchConfig?.chunking_strategy,
-    editingSearchConfig?.enrich_with_summary,
-    editingSearchConfig?.summary_custom_prompt,
-    JSON.stringify(editingSearchConfig?.semantic_params),
-    JSON.stringify(editingSearchConfig?.structure_params),
-    activeTab
-  ]);
+    previewAbort.current?.abort(); ++previewGeneration.current;
+    setPreviewChunks([]); setPreviewError(null); setLoadingPreviewChunks(false);
+    if (activeTab !== "chunking") return;
+    const timer=setTimeout(()=>void fetchPreview(false),450);
+    return ()=>{clearTimeout(timer); previewAbort.current?.abort(); ++previewGeneration.current;};
+  }, [previewKey]);
 
   const fetchPrompts = async (identity: string) => {
     try {
@@ -1528,11 +1543,7 @@ export default function Home() {
     );
   };
 
-  const modelScope = userProfile ? `${userProfile.tenant_id}:${userProfile.user_id || userProfile.email}` : "";
-  const chatModels = useModelCatalog(BACKEND_URL, authToken, "chat", modelScope);
-  const summaryModels = useModelCatalog(BACKEND_URL, authToken, "summary", modelScope);
-  const classificationModels = useModelCatalog(BACKEND_URL, authToken, "classification", modelScope);
-  const embeddingIndexes = useEmbeddingIndexes(BACKEND_URL, authToken, modelScope, Boolean(userProfile?.groups?.includes("Management")));
+
 
   // Dynamic list of all category group names for suggestions in tag input
   const uniqueGroups = (editingConfig || config)
@@ -1566,7 +1577,7 @@ export default function Home() {
                 {currentTheme.appName}
               </h1>
               <span className="text-[10px] font-mono text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 select-none" title="Verze aplikace">
-                v0.1.10
+                v0.1.11
               </span>
             </div>
             <p className="text-[11px] text-white/80 font-medium">
@@ -2153,7 +2164,7 @@ export default function Home() {
               <div className="p-4 border-t border-white/[0.04] bg-[#070b13]/60 backdrop-blur-md">
                 <div className="max-w-4xl mx-auto mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
                   <span>{appLanguage === "cs" ? "Model odpovědi" : "Answer model"}: <strong className="text-zinc-200">{chatModels.models.find(m => m.id === chatModels.modelId)?.name || (appLanguage === "cs" ? "Nevybrán" : "Not selected")}</strong></span>
-                  {userProfile?.groups?.includes("Management") && <span>{appLanguage === "cs" ? "Embeddingový index" : "Embedding index"}: {searchStrategy === "keyword" ? (appLanguage === "cs" ? "Nepoužívá se (keyword)" : "Not used (keyword)") : embeddingIndexes.selected ? `${embeddingIndexes.selected.model} · ${embeddingIndexes.selectedId.slice(0, 8)}${!embeddingIndexes.canQuery ? (appLanguage === "cs" ? " · nepřipravený" : " · not ready") : ""}` : (appLanguage === "cs" ? "Nevybrán / nedostupný" : "Not selected / unavailable")}</span>}
+                  {userProfile?.groups?.includes("Management") && <span>{appLanguage === "cs" ? "Embeddingový index" : "Embedding index"}: {searchStrategy === "keyword" ? (appLanguage === "cs" ? "Nepoužívá se (keyword)" : "Not used (keyword)") : embeddingIndexes.selected ? `${embeddingIndexes.selected.name || embeddingIndexes.selected.model} · ${embeddingIndexes.selectedId.slice(0, 8)}${!embeddingIndexes.canQuery ? (appLanguage === "cs" ? " · nepřipravený" : " · not ready") : ""}` : (appLanguage === "cs" ? "Nevybrán / nedostupný" : "Not selected / unavailable")}</span>}
                   <button type="button" onClick={() => setActiveTab("models")} className="text-indigo-300 hover:text-indigo-200 underline">{appLanguage === "cs" ? "Změnit model / index" : "Change model / index"}</button>
                   {(chatModels.error || (searchStrategy !== "keyword" && embeddingIndexes.error)) && <p role="alert" className="w-full text-amber-300">{chatModels.error || embeddingIndexes.error}</p>}
                   {(!chatModels.canQuery || (searchStrategy !== "keyword" && !embeddingIndexes.canQuery)) && <p className="w-full text-amber-200">{appLanguage === "cs" ? "Dotaz bude dostupný po načtení a výběru dostupného modelu a připraveného indexu. Katalog můžete obnovit v části Modely a vyhledávání." : "Questions become available after a model and prepared index are loaded and selected. Refresh the catalogs in Models and search."}</p>}
@@ -3019,6 +3030,13 @@ export default function Home() {
                         )}
                       </div>
 
+                      <label className="flex items-start gap-3 rounded-lg border border-white/10 p-3 text-xs text-zinc-300">
+                        <input type="checkbox" checked={editingSearchConfig.summaries_only_for_matched_chunk ?? true}
+                          onChange={e=>setEditingSearchConfig({...editingSearchConfig,summaries_only_for_matched_chunk:e.target.checked})}
+                          className="mt-0.5 accent-indigo-500"/>
+                        <span>{appLanguage==="cs"?"AI shrnutí pouze u nalezeného chunku":"AI summary only for the matched chunk"}<span className="block mt-1 text-zinc-500">{appLanguage==="cs"?"Při rozšíření kontextu ponechá text sousedních chunků, ale vynechá jejich AI shrnutí. Uložené chunky se nemění.":"Context expansion keeps neighboring text while omitting its AI summaries. Stored chunks remain unchanged."}</span></span>
+                      </label>
+
                       {/* Token limit budget */}
                       <div className="space-y-1.5">
                         <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
@@ -3045,6 +3063,14 @@ export default function Home() {
                           />
                         </div>
                       </div>
+                      {userProfile?.groups?.includes("Management") && (()=>{
+                        const target=editingSearchConfig.search_strategy==="keyword"?embeddingIndexes.catalog?.indexes.find(i=>i.ingestion_default):embeddingIndexes.selected;
+                        return <ContextCapacity url={BACKEND_URL} token={authToken} locale={appLanguage}
+                          indexId={target?.index_id || ""} indexRevision={target?.current_index_id} indexName={target?.name || target?.model}
+                          modelId={chatModels.modelId} modelRevision={JSON.stringify(chatModels.models.find(m=>m.id===chatModels.modelId)?.parameters || {})}
+                          resultCount={editingSearchConfig.search_strategy==="hybrid"&&editingSearchConfig.hybrid_strategy==="union" ? editingSearchConfig.vector_final_limit+editingSearchConfig.keyword_final_limit : editingSearchConfig.final_limit}/>;
+                      })()}
+
                     </div>
                     <button
                       onClick={() => saveSearchConfigToServer(editingSearchConfig)}
@@ -3066,7 +3092,7 @@ export default function Home() {
 
         {activeTab === "chunking" && (
           <div className="flex-1 overflow-y-auto p-6 bg-[#090d16] flex flex-col items-center gap-6">
-            {userProfile?.groups?.includes("Management") && <section className="w-full max-w-7xl glass-panel p-5 rounded-xl border border-white/10"><EmbeddingIndexPanel controller={embeddingIndexes} locale={appLanguage} expanded /></section>}
+            {userProfile?.groups?.includes("Management") && <IndexEditorHeader controller={embeddingIndexes} locale={appLanguage} mode={indexMode} setMode={setIndexMode} indexId={editorIndexId} selectIndex={setEditorIndexId} name={editorName} setName={setEditorName}/>}
             <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl items-start">
               
               {/* Left Column: Settings & Triggers */}
@@ -3082,20 +3108,20 @@ export default function Home() {
                   </p>
                 </div>
 
-                {editingSearchConfig ? (
-                  <div className="space-y-6">
+                {indexDraft ? (
+                  <fieldset disabled={embeddingIndexes.preparing} className="space-y-6">
                     {/* Chunking Settings */}
                     <div className="space-y-4 pb-2">
                       {/* Strategy Selection */}
                       <div className="space-y-1.5">
                         <label className="text-[10px] text-zinc-500 block uppercase tracking-wider font-bold">
                           {appLanguage === "cs" ? "Strategie chunkování" : "Chunking Strategy"}
-                          <Tooltip text={TRANSLATIONS[appLanguage].tooltips[`strategy_${editingSearchConfig.chunking_strategy || "standard"}`]} />
+                          <Tooltip text={TRANSLATIONS[appLanguage].tooltips[`strategy_${indexDraft.chunking_strategy || "standard"}`]} />
                         </label>
                         <select
-                          value={editingSearchConfig.chunking_strategy || "standard"}
-                          onChange={(e) => setEditingSearchConfig({
-                            ...editingSearchConfig,
+                          value={indexDraft.chunking_strategy || "standard"}
+                          onChange={(e) => setIndexDraft({
+                            ...indexDraft,
                             chunking_strategy: e.target.value as any
                           })}
                           className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
@@ -3109,7 +3135,7 @@ export default function Home() {
                       </div>
 
                       {/* --- STANDARD STRATEGY FIELDS --- */}
-                      {(editingSearchConfig.chunking_strategy === "standard" || !editingSearchConfig.chunking_strategy) && (
+                      {(indexDraft.chunking_strategy === "standard" || !indexDraft.chunking_strategy) && (
                         <>
                           {/* Chunk Size */}
                           <div className="space-y-1.5">
@@ -3123,8 +3149,8 @@ export default function Home() {
                                 min="200"
                                 max="5000"
                                 step="100"
-                                value={editingSearchConfig.chunk_size}
-                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) })}
+                                value={indexDraft.chunk_size}
+                                onChange={(e) => setIndexDraft({ ...indexDraft, chunk_size: parseInt(e.target.value) })}
                                 className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                               />
                               <input
@@ -3132,8 +3158,8 @@ export default function Home() {
                                 min="200"
                                 max="5000"
                                 step="100"
-                                value={editingSearchConfig.chunk_size}
-                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_size: parseInt(e.target.value) || 1500 })}
+                                value={indexDraft.chunk_size}
+                                onChange={(e) => setIndexDraft({ ...indexDraft, chunk_size: parseInt(e.target.value) || 1500 })}
                                 className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
                               />
                             </div>
@@ -3151,8 +3177,8 @@ export default function Home() {
                                 min="0"
                                 max="1000"
                                 step="50"
-                                value={editingSearchConfig.chunk_overlap}
-                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) })}
+                                value={indexDraft.chunk_overlap}
+                                onChange={(e) => setIndexDraft({ ...indexDraft, chunk_overlap: parseInt(e.target.value) })}
                                 className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                               />
                               <input
@@ -3160,8 +3186,8 @@ export default function Home() {
                                 min="0"
                                 max="1000"
                                 step="50"
-                                value={editingSearchConfig.chunk_overlap}
-                                onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_overlap: parseInt(e.target.value) || 250 })}
+                                value={indexDraft.chunk_overlap}
+                                onChange={(e) => setIndexDraft({ ...indexDraft, chunk_overlap: parseInt(e.target.value) || 250 })}
                                 className="w-20 bg-black/45 border border-white/[0.08] text-xs text-zinc-200 rounded px-2 py-1 text-center focus:outline-none focus:border-indigo-500 font-semibold"
                               />
                             </div>
@@ -3173,8 +3199,8 @@ export default function Home() {
                               {appLanguage === "cs" ? "Typ splitteru" : "Splitter Type"}
                             </label>
                             <select
-                              value={editingSearchConfig.chunk_splitter_type || "recursive"}
-                              onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_splitter_type: e.target.value as any })}
+                              value={indexDraft.chunk_splitter_type || "recursive"}
+                              onChange={(e) => setIndexDraft({ ...indexDraft, chunk_splitter_type: e.target.value as any })}
                               className="w-full bg-[#111827] border border-white/[0.08] text-xs text-zinc-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
                             >
                               <option value="recursive">
@@ -3189,7 +3215,7 @@ export default function Home() {
                       )}
 
                       {/* --- SEMANTIC STRATEGY FIELDS --- */}
-                      {editingSearchConfig.chunking_strategy === "semantic" && (
+                      {indexDraft.chunking_strategy === "semantic" && (
                         <>
                           {/* Sentence Splitter */}
                           <div className="space-y-1.5">
@@ -3198,11 +3224,11 @@ export default function Home() {
                               <Tooltip text={TRANSLATIONS[appLanguage].tooltips.semantic_sentence_splitter} />
                             </label>
                             <select
-                              value={editingSearchConfig.semantic_params?.sentence_splitter || "nltk"}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.semantic_params?.sentence_splitter || "nltk"}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 semantic_params: {
-                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  ...(indexDraft.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
                                   sentence_splitter: e.target.value as any
                                 }
                               })}
@@ -3221,11 +3247,11 @@ export default function Home() {
                               <Tooltip text={TRANSLATIONS[appLanguage].tooltips.semantic_threshold_type} />
                             </label>
                             <select
-                              value={editingSearchConfig.semantic_params?.threshold_type || "percentile"}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.semantic_params?.threshold_type || "percentile"}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 semantic_params: {
-                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  ...(indexDraft.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
                                   threshold_type: e.target.value as any
                                 }
                               })}
@@ -3246,11 +3272,11 @@ export default function Home() {
                             <input
                               type="number"
                               step="0.1"
-                              value={editingSearchConfig.semantic_params?.threshold_value ?? 95.0}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.semantic_params?.threshold_value ?? 95.0}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 semantic_params: {
-                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  ...(indexDraft.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
                                   threshold_value: parseFloat(e.target.value) || 0.0
                                 }
                               })}
@@ -3270,11 +3296,11 @@ export default function Home() {
                                 min="1"
                                 max="5"
                                 step="1"
-                                value={editingSearchConfig.semantic_params?.buffer_size ?? 1}
-                                onChange={(e) => setEditingSearchConfig({
-                                  ...editingSearchConfig,
+                                value={indexDraft.semantic_params?.buffer_size ?? 1}
+                                onChange={(e) => setIndexDraft({
+                                  ...indexDraft,
                                   semantic_params: {
-                                    ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                    ...(indexDraft.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
                                     buffer_size: parseInt(e.target.value)
                                   }
                                 })}
@@ -3285,11 +3311,11 @@ export default function Home() {
                                 min="1"
                                 max="5"
                                 step="1"
-                                value={editingSearchConfig.semantic_params?.buffer_size ?? 1}
-                                onChange={(e) => setEditingSearchConfig({
-                                  ...editingSearchConfig,
+                                value={indexDraft.semantic_params?.buffer_size ?? 1}
+                                onChange={(e) => setIndexDraft({
+                                  ...indexDraft,
                                   semantic_params: {
-                                    ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                    ...(indexDraft.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
                                     buffer_size: parseInt(e.target.value) || 1
                                   }
                                 })}
@@ -3307,11 +3333,11 @@ export default function Home() {
                               type="number"
                               min="500"
                               max="10000"
-                              value={editingSearchConfig.semantic_params?.max_size ?? 3000}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.semantic_params?.max_size ?? 3000}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 semantic_params: {
-                                  ...(editingSearchConfig.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
+                                  ...(indexDraft.semantic_params || { threshold_type: "percentile", threshold_value: 95.0, sentence_splitter: "nltk", buffer_size: 1, max_size: 3000 }),
                                   max_size: parseInt(e.target.value) || 3000
                                 }
                               })}
@@ -3322,7 +3348,7 @@ export default function Home() {
                       )}
 
                       {/* --- STRUCTURE STRATEGY FIELDS --- */}
-                      {editingSearchConfig.chunking_strategy === "structure" && (
+                      {indexDraft.chunking_strategy === "structure" && (
                         <>
                           {/* Parser Type */}
                           <div className="space-y-1.5">
@@ -3331,11 +3357,11 @@ export default function Home() {
                               <Tooltip text={TRANSLATIONS[appLanguage].tooltips.structure_parser_type} />
                             </label>
                             <select
-                              value={editingSearchConfig.structure_params?.parser_type || "markdown"}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.structure_params?.parser_type || "markdown"}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 structure_params: {
-                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  ...(indexDraft.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
                                   parser_type: e.target.value as any
                                 }
                               })}
@@ -3357,11 +3383,11 @@ export default function Home() {
                             </div>
                             <input
                               type="checkbox"
-                              checked={editingSearchConfig.structure_params?.preserve_tables ?? true}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              checked={indexDraft.structure_params?.preserve_tables ?? true}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 structure_params: {
-                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  ...(indexDraft.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
                                   preserve_tables: e.target.checked
                                 }
                               })}
@@ -3379,11 +3405,11 @@ export default function Home() {
                             </div>
                             <input
                               type="checkbox"
-                              checked={editingSearchConfig.structure_params?.preserve_lists ?? true}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              checked={indexDraft.structure_params?.preserve_lists ?? true}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 structure_params: {
-                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  ...(indexDraft.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
                                   preserve_lists: e.target.checked
                                 }
                               })}
@@ -3400,11 +3426,11 @@ export default function Home() {
                               type="number"
                               min="500"
                               max="10000"
-                              value={editingSearchConfig.structure_params?.max_size ?? 4000}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.structure_params?.max_size ?? 4000}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 structure_params: {
-                                  ...(editingSearchConfig.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
+                                  ...(indexDraft.structure_params || { parser_type: "markdown", preserve_tables: true, preserve_lists: true, heading_levels: ["h1", "h2", "h3"], max_size: 4000 }),
                                   max_size: parseInt(e.target.value) || 4000
                                 }
                               })}
@@ -3415,7 +3441,7 @@ export default function Home() {
                       )}
 
                       {/* --- TOKEN STRATEGY FIELDS --- */}
-                      {editingSearchConfig.chunking_strategy === "token" && (
+                      {indexDraft.chunking_strategy === "token" && (
                         <>
                           {/* Tokenizer Type */}
                           <div className="space-y-1.5">
@@ -3424,11 +3450,11 @@ export default function Home() {
                               <Tooltip text={TRANSLATIONS[appLanguage].tooltips.token_tokenizer_type} />
                             </label>
                             <select
-                              value={editingSearchConfig.token_params?.tokenizer_type || "cl100k_base"}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.token_params?.tokenizer_type || "cl100k_base"}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 token_params: {
-                                  ...(editingSearchConfig.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
+                                  ...(indexDraft.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
                                   tokenizer_type: e.target.value as any
                                 }
                               })}
@@ -3449,11 +3475,11 @@ export default function Home() {
                               min="64"
                               max="4096"
                               step="32"
-                              value={editingSearchConfig.token_params?.size_tokens ?? 512}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.token_params?.size_tokens ?? 512}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 token_params: {
-                                  ...(editingSearchConfig.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
+                                  ...(indexDraft.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
                                   size_tokens: parseInt(e.target.value) || 512
                                 }
                               })}
@@ -3471,11 +3497,11 @@ export default function Home() {
                               min="0"
                               max="1024"
                               step="8"
-                              value={editingSearchConfig.token_params?.overlap_tokens ?? 64}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.token_params?.overlap_tokens ?? 64}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 token_params: {
-                                  ...(editingSearchConfig.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
+                                  ...(indexDraft.token_params || { tokenizer_type: "cl100k_base", size_tokens: 512, overlap_tokens: 64 }),
                                   overlap_tokens: parseInt(e.target.value) || 0
                                 }
                               })}
@@ -3499,9 +3525,9 @@ export default function Home() {
                           </div>
                           <input
                             type="checkbox"
-                            checked={editingSearchConfig.enrich_with_summary ?? false}
-                            onChange={(e) => setEditingSearchConfig({
-                              ...editingSearchConfig,
+                            checked={indexDraft.enrich_with_summary ?? false}
+                            onChange={(e) => setIndexDraft({
+                              ...indexDraft,
                               enrich_with_summary: e.target.checked
                             })}
                             className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
@@ -3512,7 +3538,7 @@ export default function Home() {
                       </div>
 
                       {/* --- AGENTIC STRATEGY FIELDS --- */}
-                      {editingSearchConfig.chunking_strategy === "agentic" && (
+                      {indexDraft.chunking_strategy === "agentic" && (
                         <>
                           {/* Model Name */}
                           <div className="space-y-1.5">
@@ -3522,11 +3548,11 @@ export default function Home() {
                             </label>
                             <input
                               type="text"
-                              value={editingSearchConfig.agentic_params?.model_name || "gpt-4o-mini"}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.agentic_params?.model_name || "gpt-4o-mini"}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 agentic_params: {
-                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
+                                  ...(indexDraft.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
                                   model_name: e.target.value
                                 }
                               })}
@@ -3542,7 +3568,7 @@ export default function Home() {
                                 <Tooltip text={TRANSLATIONS[appLanguage].tooltips.agentic_max_context_chars} />
                               </span>
                               <span className="text-indigo-400 font-semibold text-xs">
-                                {editingSearchConfig.agentic_params?.max_context_chars || 4000} znaků
+                                {indexDraft.agentic_params?.max_context_chars || 4000} znaků
                               </span>
                             </div>
                             <input
@@ -3550,11 +3576,11 @@ export default function Home() {
                               min={1000}
                               max={16000}
                               step={500}
-                              value={editingSearchConfig.agentic_params?.max_context_chars || 4000}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.agentic_params?.max_context_chars || 4000}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 agentic_params: {
-                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
+                                  ...(indexDraft.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
                                   max_context_chars: parseInt(e.target.value) || 4000
                                 }
                               })}
@@ -3571,11 +3597,11 @@ export default function Home() {
                             <textarea
                               rows={3}
                               placeholder={appLanguage === "cs" ? "např. Rozděl text pouze tam, kde začíná nový právní článek nebo odsek..." : "e.g. Split only when a new legal paragraph or section begins..."}
-                              value={editingSearchConfig.agentic_params?.custom_prompt || ""}
-                              onChange={(e) => setEditingSearchConfig({
-                                ...editingSearchConfig,
+                              value={indexDraft.agentic_params?.custom_prompt || ""}
+                              onChange={(e) => setIndexDraft({
+                                ...indexDraft,
                                 agentic_params: {
-                                  ...(editingSearchConfig.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
+                                  ...(indexDraft.agentic_params || { model_name: "gpt-4o-mini", custom_prompt: "", max_context_chars: 4000 }),
                                   custom_prompt: e.target.value
                                 }
                               })}
@@ -3600,8 +3626,8 @@ export default function Home() {
                         </div>
                         <input
                           type="checkbox"
-                          checked={editingSearchConfig.chunk_cross_page || false}
-                          onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, chunk_cross_page: e.target.checked })}
+                          checked={indexDraft.chunk_cross_page || false}
+                          onChange={(e) => setIndexDraft({ ...indexDraft, chunk_cross_page: e.target.checked })}
                           className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
                         />
                       </div>
@@ -3621,58 +3647,27 @@ export default function Home() {
                         </div>
                         <input
                           type="checkbox"
-                          checked={editingSearchConfig.overlap_cross_page || false}
-                          onChange={(e) => setEditingSearchConfig({ ...editingSearchConfig, overlap_cross_page: e.target.checked })}
+                          checked={indexDraft.overlap_cross_page || false}
+                          onChange={(e) => setIndexDraft({ ...indexDraft, overlap_cross_page: e.target.checked })}
                           className="w-4 h-4 bg-zinc-800 accent-indigo-500 rounded border-zinc-700 cursor-pointer"
                         />
                       </div>
 
                       <p className="text-[10px] text-zinc-500 leading-normal italic mt-1 bg-white/[0.01] p-3 rounded-xl border border-white/[0.03]">
                         {appLanguage === "cs"
-                          ? "💡 Poznámka: Změna se projeví na reálném vyhledávání až po spuštění reindexace."
-                          : "💡 Note: Changing settings will only apply to active search index after running re-indexing."}
+                          ? "💡 Úpravy náhledu se uloží až tlačítkem pro vytvoření nebo úpravu indexu."
+                          : "💡 Preview changes are saved only by creating or updating the index."}
                       </p>
                     </div>
 
-                    <button
-                      onClick={() => saveSearchConfigToServer(editingSearchConfig)}
-                      disabled={savingSearchConfig}
-                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-lg shadow-indigo-600/10 disabled:opacity-50 cursor-pointer"
-                    >
-                      {savingSearchConfig ? TRANSLATIONS[appLanguage].savingConfigText : TRANSLATIONS[appLanguage].saveConfigBtn}
+                    <button type="button" onClick={()=>void saveEditorIndex()}
+                      disabled={embeddingIndexes.loading || embeddingIndexes.preparing || !embeddingIndexes.catalog?.can_prepare || !embeddingIndexes.catalog?.can_manage_settings || !creationSnapshot || (indexMode==="existing"?!editorIndex:!embeddingIndexes.creationProfile)}
+                      className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all disabled:opacity-50">
+                      {embeddingIndexes.preparing ? (appLanguage==="cs"?"Zpracovávám…":"Processing…") : indexMode==="existing" ? (appLanguage==="cs"?"Upravit index":"Update index") : (appLanguage==="cs"?"Vytvořit index":"Create index")}
                     </button>
+                    <p className="text-xs text-zinc-400">{appLanguage==="cs"?"Tlačítko uloží parametry tohoto indexu a spustí přípravu chunků i embeddingů. Průběh uvidíte v samostatném okně.":"Saves this index’s parameters and prepares both chunks and embeddings. Progress opens in a separate window."}</p>
 
-                    <div className="border-t border-white/5 pt-6 space-y-4">
-                      <div>
-                        <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wide">
-                          {TRANSLATIONS[appLanguage].reindexBtn}
-                        </h3>
-                        <p className="text-[11px] text-zinc-500 mt-1 leading-normal">
-                          {appLanguage === "cs"
-                            ? "Spustí proces na pozadí, který přegeneruje chunky pro všechny nahrané dokumenty podle aktuálních parametrů."
-                            : "Triggers a background process that re-splits and re-embeds all uploaded documents based on active settings."}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={async () => {
-                          const conf = confirm(
-                            appLanguage === "cs"
-                              ? "Opravdu chcete spustit celkovou reindexaci (přerozdělení chunků) všech dokumentů na pozadí?\n\nTato operace může trvat několik minut."
-                              : "Do you really want to trigger a background re-indexing of all documents?\n\nThis operation may take several minutes."
-                          );
-                          if (conf) {
-                            await saveSearchConfigToServer(editingSearchConfig);
-                            startReindexing("reindex-all", "scanning");
-                          }
-                        }}
-                        className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-all shadow-lg shadow-amber-600/10 cursor-pointer"
-                      >
-                        {TRANSLATIONS[appLanguage].reindexBtn}
-                      </button>
-                    </div>
-
-                  </div>
+                  </fieldset>
                 ) : (
                   <div className="text-xs text-zinc-500 text-center py-6">
                     {TRANSLATIONS[appLanguage].loadingConfigText}
@@ -3712,7 +3707,9 @@ export default function Home() {
                       </select>
                     </div>
 
-                    {(editingSearchConfig?.chunking_strategy === "agentic" || editingSearchConfig?.chunking_strategy === "semantic" || editingSearchConfig?.enrich_with_summary) && (
+
+
+                    {(indexDraft?.chunking_strategy === "agentic" || indexDraft?.chunking_strategy === "semantic" || indexDraft?.enrich_with_summary) && (
                       <button
                         onClick={() => triggerManualPreviewFetch()}
                         className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md active:scale-95 whitespace-nowrap cursor-pointer flex items-center gap-1.5"
@@ -3724,13 +3721,13 @@ export default function Home() {
                   </div>
                 </div>
 
-                {(editingSearchConfig?.chunking_strategy === "agentic" || editingSearchConfig?.chunking_strategy === "semantic" || editingSearchConfig?.enrich_with_summary) && (
+                {(indexDraft?.chunking_strategy === "agentic" || indexDraft?.chunking_strategy === "semantic" || indexDraft?.enrich_with_summary) && (
                   <div className="text-[11px] text-amber-300 bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 flex items-center gap-2">
                     <span className="text-base">⚠️</span>
                     <span>
                       {appLanguage === "cs"
-                        ? "Rychlý náhled (AI dělení / Sémantika / AI Shrnutí) je v reálném čase pouze orientační. Pro kompletní spuštění AI modelů přes OpenAI klikněte na tlačítko '🔄 Znovu vygenerovat'."
-                        : "Real-time preview (AI splitting / Semantic / AI Summaries) is approximate. Click '🔄 Regenerate' to execute full AI processing via OpenAI."}
+                        ? "Rychlý náhled (AI dělení / Sémantika / AI Shrnutí) je v reálném čase pouze orientační. Pro kompletní spuštění AI modelů přes zvolené modely klikněte na tlačítko '🔄 Znovu vygenerovat'."
+                        : "Real-time preview (AI splitting / Semantic / AI Summaries) is approximate. Click '🔄 Regenerate' to execute full AI processing with the selected models."}
                     </span>
                   </div>
                 )}
@@ -3780,7 +3777,7 @@ export default function Home() {
 
                         // Compute overlap highlight with the previous chunk
                         const prevChunk = i > 0 ? previewChunks[i - 1] : null;
-                        const overlapText = prevChunk ? findOverlapText(prevChunk.content, chunk.content, editingSearchConfig?.chunk_overlap || 1000) : "";
+                        const overlapText = prevChunk ? findOverlapText(prevChunk.content, chunk.content, indexDraft?.chunk_overlap || 1000) : "";
                         const remainingText = overlapText ? chunk.content.slice(overlapText.length) : chunk.content;
 
                         return (
@@ -3876,11 +3873,11 @@ export default function Home() {
                   <h3 className="font-bold text-white">{appLanguage === "cs" ? "Embeddingové modely a indexy" : "Embedding models and indexes"}</h3>
                   <EmbeddingIndexPicker controller={embeddingIndexes} locale={appLanguage} disabled={loading || searchStrategy === "keyword"} />
                   {searchStrategy === "keyword" && <p className="text-xs text-zinc-400">{appLanguage === "cs" ? "Lexikální hledání embeddingy nepoužívá. Pro porovnání indexů zvolte v Konfiguraci vyhledávání sémantickou nebo hybridní strategii." : "Keyword search does not use embeddings. Choose vector or hybrid in Search configuration to compare indexes."}</p>}
-                  <EmbeddingIndexPanel controller={embeddingIndexes} locale={appLanguage} />
+                  <EmbeddingIndexPanel controller={embeddingIndexes} locale={appLanguage} onEdit={id=>openIndexEditor(id)} onNew={()=>openIndexEditor()} />
                 </section>
                 <section className="glass-panel p-6 rounded-2xl bg-[#0c1222] border border-white/10 space-y-4">
                   <h3 className="font-bold text-white">{appLanguage === "cs" ? "Dostupné modely a oprávnění" : "Available models and access"}</h3>
-                  <ModelManagementPanel key={`management:${BACKEND_URL}:${authToken}`} url={BACKEND_URL} token={authToken} locale={appLanguage} onCreateIndex={embeddingIndexes.catalog?.can_prepare ? embeddingIndexes.create : undefined} />
+                  <ModelManagementPanel key={`management:${BACKEND_URL}:${authToken}`} url={BACKEND_URL} token={authToken} locale={appLanguage} onCreateIndex={embeddingIndexes.catalog?.can_prepare ? async profile=>{openIndexEditor(undefined,profile);return true;} : undefined} />
                 </section>
               </>}
 

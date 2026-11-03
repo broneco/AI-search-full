@@ -2,7 +2,7 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import {requestJson, chooseIndexSelection} from "../lib/apiRequest";
 
-type IndexOption = {index_id: string; model: string; dimensions: number; ingestion_default: boolean};
+type IndexOption = {index_id: string; name?: string; model: string; dimensions: number; ingestion_default: boolean};
 
 export function useQueryIndexes(url: string, token: string | null, scope: string) {
   const [indexes, setIndexes] = useState<IndexOption[]>([]);
@@ -39,7 +39,7 @@ export function EmbeddingIndexPicker({catalog:c, locale, disabled}: {
         className="bg-slate-900 text-white border border-white/20 rounded-lg px-2 py-2 max-w-full">
         <option value="" disabled>{cs ? "Vyberte připravený index" : "Select a prepared index"}</option>
         {c.selectedId && !c.selected && <option value={c.selectedId} disabled>{cs ? "Vybraný index již není dostupný" : "Selected index is unavailable"}</option>}
-        {c.indexes.map(index => <option key={index.index_id} value={index.index_id}>{index.model} · {index.dimensions} dim · {index.index_id.slice(0,8)}</option>)}
+        {c.indexes.map(index => <option key={index.index_id} value={index.index_id}>{index.name || index.model} · {index.dimensions} dim · {index.index_id.slice(0,8)}</option>)}
       </select>
     </label>
     {c.error && <p role="alert" className="text-amber-300">{c.error}</p>}

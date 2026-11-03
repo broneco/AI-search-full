@@ -21,6 +21,7 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
     Run with ingestion stopped for a deterministic activation snapshot.
     """
     profile = index_profile(session, index)
+    from app.storage.index_settings import corpus_filter
     if not 1 <= batch_size <= 200:
         raise ValueError("Backfill batch size must be 1..200.")
     if provider is not None and provider.profile != profile:
@@ -35,6 +36,7 @@ async def backfill_index(session: Session, index: DBSearchIndex, *, provider: Em
             authorize()
         stmt = (select(DBChunk).join(DBDocument).where(
             exact_value(DBChunk.tenant_id, index.tenant_id, session.bind.dialect.name),
+            corpus_filter(index.corpus_id),
             exact_value(DBDocument.tenant_id, index.tenant_id, session.bind.dialect.name))
             .order_by(DBChunk.chunk_id).limit(batch_size))
         if provider is not None:

@@ -15,6 +15,7 @@ CONTROL_KEYS = {
     "rrf_k", "vector_limit", "keyword_limit", "final_limit", "vector_final_limit",
     "keyword_final_limit", "score_threshold", "freshness_boost", "context_expansion",
     "context_expansion_size", "chunk_size", "chunk_overlap", "context_max_tokens",
+    "summaries_only_for_matched_chunk",
 }
 FILTER_COLUMNS = {
     "title": [DBDocument.title], "document_type": [DBDocument.document_type],
@@ -116,9 +117,12 @@ def document_filters(context: QueryContext, dialect: str) -> list:
     return filters
 
 
-def eligibility_filters(context: QueryContext, dialect: str, *, metadata=True) -> list:
+def eligibility_filters(context: QueryContext, dialect: str, *, metadata=True, corpus=True) -> list:
     filters = document_filters(context, dialect)
     filters.append(exact_value(DBChunk.tenant_id, context.tenant_id, dialect))
+    if corpus:
+        from app.storage.index_settings import corpus_filter
+        filters.append(corpus_filter(context.corpus_id))
     if "Management" not in context.acl_groups:
         groups = sorted(set(context.acl_groups) | {"User"})
         filters.append(exists(select(1).where(

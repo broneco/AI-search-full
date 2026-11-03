@@ -34,6 +34,7 @@ def test_wheel_contains_runtime_and_public_resources(tmp_path):
                          "app/providers/jhu_managed.py", "app/providers/jhu_secrets.py", "app/providers/jhu_sidecar.py",
                          "app/api/routes/jhu_connection.py", "app/storage/tenant_settings.py",
                          "app/storage/index_jobs.py", "app/ingestion/index_jobs.py",
+                         "app/retrieval/context_capacity.py", "app/retrieval/summary_context.py",
                          "tenants/jhu/prompts.json", "fixtures/local-university/studijni-rad.pdf"):
             assert required in names
         for resource in (stage/"tenants").rglob("*.json"):
@@ -48,6 +49,9 @@ def test_wheel_contains_runtime_and_public_resources(tmp_path):
 sys.path.insert(0,sys.argv[1])
 import app.main
 import app.providers.jhu_managed
+from app.storage.index_corpus_schema import migrate
+from app.ingestion.chunk_settings import ChunkingSettings
+from app.retrieval.context_capacity import reference_encoding
 from app.core.prompts import get_tenant_prompts_map
 from app.ingestion.local_demo import FIXTURE_ROOT
 from app.core.embedding_config import embedding_entry
@@ -55,6 +59,7 @@ assert get_tenant_prompts_map('ju-prod') == get_tenant_prompts_map('jhu')
 assert 'univerzity' in get_tenant_prompts_map('ju-prod')['cs']
 assert FIXTURE_ROOT.is_dir()
 assert embedding_entry('ju-prod', 'jhu-nomic').space().dimensions == 768
+assert reference_encoding().encode('Synthetic packaging sample.')
 print('wheel-import-ok')
 """
     result = subprocess.run([sys.executable, "-I", "-c", code, str(installed)], cwd=tmp_path,

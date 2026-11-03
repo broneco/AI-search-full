@@ -42,7 +42,7 @@ def visible_document(db, document_id, principal, *, full_document=False):
         # is insufficient. Do not hand hidden chunks to extraction or an LLM.
         forbidden = db.scalar(select(DBChunk.chunk_id).join(DBDocument).where(
             DBChunk.document_id == document_id,
-            ~and_(*eligibility_filters(context, db.bind.dialect.name, metadata=False)),
+            ~and_(*eligibility_filters(context, db.bind.dialect.name, metadata=False, corpus=False)),
         ).limit(1))
         if forbidden is not None:
             return None
@@ -72,7 +72,7 @@ def authorized_history(db, messages, principal):
     for start in range(0, len(ids), 500):
         visible.update(db.execute(select(DBChunk.chunk_id, DBChunk.document_id).join(DBDocument).where(
             DBChunk.chunk_id.in_(ids[start:start + 500]),
-            *eligibility_filters(context, db.bind.dialect.name, metadata=False),
+            *eligibility_filters(context, db.bind.dialect.name, metadata=False, corpus=False),
         )).all())
     return [message for message, refs in references if refs is not None and refs <= visible]
 

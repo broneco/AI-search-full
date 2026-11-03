@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     APP_ENV: str = _APP_ENV
     DATABASE_BACKEND: Literal["auto", "azure_sql", "sqlserver", "postgresql"] = "auto"
     APP_NAME: str = "ai-search-app"
-    APP_VERSION: str = "v0.1.10"
+    APP_VERSION: str = "v0.1.11"
     LOG_LEVEL: str = "INFO"
     TENANT_ID: str = "dolphin"
     JWT_SECRET: str = Field(default="dolphin-ai-search-secret-key-2026", repr=False, exclude=True)

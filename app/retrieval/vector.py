@@ -47,6 +47,9 @@ class VectorRetriever(BaseRetriever):
     ) -> List[RetrievalResult]:
         """Perform document chunk retrieval based on the chosen strategy and dynamic search config."""
         retrieval_started = time.perf_counter()
+        plan = kwargs.get("vector_plan")
+        if plan is not None:
+            context = context.model_copy(update={"corpus_id": plan.index.corpus_id})
         # Load dynamic search settings
         search_config = kwargs.get("search_config")
         if not search_config:
@@ -138,6 +141,7 @@ class VectorRetriever(BaseRetriever):
                 context_expansion_size,
                 max_tokens=context_max_tokens,
                 context=context,
+                summaries_only_for_matched_chunk=search_config.get("summaries_only_for_matched_chunk", True),
             )
 
         self.diagnostics["expansion_latency_ms"] = round((time.perf_counter() - expansion_started) * 1000)
@@ -330,6 +334,8 @@ class VectorRetriever(BaseRetriever):
             fts_rank = float(row[2]) if len(row) > 2 and row[2] is not None else 0.0
 
             if doc.tenant_id != context.tenant_id or chunk.tenant_id != context.tenant_id:
+                continue
+            if (chunk.corpus_id or "tenant-chunks-v1") != context.corpus_id:
                 continue
             if "Management" not in context.acl_groups:
                 groups = set(context.acl_groups) | {"User"}
@@ -561,6 +567,7 @@ class VectorRetriever(BaseRetriever):
         max_tokens: int = 4000,
         *,
         context: QueryContext,
+        summaries_only_for_matched_chunk: bool = True,
     ) -> List[RetrievalResult]:
         """Load surrounding sibling, page or section chunks to expand context passed to the LLM."""
         if not results or expansion_type == "none":
@@ -625,6 +632,11 @@ class VectorRetriever(BaseRetriever):
             if stmt is not None:
                 try:
                     rows = self.db.execute(stmt).all()
+                    if summaries_only_for_matched_chunk:
+                        # Remove enrichment only from authorized neighbors, before budgeting/merging.
+                        from app.retrieval.summary_context import without_ai_summary
+                        rows = [(text if idx == chunk_idx else without_ai_summary(text), idx, cid)
+                                for text, idx, cid in rows]
                     if rows:
                         # 1. Find the index of the matched chunk in the retrieved rows
                         matched_row_idx = -1
@@ -706,7 +718,8 @@ class VectorRetriever(BaseRetriever):
                 max_overlap = min(len(s1_clean), len(s2_clean), 300)
                 
                 overlap_len = 0
-                for i in range(max_overlap, 0, -1):
+                # Incidental letters/short words at boundaries are not evidence of stored overlap.
+                for i in range(max_overlap, 19, -1):
                     if s1_clean.endswith(s2_clean[:i]):
                         overlap_len = i
                         break

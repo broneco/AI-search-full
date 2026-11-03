@@ -10,11 +10,12 @@ from app.storage.models import DBSearchIndex
 from app.storage.vector_store import coverage, index_profile
 
 
-def selected_index(session: Session, tenant: str, ident: uuid.UUID) -> DBSearchIndex:
+def selected_index(session: Session, tenant: str, ident: uuid.UUID, *, resolve: bool = True) -> DBSearchIndex:
     index = session.get(DBSearchIndex, ident)
-    if index is None or index.tenant_id != tenant or index.corpus_id != "tenant-chunks-v1":
+    if index is None or index.tenant_id != tenant or index.corpus_id not in {"tenant-chunks-v1", "index-" + index.index_id.hex}:
         raise ModelError("search_index_unavailable", "Vybraný index není dostupný pro tento tenant.", 404)
-    return index
+    from app.storage.index_settings import current_index
+    return current_index(session, index) if resolve else index
 
 
 def selected_embedding_provider(session: Session, tenant: str, ident: uuid.UUID, *, fallback=None):
@@ -22,7 +23,8 @@ def selected_embedding_provider(session: Session, tenant: str, ident: uuid.UUID,
     space = index_profile(session, index)
     embedding_entry(tenant, space=space, session=session)  # no same-dimension substitution or unknown profile
     valid, total = coverage(session, index)
-    if valid != total or total == 0:
+    from app.storage.index_settings import corpus_ready
+    if valid != total or total == 0 or not corpus_ready(session, index):
         raise ModelError("search_index_incomplete", "Vybraný index není naplněný pro aktuální dokumenty. Doplňte embeddingy.", 409)
     provider = fallback if fallback is not None and fallback.profile == space else catalog_embedding_provider(tenant, space=space, session=session)
     return index, provider

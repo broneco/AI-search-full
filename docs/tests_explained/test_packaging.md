@@ -1,5 +1,7 @@
 # Skutečný test Python balíčku
 
+Import mimo checkout ověřuje také `app.storage.index_corpus_schema` a `app.ingestion.chunk_settings`: lokální inicializace nového sloupce nesmí záviset na root migračním CLI, které se do wheelu nepřibaluje.
+
 `tests/test_packaging.py` se zapíná `RUN_PACKAGE_TESTS=1` a potřebuje setuptools/wheel. Vytvoří čistý zdrojový staging, vloží syntetický zakázaný env soubor a sestaví skutečný wheel bez sítě/build isolation. Ověří přítomnost backendových modulů, JSON/PDF resources a nepřítomnost env/bytecode.
 
 Syntetický secret leží pod JHU. Test kontroluje všechny skutečně přibalené JSON soubory a nevyžaduje `tenants/default` ani jiné klienty; podporuje tak i samostatný JHU export.
@@ -17,3 +19,5 @@ Cloudový runtime musí být také v instalovaném wheelu: kontrola vyžaduje ap
 Trvalá nastavení přidávají povinný modul `app/storage/tenant_settings.py`; izolovaný import aplikace musí fungovat i s jeho lazy vazbou na resolver, bez připojení k produkční databázi.
 
 Wheel musí obsahovat také storage/ingestion index_jobs moduly. Backend Docker kontext obsahuje migrate_index_jobs.py, aby nová funkce nezávisela na soukromém lokálním skriptu.
+
+Odhad kontextu vyžaduje oba nové retrieval moduly a závislost tiktoken. Izolovaný import skutečně tokenizuje syntetický text mimo checkout; pro offline běh je potřeba připravená veřejná cache (Docker ji vytváří při buildu).

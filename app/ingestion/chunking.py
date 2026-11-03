@@ -36,6 +36,7 @@ class RecursiveCharacterTextSplitter:
         llm_provider: Optional[Any] = None,
         summary_provider: Optional[Any] = None,
         strict_summary: bool = False,
+        strict_processing: bool = False,
     ) -> None:
         from typing import Any
         self.chunk_size = chunk_size
@@ -54,6 +55,7 @@ class RecursiveCharacterTextSplitter:
         self.llm_provider = llm_provider
         self.summary_provider = summary_provider or llm_provider
         self.strict_summary = strict_summary
+        self.strict_processing = strict_processing
         self.separators = ["\n\n", "\n", " ", ""]
 
     def _split_character_only_with_params(self, text: str, size: int, overlap: int) -> List[str]:
@@ -95,6 +97,8 @@ class RecursiveCharacterTextSplitter:
                 start += step
             return chunks
         except Exception as e:
+            if self.strict_processing:
+                raise ModelError("chunk_tokenizer_unavailable", "Zvolený tokenizer není dostupný.", 503) from None
             logger.warning(f"Failed to use tiktoken for token splitting: {e}. Falling back to character estimation.")
             return self._split_character_only_with_params(text, size * 4, overlap * 4)
 
@@ -104,6 +108,8 @@ class RecursiveCharacterTextSplitter:
                 import nltk
                 return nltk.sent_tokenize(text)
             except Exception:
+                if self.strict_processing:
+                    raise ModelError("chunk_sentence_splitter_unavailable", "Zvolený dělič vět není dostupný.", 503) from None
                 pass
         elif method == "spacy":
             try:
@@ -113,6 +119,8 @@ class RecursiveCharacterTextSplitter:
                 doc = nlp(text)
                 return [sent.text for sent in doc.sents]
             except Exception:
+                if self.strict_processing:
+                    raise ModelError("chunk_sentence_splitter_unavailable", "Zvolený dělič vět není dostupný.", 503) from None
                 pass
                 
         import re
@@ -157,9 +165,13 @@ class RecursiveCharacterTextSplitter:
                 else:
                     embeddings = asyncio.run(self.embedding_provider.embed_documents(combined_sentences))
             except Exception as e:
+                if self.strict_processing:
+                    raise ModelError("chunk_semantic_failed", "Sémantické chunkování selhalo; hotové dokumenty jsou zachované.", 503) from None
                 logger.error(f"Semantic splitter failed to compute embeddings: {e}")
 
         if not embeddings or len(embeddings) != len(combined_sentences):
+            if self.strict_processing:
+                raise ModelError("chunk_semantic_failed", "Sémantické chunkování nevrátilo očekávané embeddingy.", 503)
             chunks = []
             curr = []
             curr_len = 0
@@ -261,6 +273,8 @@ class RecursiveCharacterTextSplitter:
 
         # If force_ai is False (fast live preview drag simulation) or no LLM provider, fallback to fast recursive split
         if not force_ai or not self.llm_provider or not hasattr(self.llm_provider, "generate"):
+            if force_ai and self.strict_processing:
+                raise ModelError("chunk_agentic_unavailable", "Model pro AI chunkování není dostupný.", 503)
             fallback_splits = self._split_text(text, self.separators)
             return fallback_splits
 
@@ -314,10 +328,14 @@ class RecursiveCharacterTextSplitter:
                 elif llm_out and llm_out.strip():
                     final_splits.append(llm_out.strip())
                 else:
+                    if self.strict_processing:
+                        raise ModelError("chunk_agentic_failed", "Model nevrátil chunky.", 503)
                     final_splits.extend(self._split_text(batch, self.separators))
             except ModelError:
                 raise
             except Exception:
+                if self.strict_processing:
+                    raise ModelError("chunk_agentic_failed", "AI chunkování selhalo.", 503) from None
                 logger.error("Agentic LLM boundary splitting failed")
                 final_splits.extend(self._split_text(batch, self.separators))
 

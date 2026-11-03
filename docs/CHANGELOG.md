@@ -6,9 +6,24 @@ Format follows the spirit of Keep a Changelog: human-readable, chronological, wi
 
 ## [Unreleased]
 
+## [v0.1.11] - 2026-11-03
+
+[Souhrn vydání](releases/v0.1.11.md). Zdrojové vydání a skutečné nasazení mají samostatné ověření.
+
 ### Added
 
+- Volba ponechat AI shrnutí jen u nalezeného chunku při rozšíření kontextu a lokální odhad tokenové kapacity z jednoho platného chunku vybraného indexu × finálního počtu výsledků. Efektivní metadata modelu, rozlišení tokenové kapacity/znakového limitu aplikace, ochrana tenant/ACL a tokenizer připravený v image bez runtime modelových volání. [Použití a meze odhadu](development/context-capacity.md). Zatím zdrojová implementace bez nasazení.
+- Propojený editor Chunkování: **Upravuji existující / Tvořím nové**, pracovní parametry a náhled vybraného indexu, pevný model existujícího indexu, volba modelu u nového a jediné spodní **Upravit/Vytvořit index** spouštějící celý výpočet. Původní globální ukládání/přestavba DB z tohoto formuláře odstraněny.
+- Stabilní logický index s dokončenými fyzickými verzemi: změna se zveřejní až po dokončení, chyby zachovají původní funkční verzi i historické citace; změna defaultu zachová ingestovaný korpus. Historické indexy jednorázově dostanou současné parametry podle výslovného zadání uživatele s označením `assumed`. Viz [rozhodnutí](adr/ADR-0045-logical-index-editor.md).
+- Indexy s vlastní sadou chunků a neměnným snapshotem chunkování + embeddingového profilu; vlastní názvy, přehled nastavení, chráněné mazání a pokračování přípravy po dokumentech. [Použití, migrace a omezení rollbacku](development/index-chunking-pairs.md). Zdrojová implementace; zatím bez cloudového nasazení.
+- Explicitní aditivní `migrate_index_corpora.py`: nullable korpus chunků a dvě tabulky provenience, přesné cílové guards a generovaný payload pro starší image. Po vzniku vlastních chunků je nutný rollback na kompatibilní image se zachovanými korpusovými filtry.
+
 - [Dokončený provozní protokol v0.1.10](deployments/2026-11-02-v010-rollout.md): skutečná GUI/API/native akceptace, shodné původní SQL/vector/Blob otisky a nezměněné kapacity. Protokol vznikl až po neměnných zdrojových tagách.
+
+### Fixed
+
+- Slučování sousedních chunků už nepovažuje náhodnou shodu kratší než 20 znaků na hranici za skutečný překryv; po odstranění shrnutí nemizí počáteční písmeno souseda.
+- Interaktivní náhled čte přesný oprávněný originál z Blob Storage nebo `data/`, ověřuje checksum a odstraňuje dočasný soubor. Debounce/abort a identita požadavku chrání před přepsáním nového výsledku starým. Plný sémantický náhled používá vybraný embeddingový profil; slider náhled nevolá vzdálené modely.
 
 ## [v0.1.10] - 2026-11-02
 

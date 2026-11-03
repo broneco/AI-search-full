@@ -1,5 +1,9 @@
 # Obnova frontendů po výpadku
 
+Snapshot nového indexu navíc přenáší jen parametry chunkování a skutečně zvolené pomocné modely. Regrese vylučuje rankingové hodnoty, ověřuje chybějící konfiguraci a nepřidává neaktivní modely shrnutí/AI dělení.
+
+Odhad kontextu testuje násobek počtu výsledků a tokenové délky vzorku, změnu počtu bez dalšího načtení, tokenová metadata modelu, přepočet ze znaků při neznámém kontextu a přísnější aplikační pojistku. Chybějící vzorek a nulový rozpočet nesmějí vrátit zavádějící procento. Soubor nyní obsahuje 11 scénářů.
+
 [frontend_resilience.cjs](../../tests/frontend_resilience.cjs) spouští Node test runner proti skutečným TypeScript utilitám obou konzolí. Potřebuje Node a nainstalované vývojové závislosti `frontend-admin`; nevyžaduje běžící backend ani přístup k Azure.
 
 ```powershell

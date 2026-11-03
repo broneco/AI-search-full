@@ -113,7 +113,7 @@ class VectorSearchPlan:
         if mode not in {"exact", "ann"}:
             raise SearchIndexError("vector_search_mode must be exact or ann.")
         if (self.index.tenant_id != tenant or self.index.profile_id != profile.profile_id or
-                self.index.corpus_id != "tenant-chunks-v1" or self.mode != mode):
+                self.index.corpus_id not in {"tenant-chunks-v1", "index-" + self.index.index_id.hex} or self.mode != mode):
             raise SearchIndexError("Prepared vector search tenant/profile/mode mismatch.")
         if mode == "ann":
             if self.ann_index is None or self.index.storage_kind != "native":
@@ -256,6 +256,7 @@ def _scoped_batch(statement):
 
 
 def ann_statement(index: DBSearchIndex, profile: EmbeddingProfile, context, query: list[float], limit: int):
+    context = context.model_copy(update={"corpus_id": index.corpus_id})
     return _scoped_batch(_ann_batch(index, profile, context, query, limit)).columns(
         chunk_id=DBChunk.chunk_id.type, distance=Float(), input_revision=String(64))
 
@@ -282,6 +283,7 @@ def _vector_candidates(session: Session, context, query: list[float], profile: E
         plan = plan or prepare_vector_search(session, context.tenant_id, profile, mode)
         plan.validate(context.tenant_id, profile, mode)
         index, status = plan.index, plan.ann_index
+        context = context.model_copy(update={"corpus_id": index.corpus_id})
         if mode == "exact":
             rows = exact_candidates(session, context, query, profile, limit, index=index)
         else:

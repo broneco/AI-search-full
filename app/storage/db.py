@@ -207,10 +207,12 @@ def init_db() -> None:
                     if settings.DATABASE_BACKEND == "azure_sql":
                         tables = [table for table in Base.metadata.sorted_tables
                                   if table.name not in {"document_acl_grants", "chunk_acl_grants",
-                                      "embedding_profiles", "search_indexes", "active_search_indexes", "model_access_policies", "tenant_model_registry", "model_descriptions", "model_runtime_settings", "tenant_settings", "index_preparation_jobs"}]
+                                      "embedding_profiles", "search_indexes", "active_search_indexes", "model_access_policies", "tenant_model_registry", "model_descriptions", "model_runtime_settings", "tenant_settings", "index_preparation_jobs", "index_settings", "index_documents"}]
                         Base.metadata.create_all(bind=conn, tables=tables)
                     else:
                         Base.metadata.create_all(bind=conn)
+                        from app.storage.index_corpus_schema import migrate
+                        migrate(conn)
                         ensure_local_unicode_columns(conn)
                 logger.info("Azure SQL base tables initialized successfully.")
                 break

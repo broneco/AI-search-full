@@ -130,6 +130,30 @@ class DBIndexPreparationJob(Base):
     lease_until: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
 
 
+class DBIndexSettings(Base):
+    """Immutable chunking provenance and mutable presentation for one index UUID."""
+    __tablename__ = "index_settings"
+    index_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("search_indexes.index_id"), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    name: Mapped[str] = mapped_column(Unicode(120), nullable=False)
+    chunking: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    settings_origin: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    current_index_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    owner_index_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    base_revision: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+
+class DBIndexDocument(Base):
+    """Prepared original revision for an index-specific chunk corpus, including empty files."""
+    __tablename__ = "index_documents"
+    index_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("search_indexes.index_id"), primary_key=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.document_id", ondelete="CASCADE"), primary_key=True)
+    source_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class DBChunk(Base):
     __tablename__ = "chunks"
 
@@ -137,6 +161,7 @@ class DBChunk(Base):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     tenant_id: Mapped[str] = mapped_column(String(255), default=lambda: settings.TENANT_ID, index=True, nullable=False)
+    corpus_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     document_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("documents.document_id", ondelete="CASCADE"),

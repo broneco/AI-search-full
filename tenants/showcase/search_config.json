@@ -13,6 +13,7 @@
   "freshness_boost": 0.2,
   "context_expansion": "page",
   "context_expansion_size": 2,
+  "summaries_only_for_matched_chunk": true,
   "chunk_size": 1000,
   "chunk_overlap": 250,
   "chunk_cross_page": false,
